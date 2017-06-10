@@ -1,0 +1,13 @@
+[package]
+authors = ["Przemyslaw M. Maciolek <pmm@collective-sense.com>", "Jacek Całusiński <forger@forger.pl>"]
+name = "hyena-engine"
+version = "0.1.0"
+
+[dependencies]
+bincode = "0.8.0"
+error-chain = "0.10.0"
+log = "0.3.8"
+
+[dependencies.memmap]
+git = "https://github.com/danburkert/memmap-rs.git"
+optional = false

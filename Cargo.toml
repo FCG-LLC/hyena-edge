@@ -1,0 +1,16 @@
+[package]
+authors = ["Przemyslaw M. Maciolek <pmm@collective-sense.com>", "Jacek Całusiński <forger@forger.pl>"]
+name = "hyena"
+version = "0.1.0"
+
+[dependencies]
+clap = "2.24.2"
+flexi_logger = "0.5.2"
+
+[dependencies.hyena-engine]
+optional = false
+path = "hyena-engine"
+
+[dependencies.colored_logger]
+git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
+optional = false
