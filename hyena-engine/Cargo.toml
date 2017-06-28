@@ -19,6 +19,7 @@ git = "https://github.com/danburkert/memmap-rs.git"
 optional = true
 
 [dev-dependencies]
+num = "0.1.39"
 tempdir = "0.3.5"
 
 [features]

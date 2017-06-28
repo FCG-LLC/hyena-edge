@@ -1,6 +1,6 @@
 use error::*;
 
-use storage::file::ensure_file;
+use fs::ensure_file;
 
 use memmap;
 use memmap::{MmapMut, Protection};

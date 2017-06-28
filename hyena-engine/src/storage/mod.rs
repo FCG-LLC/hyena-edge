@@ -2,10 +2,8 @@ use error::*;
 
 #[cfg(feature = "mmap")]
 pub(crate) mod mmap;
-#[cfg(feature = "hole_punching")]
-mod hole_punch;
 pub(crate) mod memory;
-pub(crate) mod file;
+
 mod map_type;
 
 

@@ -12,11 +12,13 @@ extern crate libc;
 
 #[cfg(test)]
 extern crate tempdir;
+#[cfg(test)]
+extern crate num;
 
 mod error;
 #[macro_use]
 pub(crate) mod helpers;
-
+mod fs;
 mod storage;
 #[cfg(feature = "hole_punching")]
 mod libc_utils;

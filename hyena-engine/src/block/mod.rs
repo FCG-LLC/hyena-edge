@@ -10,6 +10,8 @@ use std::marker::PhantomData;
 use storage::Storage;
 use storage::mmap::MemmapStorage;
 
+// This will probably get merged into BlockData
+
 pub trait BufferHead {
     #[inline]
     fn head(&self) -> usize;
@@ -17,6 +19,13 @@ pub trait BufferHead {
     #[inline]
     fn mut_head(&mut self) -> &mut usize;
 }
+
+/// Base trait for all Blocks
+///
+/// For now we use the safest approach to handling data
+/// via AsRef and AsMut for every access
+/// This adds some overhead, but will serve as a good basis for refactoring
+/// and comparisons in benchmarks
 
 pub trait BlockData<'block, T: 'block>: BufferHead + AsRef<[T]> + AsMut<[T]> {
     fn as_slice(&self) -> &[T] {
@@ -53,7 +62,7 @@ pub trait BlockData<'block, T: 'block>: BufferHead + AsRef<[T]> + AsMut<[T]> {
         let size = self.size();
         let mut head = self.mut_head();
 
-        if count < size {
+        if count <= size {
             *head += count;
             Ok(())
         } else {
@@ -139,8 +148,6 @@ pub enum ScanComparison {
 
 pub struct DenseNumericBlock<'block, T: 'block, S: 'block + Storage<'block, T>> {
     storage: S,
-    //     /// whole mmaped buffer with proper lifetime attached
-    //     data: &'block mut [T],
     /// the tip of the buffer
     head: usize,
     base: PhantomData<&'block [T]>,
@@ -148,13 +155,6 @@ pub struct DenseNumericBlock<'block, T: 'block, S: 'block + Storage<'block, T>> 
 
 impl<'block, T: 'block, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
     pub fn new(mut storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
-
-        // We explicitly mark this slice as living long enough
-        // because we are not doing reallocations anywhere within storage impls
-        // and because storage allocates on heap or via mmap
-        // and we're not Clone
-        // also, we shouldn't touch storage mutably from now on
-        // (except sync())
 
         Ok(DenseNumericBlock {
             storage,
@@ -239,8 +239,13 @@ mod tests {
 
         mod generic {
             use super::*;
+            use num::{Num, Zero};
+            use std::mem::size_of;
+            use std::fmt::Debug;
+            use std::ops::Not;
 
-            pub(super) fn block_64<'block, S: 'block + Storage<'block, TimestampKey>>(storage: S) {
+
+            pub(super) fn block_ts<'block, S: 'block + Storage<'block, TimestampKey>>(storage: S) {
                 let mut block = DenseNumericBlock::new(storage)
                     .chain_err(|| "failed to create block")
                     .unwrap();
@@ -263,6 +268,39 @@ mod tests {
                 assert_eq!(data[0], d1);
                 assert_eq!(data[1], d2);
             }
+
+
+            pub(super) fn block_t<'block, T, S>(storage: S)
+            where
+                T: 'block + Not<Output = T> + Num + Zero + PartialEq + Copy + Debug,
+                S: 'block + Storage<'block, T>,
+            {
+                let mut block = DenseNumericBlock::new(storage)
+                    .chain_err(|| "failed to create block")
+                    .unwrap();
+
+                let s = [!T::zero(), T::zero()];
+                let source = s.into_iter().cycle();
+
+                let len = {
+                    let mut data = block.as_mut_slice_append();
+                    let len = data.len();
+                    let source = source.clone().take(len).map(|v| *v).collect::<Vec<_>>();
+
+                    data.copy_from_slice(&source);
+                    len
+                };
+
+                assert_eq!(len * size_of::<T>(), BLOCK_FILE_SIZE);
+
+                block.set_written(len).unwrap();
+
+                let data = block.as_slice();
+
+                let source = source.take(len).map(|v| *v).collect::<Vec<_>>();
+
+                assert_eq!(data, &source[..]);
+            }
         }
 
         mod memory {
@@ -276,8 +314,48 @@ mod tests {
             }
 
             #[test]
-            fn block_64() {
-                super::generic::block_64(make_storage());
+            fn block_ts() {
+                super::generic::block_ts(make_storage());
+            }
+
+            #[test]
+            fn block_u64() {
+                super::generic::block_t::<u64, _>(make_storage());
+            }
+
+            #[test]
+            fn block_u32() {
+                super::generic::block_t::<u32, _>(make_storage());
+            }
+
+            #[test]
+            fn block_u16() {
+                super::generic::block_t::<u16, _>(make_storage());
+            }
+
+            #[test]
+            fn block_u8() {
+                super::generic::block_t::<u8, _>(make_storage());
+            }
+
+            #[test]
+            fn block_i64() {
+                super::generic::block_t::<i64, _>(make_storage());
+            }
+
+            #[test]
+            fn block_i32() {
+                super::generic::block_t::<i32, _>(make_storage());
+            }
+
+            #[test]
+            fn block_i16() {
+                super::generic::block_t::<i16, _>(make_storage());
+            }
+
+            #[test]
+            fn block_i8() {
+                super::generic::block_t::<i8, _>(make_storage());
             }
         }
 
@@ -286,8 +364,8 @@ mod tests {
             use super::*;
             use storage::mmap::MemmapStorage;
 
-            fn make_storage() -> MemmapStorage {
-                let (_dir, file) = tempfile!(persistent);
+            fn make_storage(name: &str) -> MemmapStorage {
+                let (_dir, file) = tempfile!(persistent name);
 
                 MemmapStorage::new(file, BLOCK_FILE_SIZE)
                     .chain_err(|| "failed to create memory storage")
@@ -295,8 +373,48 @@ mod tests {
             }
 
             #[test]
-            fn block_64() {
-                super::generic::block_64(make_storage());
+            fn block_ts() {
+                super::generic::block_ts(make_storage("ts"));
+            }
+
+            #[test]
+            fn block_u64() {
+                super::generic::block_t::<u64, _>(make_storage("u64"));
+            }
+
+            #[test]
+            fn block_u32() {
+                super::generic::block_t::<u32, _>(make_storage("u32"));
+            }
+
+            #[test]
+            fn block_u16() {
+                super::generic::block_t::<u16, _>(make_storage("u16"));
+            }
+
+            #[test]
+            fn block_u8() {
+                super::generic::block_t::<u8, _>(make_storage("u8"));
+            }
+
+            #[test]
+            fn block_i64() {
+                super::generic::block_t::<i64, _>(make_storage("i64"));
+            }
+
+            #[test]
+            fn block_i32() {
+                super::generic::block_t::<i32, _>(make_storage("i32"));
+            }
+
+            #[test]
+            fn block_i16() {
+                super::generic::block_t::<i16, _>(make_storage("i16"));
+            }
+
+            #[test]
+            fn block_i8() {
+                super::generic::block_t::<i8, _>(make_storage("i8"));
             }
         }
     }

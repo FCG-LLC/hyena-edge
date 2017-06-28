@@ -3,7 +3,9 @@ use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 #[cfg(feature = "hole_punching")]
-use super::hole_punch::punch_hole;
+mod hole_punch;
+#[cfg(feature = "hole_punching")]
+use self::hole_punch::punch_hole;
 
 
 pub fn ensure_file<P: AsRef<Path>>(path: P, size: usize) -> Result<File> {

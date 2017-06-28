@@ -2,6 +2,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
+    pub(crate) const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
     pub(crate) const DEFAULT_FILE_SIZE: usize = 1 << 20; // 1 MiB
 
 
@@ -52,7 +53,7 @@ pub(crate) mod tests {
 
     macro_rules! ensure_read {
         ($file: expr, $buf: expr, $size: expr) => {{
-            use storage::file::ensure_file;
+            use fs::ensure_file;
             use std::io::Read;
 
 
@@ -74,7 +75,7 @@ pub(crate) mod tests {
 
     macro_rules! ensure_write {
         ($file: expr, $w: expr, $size: expr) => {{
-            use storage::file::ensure_file;
+            use fs::ensure_file;
             use std::io::Write;
 
 
@@ -110,7 +111,7 @@ pub(crate) mod tests {
         }};
 
         (persistent prefix $prefix: expr) => {
-            tempfile!(persistent "test_file.bin", $prefix)
+            tempfile!(persistent ::helpers::tests::DEFAULT_TEMPFILE_NAME, $prefix)
         };
 
         (persistent $name: expr) => {
@@ -118,7 +119,7 @@ pub(crate) mod tests {
         };
 
         (persistent) => {
-            tempfile!(persistent "test_file.bin")
+            tempfile!(persistent ::helpers::tests::DEFAULT_TEMPFILE_NAME)
         };
 
         ($name: expr, $prefix: expr) => {{
@@ -132,11 +133,11 @@ pub(crate) mod tests {
         };
 
         (prefix $prefix: expr) => {
-            tempfile!("test_file.bin", $prefix)
+            tempfile!(::helpers::tests::DEFAULT_TEMPFILE_NAME, $prefix)
         };
 
         () => {
-            tempfile!("test_file.bin")
+            tempfile!(::helpers::tests::DEFAULT_TEMPFILE_NAME)
         };
     }
 }

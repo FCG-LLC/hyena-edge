@@ -7,6 +7,8 @@ use std::marker::PhantomData;
 use std::fmt;
 
 
+const PAGE_SIZE: usize = 1 << 12;
+
 #[derive(Debug)]
 pub struct MemoryStorage<Align: Zero + Clone> {
     data: Vec<Align>,
@@ -60,12 +62,12 @@ impl Zero for Page {
     fn zero() -> Page {
         // size should be replaced with size_of::<Page>()
         // after const fn is stabilized
-        Page([0; 1 << 12])
+        Page([0; PAGE_SIZE])
     }
 }
 
 #[derive(Copy)]
-pub struct Page([u8; 1 << 12]);
+pub struct Page([u8; PAGE_SIZE]);
 
 impl fmt::Debug for Page {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
