@@ -26,3 +26,4 @@ tempdir = "0.3.5"
 default = ["hole_punching", "mmap"]
 hole_punching = ["libc"]
 mmap = ["memmap"]
+block_128 = []

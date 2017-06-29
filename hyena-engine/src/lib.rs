@@ -1,3 +1,5 @@
+#![cfg_attr(feature = "block_128", feature(i128_type))]
+
 #[macro_use]
 extern crate log;
 #[macro_use]
