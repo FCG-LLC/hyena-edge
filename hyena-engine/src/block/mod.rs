@@ -6,11 +6,10 @@ use std::path::Path;
 use std::marker::PhantomData;
 
 use storage::Storage;
-use storage::mmap::MemmapStorage;
 
 mod numeric;
 
-use self::numeric::{DenseNumericBlock, SparseNumericBlock};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseNumericBlock, SparseIndexedNumericBlock};
 
 // This will probably get merged into BlockData
 

@@ -1,6 +1,6 @@
 use error::*;
-use std::fs::{File, OpenOptions};
-use std::path::Path;
+use std::fs::{File, OpenOptions, create_dir_all};
+use std::path::{Path, PathBuf};
 
 #[cfg(feature = "hole_punching")]
 mod hole_punch;
@@ -26,4 +26,29 @@ pub fn ensure_file<P: AsRef<Path>>(path: P, size: usize) -> Result<File> {
     }
 
     Ok(file)
+}
+
+pub fn ensure_dir<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
+    let path = path.as_ref();
+
+    if !path.exists() {
+        info!("Directory {} doesn't exist, creating...", path.display());
+
+        create_dir_all(&path)
+            .chain_err(|| "Unable to create directory")?;
+    } else if path.is_dir() {
+        let meta = path.metadata()
+            .chain_err(|| "Failed to retrieve metadata for the path")?;
+
+        if meta.permissions().readonly() {
+            bail!("The directory is read only");
+        }
+    } else {
+        bail!("Provided path exists and is not a directory");
+    }
+
+    let path = path.canonicalize()
+        .chain_err(|| "Unable to acquire canonical path")?;
+
+    Ok(path.to_path_buf())
 }

@@ -10,7 +10,7 @@ extern crate chrono;
 extern crate memmap;
 #[cfg(feature = "hole_punching")]
 extern crate libc;
-
+extern crate uuid;
 
 #[cfg(test)]
 extern crate tempdir;
@@ -25,6 +25,8 @@ mod storage;
 #[cfg(feature = "hole_punching")]
 mod libc_utils;
 mod block;
+
+mod ty;
 
 #[cfg(test)]
 mod tests {

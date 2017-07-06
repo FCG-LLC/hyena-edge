@@ -6,8 +6,7 @@ use std::path::Path;
 use std::marker::PhantomData;
 
 use storage::Storage;
-use storage::mmap::MemmapStorage;
-use super::timestamp::{ToTimestampMicros, TimestampKey};
+use ty::{ToTimestampMicros, Timestamp};
 
 use block::{BlockData, IndexRef, IndexMut, BufferHead};
 
@@ -135,7 +134,7 @@ mod tests {
         use chrono::prelude::*;
 
 
-        pub(super) fn block_ts<'block, S: 'block + Storage<'block, TimestampKey>>(storage: S) {
+        pub(super) fn block_ts<'block, S: 'block + Storage<'block, Timestamp>>(storage: S) {
             let mut block = DenseNumericBlock::new(storage)
                 .chain_err(|| "failed to create block")
                 .unwrap();

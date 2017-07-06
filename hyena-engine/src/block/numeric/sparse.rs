@@ -8,7 +8,6 @@ use std::path::Path;
 use std::marker::PhantomData;
 
 use storage::Storage;
-use storage::mmap::MemmapStorage;
 
 use block::{BlockData, IndexRef, IndexMut, BufferHead};
 

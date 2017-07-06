@@ -29,6 +29,12 @@ pub(crate) mod tests {
             }
         }
 
+        impl AsRef<Path> for TempDir {
+            fn as_ref(&self) -> &Path {
+                self.path()
+            }
+        }
+
         impl Drop for TempDir {
             fn drop(&mut self) {
                 // leak tempdir, leaving files on disk
@@ -93,6 +99,34 @@ pub(crate) mod tests {
         };
     }
 
+    macro_rules! tempdir {
+        (@ $tdir: expr) => {
+            $tdir
+                .chain_err(|| "unable to create temporary directory")
+                .unwrap()
+        };
+
+        (persistent $prefix: expr) => {{
+            use ::helpers::tests::persistent_tempdir::TempDir;
+
+            tempdir!(@ TempDir::new($prefix))
+        }};
+
+        (persistent) => {
+            tempdir!(persistent ::helpers::tests::DEFAULT_TEMPDIR_PREFIX)
+        };
+
+        ($prefix: expr) => {{
+            use tempdir::TempDir;
+
+            tempdir!(@ TempDir::new($prefix))
+        }};
+
+        () => {
+            tempdir!(::helpers::tests::DEFAULT_TEMPDIR_PREFIX)
+        };
+    }
+
     /// Create temporary file
     ///
     /// add persistent as first keyword to keep test files
@@ -101,9 +135,7 @@ pub(crate) mod tests {
 
     macro_rules! tempfile {
         (@ $prefix: expr, $tdir: expr, $($name: expr,)* ) => {{
-            let dir = $tdir
-                .chain_err(|| "unable to create temporary directory")
-                .unwrap();
+            let dir = $tdir;
 
             let pb = dir.path().to_path_buf();
             let p = pb.as_path();
@@ -111,11 +143,9 @@ pub(crate) mod tests {
             (dir, $(p.join($name),)*)
         }};
 
-        (persistent prefix $prefix: expr, $($name: expr,)*) => {{
-            use ::helpers::tests::persistent_tempdir::TempDir;
-
-            tempfile!(@ $prefix, TempDir::new($prefix), $($name,)*)
-        }};
+        (persistent prefix $prefix: expr, $($name: expr,)*) => {
+            tempfile!(@ $prefix, tempdir!(persistent $prefix), $($name,)*)
+        };
 
         (persistent prefix $prefix: expr, $($name: expr),*) => {
             tempfile!(persistent prefix $prefix, $($name,)*)
@@ -137,11 +167,9 @@ pub(crate) mod tests {
             tempfile!(persistent ::helpers::tests::DEFAULT_TEMPFILE_NAME)
         };
 
-        (prefix $prefix: expr, $($name: expr,)*) => {{
-            use tempdir;
-
-            tempfile!(@ $prefix, tempdir::TempDir::new($prefix), $($name,)*)
-        }};
+        (prefix $prefix: expr, $($name: expr,)*) => {
+            tempfile!(@ $prefix, tempdir!($prefix), $($name,)*)
+        };
 
         (prefix $prefix: expr, $($name: expr),*) => {
             tempfile!(prefix $prefix, $($name,)*)

@@ -8,7 +8,7 @@ bincode = "0.8.0"
 chrono = "0.4.0"
 error-chain = "0.10.0"
 log = "0.3.8"
-rayon = "0.8.0"
+rayon = "0.8.2"
 
 [dependencies.libc]
 optional = true
@@ -18,12 +18,17 @@ version = "0.2.24"
 git = "https://github.com/danburkert/memmap-rs.git"
 optional = true
 
+[dependencies.uuid]
+optional = false
+version = "0.5.1"
+features = ["serde", "v4"]
+
 [dev-dependencies]
 num = "0.1.39"
 tempdir = "0.3.5"
 
 [features]
+block_128 = []
 default = ["hole_punching", "mmap"]
 hole_punching = ["libc"]
 mmap = ["memmap"]
-block_128 = []

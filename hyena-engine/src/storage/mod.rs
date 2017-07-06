@@ -5,6 +5,7 @@ pub(crate) mod mmap;
 pub(crate) mod memory;
 
 mod map_type;
+mod manager;
 
 
 pub trait Storage<'stor, T: 'stor>: AsRef<[T]> + AsMut<[T]> {
