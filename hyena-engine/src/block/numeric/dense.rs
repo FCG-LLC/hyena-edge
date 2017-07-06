@@ -4,23 +4,27 @@ use rayon::prelude::*;
 
 use std::path::Path;
 use std::marker::PhantomData;
+use std::fmt::Debug;
 
 use storage::Storage;
 use ty::{ToTimestampMicros, Timestamp};
 
 use block::{BlockData, IndexRef, IndexMut, BufferHead};
 
-
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
 
-pub struct DenseNumericBlock<'block, T: 'block, S: 'block + Storage<'block, T>> {
+#[derive(Debug)]
+pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block +
+Storage<'block, T>> {
     storage: S,
     /// the tip of the buffer
     head: usize,
     base: PhantomData<&'block [T]>,
 }
 
-impl<'block, T: 'block, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>>
+DenseNumericBlock<'block, T, S> {
     pub fn new(mut storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
 
         Ok(DenseNumericBlock {
@@ -31,7 +35,7 @@ impl<'block, T: 'block, S: 'block + Storage<'block, T>> DenseNumericBlock<'block
     }
 }
 
-impl<'block, T: 'block, S: 'block + Storage<'block, T>> BufferHead
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BufferHead
     for DenseNumericBlock<'block, T, S> {
     fn head(&self) -> usize {
         self.head
@@ -42,18 +46,19 @@ impl<'block, T: 'block, S: 'block + Storage<'block, T>> BufferHead
     }
 }
 
-impl<'block, T: 'block, S: 'block + Storage<'block, T>> BlockData<'block, T, DenseIndex>
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>>
+BlockData<'block, T, DenseIndex>
     for DenseNumericBlock<'block, T, S> {
 }
 
-impl<'block, T: 'block, S: 'block + Storage<'block, T>> AsRef<[T]>
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> AsRef<[T]>
     for DenseNumericBlock<'block, T, S> {
     fn as_ref(&self) -> &[T] {
         self.storage.as_ref()
     }
 }
 
-impl<'block, T: 'block, S: 'block + Storage<'block, T>> AsMut<[T]>
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> AsMut<[T]>
     for DenseNumericBlock<'block, T, S> {
     fn as_mut(&mut self) -> &mut [T] {
         self.storage.as_mut()
@@ -62,7 +67,7 @@ impl<'block, T: 'block, S: 'block + Storage<'block, T>> AsMut<[T]>
 
 impl<'block, T, ST> IndexRef<[DenseIndex]> for DenseNumericBlock<'block, T, ST>
 where
-    T: 'block,
+    T: 'block + Debug,
     ST: 'block + Storage<'block, T>,
 {
     fn as_ref_index(&self) -> &[DenseIndex] {
@@ -72,7 +77,7 @@ where
 
 impl<'block, T, ST> IndexMut<[DenseIndex]> for DenseNumericBlock<'block, T, ST>
 where
-    T: 'block,
+    T: 'block + Debug,
     ST: 'block + Storage<'block, T>,
 {
     fn as_mut_index(&mut self) -> &mut [DenseIndex] {

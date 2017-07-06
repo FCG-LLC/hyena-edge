@@ -5,16 +5,17 @@ use std::mem::{size_of, uninitialized};
 use std::intrinsics::copy_nonoverlapping;
 use std::marker::PhantomData;
 use std::fmt;
+use std::fmt::Debug;
 
 
 const PAGE_SIZE: usize = 1 << 12;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MemoryStorage<Align: Zero + Clone> {
     data: Vec<Align>,
 }
 
-impl<Align: Zero + Clone> MemoryStorage<Align> {
+impl<Align: Zero + Debug + Clone + PartialEq> MemoryStorage<Align> {
     pub fn new(size: usize) -> Result<MemoryStorage<Align>> {
         assert_eq!(size % size_of::<Align>(), 0);
 
@@ -24,19 +25,20 @@ impl<Align: Zero + Clone> MemoryStorage<Align> {
     }
 }
 
-impl<'stor, T: 'stor, Align: Zero + Clone> Storage<'stor, T> for MemoryStorage<Align> {
+impl<'stor, T: 'stor, Align: Zero + Debug + Clone + PartialEq> Storage<'stor, T> for
+MemoryStorage<Align> {
     fn sync(&mut self) -> Result<()> {
         Ok(())
     }
 }
 
-impl<T, Align: Zero + Clone> AsRef<[T]> for MemoryStorage<Align> {
+impl<T, Align: Zero + Debug + Clone + PartialEq> AsRef<[T]> for MemoryStorage<Align> {
     fn as_ref(&self) -> &[T] {
         map_type(&self.data, PhantomData)
     }
 }
 
-impl<T, Align: Zero + Clone> AsMut<[T]> for MemoryStorage<Align> {
+impl<T, Align: Zero + Debug + Clone + PartialEq> AsMut<[T]> for MemoryStorage<Align> {
     fn as_mut(&mut self) -> &mut [T] {
         map_type_mut(&mut self.data, PhantomData)
     }
@@ -83,6 +85,13 @@ impl Clone for Page {
             dst
         }
     }
+}
+
+impl PartialEq<Page> for Page {
+    #[inline]
+    fn eq(&self, other: &Page) -> bool { self.0[..] == other.0[..] }
+    #[inline]
+    fn ne(&self, other: &Page) -> bool { self.0[..] != other.0[..] }
 }
 
 pub type PagedMemoryStorage = MemoryStorage<Page>;

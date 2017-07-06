@@ -9,6 +9,8 @@ chrono = "0.4.0"
 error-chain = "0.10.0"
 log = "0.3.8"
 rayon = "0.8.2"
+serde = "1.0.9"
+serde_derive = "1.0.9"
 
 [dependencies.libc]
 optional = true
@@ -19,9 +21,9 @@ git = "https://github.com/danburkert/memmap-rs.git"
 optional = true
 
 [dependencies.uuid]
+features = ["serde", "v4"]
 optional = false
 version = "0.5.1"
-features = ["serde", "v4"]
 
 [dev-dependencies]
 num = "0.1.39"

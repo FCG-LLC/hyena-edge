@@ -6,6 +6,7 @@ use rayon::prelude::*;
 
 use std::path::Path;
 use std::marker::PhantomData;
+use std::fmt::Debug;
 
 use storage::Storage;
 
@@ -22,10 +23,11 @@ pub type SparseIndexedNumericBlock<'block, T, ST, SI> = SparseNumericBlock<
     SI,
 >;
 
+#[derive(Debug)]
 pub struct SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -39,8 +41,8 @@ where
 
 impl<'block, T, I, ST, SI> SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -58,8 +60,8 @@ where
 
 impl<'block, T, I, ST, SI> BufferHead for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -74,8 +76,8 @@ where
 
 impl<'block, T, I, ST, SI> BlockData<'block, T, I> for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -110,8 +112,8 @@ where
 
 impl<'block, T, I, ST, SI> AsRef<[T]> for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -122,8 +124,8 @@ where
 
 impl<'block, T, I, ST, SI> AsMut<[T]> for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -134,8 +136,8 @@ where
 
 impl<'block, T, I, ST, SI> IndexRef<[I]> for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {
@@ -146,8 +148,8 @@ where
 
 impl<'block, T, I, ST, SI> IndexMut<[I]> for SparseNumericBlock<'block, T, I, ST, SI>
 where
-    T: 'block,
-    I: 'block,
+    T: 'block + Debug,
+    I: 'block + Debug,
     ST: 'block + Storage<'block, T>,
     SI: 'block + Storage<'block, I>,
 {

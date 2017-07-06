@@ -2,6 +2,7 @@
 mod numeric;
 
 
+#[derive(Debug)]
 pub enum Block<'block> {
     Memory(memory::Block<'block>),
     #[cfg(feature = "mmap")]

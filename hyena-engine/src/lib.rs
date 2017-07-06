@@ -11,6 +11,10 @@ extern crate memmap;
 #[cfg(feature = "hole_punching")]
 extern crate libc;
 extern crate uuid;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde;
+extern crate bincode;
 
 #[cfg(test)]
 extern crate tempdir;
@@ -20,6 +24,9 @@ extern crate num;
 mod error;
 #[macro_use]
 pub(crate) mod helpers;
+#[macro_use]
+pub(crate) mod serde_utils;
+
 mod fs;
 mod storage;
 #[cfg(feature = "hole_punching")]

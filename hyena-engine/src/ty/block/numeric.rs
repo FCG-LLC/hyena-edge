@@ -6,6 +6,7 @@ macro_rules! numeric_block_impl {
     ($ST: ty, $SI: ty) => {
         use ty::block::numeric::*;
 
+        #[derive(Debug)]
         pub enum Block<'block> {
             // Dense, Signed
             I8Dense(I8DenseBlock<'block, $ST>),

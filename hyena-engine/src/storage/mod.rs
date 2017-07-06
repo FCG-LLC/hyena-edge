@@ -1,4 +1,6 @@
 use error::*;
+use std::fmt::Debug;
+
 
 #[cfg(feature = "mmap")]
 pub(crate) mod mmap;
@@ -8,7 +10,7 @@ mod map_type;
 mod manager;
 
 
-pub trait Storage<'stor, T: 'stor>: AsRef<[T]> + AsMut<[T]> {
+pub trait Storage<'stor, T: 'stor>: AsRef<[T]> + AsMut<[T]> + Debug {
     fn sync(&mut self) -> Result<()>;
 
     fn as_ptr(&self) -> *const T {

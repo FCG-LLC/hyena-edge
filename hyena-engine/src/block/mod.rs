@@ -4,6 +4,7 @@ use rayon::prelude::*;
 
 use std::path::Path;
 use std::marker::PhantomData;
+use std::fmt::Debug;
 
 use storage::Storage;
 
@@ -45,7 +46,7 @@ where
 /// and comparisons in benchmarks
 
 pub trait BlockData<'block, T: 'block, I: 'block>
-    : BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> {
+    : BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> + Debug {
     // data only
 
     fn as_slice(&self) -> &[T] {

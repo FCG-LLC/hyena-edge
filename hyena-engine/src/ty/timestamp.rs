@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter, Error as FmtError};
 use std::ops::Deref;
 
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Timestamp(u64);
 
 impl From<Timestamp> for u64 {
