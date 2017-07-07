@@ -10,7 +10,8 @@ use storage::Storage;
 
 mod numeric;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseNumericBlock, SparseIndexedNumericBlock};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseNumericBlock, SparseIndexedNumericBlock,
+                               SparseIndex};
 
 // This will probably get merged into BlockData
 
@@ -46,7 +47,8 @@ where
 /// and comparisons in benchmarks
 
 pub trait BlockData<'block, T: 'block, I: 'block>
-    : BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> + Debug {
+    : BufferHead + AsRef<[T]> + AsMut<[T]> + IndexRef<[I]> + IndexMut<[I]> + Debug
+    {
     // data only
 
     fn as_slice(&self) -> &[T] {
@@ -185,7 +187,7 @@ pub enum ScanComparison {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     pub(crate) const BLOCK_FILE_SIZE: usize = 1 << 20; // 1 MiB
 
 }

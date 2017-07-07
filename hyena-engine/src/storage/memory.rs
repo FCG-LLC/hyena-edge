@@ -23,10 +23,18 @@ impl<Align: Zero + Debug + Clone + PartialEq> MemoryStorage<Align> {
             data: vec![Align::zero(); size / size_of::<Align>()],
         })
     }
+
+    pub fn len(&self) -> usize {
+        self.data.len() * size_of::<Align>()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
-impl<'stor, T: 'stor, Align: Zero + Debug + Clone + PartialEq> Storage<'stor, T> for
-MemoryStorage<Align> {
+impl<'stor, T: 'stor, Align: Zero + Debug + Clone + PartialEq> Storage<'stor, T>
+    for MemoryStorage<Align> {
     fn sync(&mut self) -> Result<()> {
         Ok(())
     }
@@ -89,9 +97,13 @@ impl Clone for Page {
 
 impl PartialEq<Page> for Page {
     #[inline]
-    fn eq(&self, other: &Page) -> bool { self.0[..] == other.0[..] }
+    fn eq(&self, other: &Page) -> bool {
+        self.0[..] == other.0[..]
+    }
     #[inline]
-    fn ne(&self, other: &Page) -> bool { self.0[..] != other.0[..] }
+    fn ne(&self, other: &Page) -> bool {
+        self.0[..] != other.0[..]
+    }
 }
 
 pub type PagedMemoryStorage = MemoryStorage<Page>;

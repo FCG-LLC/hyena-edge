@@ -15,16 +15,14 @@ use block::{BlockData, IndexRef, IndexMut, BufferHead};
 pub struct DenseIndex;
 
 #[derive(Debug)]
-pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block +
-Storage<'block, T>> {
+pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> {
     storage: S,
     /// the tip of the buffer
     head: usize,
     base: PhantomData<&'block [T]>,
 }
 
-impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>>
-DenseNumericBlock<'block, T, S> {
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
     pub fn new(mut storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
 
         Ok(DenseNumericBlock {
@@ -46,8 +44,7 @@ impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BufferHead
     }
 }
 
-impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>>
-BlockData<'block, T, DenseIndex>
+impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> BlockData<'block, T, DenseIndex>
     for DenseNumericBlock<'block, T, S> {
 }
 

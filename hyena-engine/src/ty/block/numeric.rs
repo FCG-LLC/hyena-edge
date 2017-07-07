@@ -6,6 +6,7 @@ macro_rules! numeric_block_impl {
     ($ST: ty, $SI: ty) => {
         use ty::block::numeric::*;
 
+
         #[derive(Debug)]
         pub enum Block<'block> {
             // Dense, Signed
@@ -39,6 +40,82 @@ macro_rules! numeric_block_impl {
             U64Sparse(U64SparseBlock<'block, $ST, $SI>),
             #[cfg(feature = "block_128")]
             U128Sparse(U128SparseBlock<'block, $ST, $SI>),
+        }
+
+        // only for serialization/deserialization purposes
+
+        #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+        pub(crate) enum BlockType {
+            I8Dense,
+            I16Dense,
+            I32Dense,
+            I64Dense,
+            #[cfg(feature = "block_128")]
+            I128Dense,
+
+            // Dense, Unsigned
+            U8Dense,
+            U16Dense,
+            U32Dense,
+            U64Dense,
+            #[cfg(feature = "block_128")]
+            U128Dense,
+
+            // Sparse, Signed
+            I8Sparse,
+            I16Sparse,
+            I32Sparse,
+            I64Sparse,
+            #[cfg(feature = "block_128")]
+            I128Sparse,
+
+            // Sparse, Unsigned
+            U8Sparse,
+            U16Sparse,
+            U32Sparse,
+            U64Sparse,
+            #[cfg(feature = "block_128")]
+            U128Sparse,
+        }
+
+        impl<'block, 'a> From<&'a Block<'block>> for BlockType {
+            fn from(block: &Block) -> BlockType {
+                use self::Block::*;
+
+                match *block {
+                    // Dense, Signed
+                    I8Dense(..) => BlockType::I8Dense,
+                    I16Dense(..) => BlockType::I16Dense,
+                    I32Dense(..) => BlockType::I32Dense,
+                    I64Dense(..) => BlockType::I64Dense,
+                    #[cfg(feature = "block_128")]
+                    I128Dense(..) => BlockType::I128Dense,
+
+                    // Dense, Unsigned
+                    U8Dense(..) => BlockType::U8Dense,
+                    U16Dense(..) => BlockType::U16Dense,
+                    U32Dense(..) => BlockType::U32Dense,
+                    U64Dense(..) => BlockType::U64Dense,
+                    #[cfg(feature = "block_128")]
+                    U128Dense(..) => BlockType::U128Dense,
+
+                    // Sparse, Signed
+                    I8Sparse(..) => BlockType::I8Sparse,
+                    I16Sparse(..) => BlockType::I16Sparse,
+                    I32Sparse(..) => BlockType::I32Sparse,
+                    I64Sparse(..) => BlockType::I64Sparse,
+                    #[cfg(feature = "block_128")]
+                    I128Sparse(..) => BlockType::I128Sparse,
+
+                    // Sparse, Unsigned
+                    U8Sparse(..) => BlockType::U8Sparse,
+                    U16Sparse(..) => BlockType::U16Sparse,
+                    U32Sparse(..) => BlockType::U32Sparse,
+                    U64Sparse(..) => BlockType::U64Sparse,
+                    #[cfg(feature = "block_128")]
+                    U128Sparse(..) => BlockType::U128Sparse,
+                }
+            }
         }
     };
 

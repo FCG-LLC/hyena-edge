@@ -5,7 +5,7 @@ use fs::ensure_file;
 use memmap;
 use memmap::{MmapMut, Protection};
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
 
 use super::Storage;
@@ -27,13 +27,20 @@ pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
 #[derive(Debug)]
 pub struct MemmapStorage {
     mmap: MmapMut,
+    path: PathBuf,
 }
 
 impl MemmapStorage {
     pub fn new<P: AsRef<Path>>(file: P, size: usize) -> Result<MemmapStorage> {
-        let mmap = map_file(file, size).chain_err(|| "unable to mmap file")?;
+        let path = file.as_ref().to_path_buf();
 
-        Ok(Self { mmap })
+        let mmap = map_file(&path, size).chain_err(|| "unable to mmap file")?;
+
+        Ok(Self { mmap, path })
+    }
+
+    pub fn file_path(&self) -> &Path {
+        &self.path
     }
 }
 

@@ -56,9 +56,7 @@ impl PartitionManager {
         let partition_root = ensure_dir(partition_root)
             .chain_err(|| "Failed to ensure partition root directory")?;
 
-        Ok(PartitionManager {
-            partition_root,
-        })
+        Ok(PartitionManager { partition_root })
     }
 }
 
@@ -120,7 +118,8 @@ mod tests {
             .chain_err(|| "Failed to create manager")
             .unwrap();
 
-        let t = pman.as_ref().strip_prefix(root.as_ref())
+        let t = pman.as_ref()
+            .strip_prefix(root.as_ref())
             .chain_err(|| "Produced path is not a subdirectory of root")
             .unwrap()
             .components()
