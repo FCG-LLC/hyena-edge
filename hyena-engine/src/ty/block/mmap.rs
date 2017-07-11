@@ -150,7 +150,7 @@ mod tests {
 
         let path = root.as_ref().join(format!("block_{}.data", blockid));
 
-        let storage = Block::prepare_dense_storage(root, blockid, BLOCK_SIZE)
+        let storage = Block::prepare_dense_storage(&root, blockid, BLOCK_SIZE)
             .chain_err(|| "Failed to prepare dense storage")
             .unwrap();
 
@@ -173,7 +173,7 @@ mod tests {
         let index_path = root.as_ref().join(format!("block_{}.index", blockid));
 
         let (data_stor, index_stor) =
-            Block::prepare_sparse_storage::<T, _>(root, blockid, BLOCK_SIZE)
+            Block::prepare_sparse_storage::<T, _>(&root, blockid, BLOCK_SIZE)
                 .chain_err(|| {
                     format!("Failed to prepare sparse storage for T={}", size_of::<T>())
                 })
