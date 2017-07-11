@@ -153,7 +153,7 @@ mod tests {
             BlockType: From<T>,
             BlockTypeMap: From<HashMap<BlockId, T>>,
         {
-            let root = tempdir!(persistent);
+            let root = tempdir!();
             let ts = <Timestamp as Default>::default();
 
             let mut part = Partition::new(&root, *ts)
@@ -200,7 +200,7 @@ mod tests {
             BlockType: From<T>,
             BlockTypeMap: From<HashMap<BlockId, T>>,
         {
-            let root = tempdir!(persistent);
+            let root = tempdir!();
             let ts = <Timestamp as Default>::default();
 
             {
