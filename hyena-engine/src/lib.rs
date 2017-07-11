@@ -21,6 +21,8 @@ extern crate tempdir;
 #[cfg(test)]
 extern crate num;
 
+pub(crate) mod params;
+
 mod error;
 #[macro_use]
 pub(crate) mod helpers;
@@ -34,6 +36,7 @@ mod libc_utils;
 mod block;
 
 mod ty;
+mod partition;
 
 #[cfg(test)]
 mod tests {

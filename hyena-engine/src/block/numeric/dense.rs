@@ -88,7 +88,7 @@ mod tests {
     use super::*;
     use std::mem::size_of;
 
-    use block::tests::BLOCK_FILE_SIZE;
+    use params::tests::BLOCK_SIZE;
 
 
     #[cfg(feature = "block_128")]
@@ -114,7 +114,7 @@ mod tests {
                     len
                 };
 
-                assert_eq!(len * size_of::<$T>(), BLOCK_FILE_SIZE);
+                assert_eq!(len * size_of::<$T>(), BLOCK_SIZE);
 
                 block.set_written(len).unwrap();
 
@@ -182,7 +182,7 @@ mod tests {
                 len
             };
 
-            assert_eq!(len * size_of::<T>(), BLOCK_FILE_SIZE);
+            assert_eq!(len * size_of::<T>(), BLOCK_SIZE);
 
             block.set_written(len).unwrap();
 
@@ -214,7 +214,7 @@ mod tests {
                 len
             };
 
-            assert_eq!(len * size_of::<T>(), BLOCK_FILE_SIZE);
+            assert_eq!(len * size_of::<T>(), BLOCK_SIZE);
 
             block.set_written(len).unwrap();
 
@@ -231,7 +231,7 @@ mod tests {
         use storage::memory::PagedMemoryStorage;
 
         fn make_storage() -> PagedMemoryStorage {
-            PagedMemoryStorage::new(BLOCK_FILE_SIZE)
+            PagedMemoryStorage::new(BLOCK_SIZE)
                 .chain_err(|| "failed to create memory storage")
                 .unwrap()
         }
@@ -312,7 +312,7 @@ mod tests {
         fn make_storage(name: &str) -> MemmapStorage {
             let (_dir, file) = tempfile!(name);
 
-            MemmapStorage::new(file, BLOCK_FILE_SIZE)
+            MemmapStorage::new(file, BLOCK_SIZE)
                 .chain_err(|| "failed to create memory storage")
                 .unwrap()
         }

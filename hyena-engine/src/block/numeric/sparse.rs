@@ -162,7 +162,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use block::tests::BLOCK_FILE_SIZE;
+    use params::tests::BLOCK_SIZE;
 
 
     #[cfg(feature = "block_128")]
@@ -207,7 +207,7 @@ mod tests {
                     idx_len
                 };
 
-                assert!(len * size_of::<$T>() <= BLOCK_FILE_SIZE);
+                assert!(len * size_of::<$T>() <= BLOCK_SIZE);
 
                 block.set_written(len).unwrap();
 
@@ -274,7 +274,7 @@ mod tests {
                 idx_len
             };
 
-            assert!(len * size_of::<T>() <= BLOCK_FILE_SIZE);
+            assert!(len * size_of::<T>() <= BLOCK_SIZE);
 
             block.set_written(len).unwrap();
 
@@ -331,7 +331,7 @@ mod tests {
                 idx_len
             };
 
-            assert!(len * size_of::<T>() <= BLOCK_FILE_SIZE);
+            assert!(len * size_of::<T>() <= BLOCK_SIZE);
 
             block.set_written(len).unwrap();
 
@@ -359,12 +359,11 @@ mod tests {
 
         fn make_storage<T>() -> (PagedMemoryStorage, PagedMemoryStorage) {
             (
-                PagedMemoryStorage::new(BLOCK_FILE_SIZE)
+                PagedMemoryStorage::new(BLOCK_SIZE)
                     .chain_err(|| "failed to create memory storage")
                     .unwrap(),
-                PagedMemoryStorage::new(
-                    BLOCK_FILE_SIZE / size_of::<T>() * size_of::<SparseIndex>(),
-                ).chain_err(|| "failed to create memory storage")
+                PagedMemoryStorage::new(BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>())
+                    .chain_err(|| "failed to create memory storage")
                     .unwrap(),
             )
         }
@@ -468,12 +467,12 @@ mod tests {
             let (_dir, index, data) = tempfile!(index, data);
 
             (
-                MemmapStorage::new(data, BLOCK_FILE_SIZE)
+                MemmapStorage::new(data, BLOCK_SIZE)
                     .chain_err(|| "failed to create memory storage")
                     .unwrap(),
                 MemmapStorage::new(
                     index,
-                    BLOCK_FILE_SIZE / size_of::<T>() * size_of::<SparseIndex>(),
+                    BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>(),
                 ).chain_err(|| "failed to create memory storage")
                     .unwrap(),
             )

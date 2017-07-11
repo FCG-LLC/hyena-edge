@@ -2,10 +2,15 @@ use block::{DenseNumericBlock, SparseIndexedNumericBlock};
 use storage::Storage;
 
 
-macro_rules! numeric_block_impl {
+macro_rules! block_impl {
     ($ST: ty, $SI: ty) => {
-        use ty::block::numeric::*;
+        use ty::block::ty_impl::*;
+        use ty::block::{Block as TyBlock, BlockType as TyBlockType, BlockTypeMapTy,
+                        BlockTypeMap as TyBlockTypeMap};
+        use std::collections::hash_map::HashMap;
 
+
+        pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
         #[derive(Debug)]
         pub enum Block<'block> {
@@ -42,10 +47,139 @@ macro_rules! numeric_block_impl {
             U128Sparse(U128SparseBlock<'block, $ST, $SI>),
         }
 
+        impl<'block> From<I8DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: I8DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::I8Dense(block)
+            }
+        }
+
+        impl<'block> From<I16DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: I16DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::I16Dense(block)
+            }
+        }
+
+        impl<'block> From<I32DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: I32DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::I32Dense(block)
+            }
+        }
+
+        impl<'block> From<I64DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: I64DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::I64Dense(block)
+            }
+        }
+
+
+        #[cfg(feature = "block_128")]
+        impl<'block> From<I128DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: I128DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::I128Dense(block)
+            }
+        }
+
+        impl<'block> From<U8DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: U8DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::U8Dense(block)
+            }
+        }
+
+        impl<'block> From<U16DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: U16DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::U16Dense(block)
+            }
+        }
+
+        impl<'block> From<U32DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: U32DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::U32Dense(block)
+            }
+        }
+
+        impl<'block> From<U64DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: U64DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::U64Dense(block)
+            }
+        }
+
+
+        #[cfg(feature = "block_128")]
+        impl<'block> From<U128DenseBlock<'block, $ST>> for Block<'block> {
+            fn from(block: U128DenseBlock<'block, $ST>) -> Block<'block> {
+                Block::U128Dense(block)
+            }
+        }
+
+        // Sparse
+
+
+        impl<'block> From<I8SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: I8SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::I8Sparse(block)
+            }
+        }
+
+        impl<'block> From<I16SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: I16SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::I16Sparse(block)
+            }
+        }
+
+        impl<'block> From<I32SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: I32SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::I32Sparse(block)
+            }
+        }
+
+        impl<'block> From<I64SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: I64SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::I64Sparse(block)
+            }
+        }
+
+        #[cfg(feature = "block_128")]
+        impl<'block> From<I128SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: I128SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::I128Sparse(block)
+            }
+        }
+
+        impl<'block> From<U8SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: U8SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::U8Sparse(block)
+            }
+        }
+
+        impl<'block> From<U16SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: U16SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::U16Sparse(block)
+            }
+        }
+
+        impl<'block> From<U32SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: U32SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::U32Sparse(block)
+            }
+        }
+
+        impl<'block> From<U64SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: U64SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::U64Sparse(block)
+            }
+        }
+
+        #[cfg(feature = "block_128")]
+        impl<'block> From<U128SparseBlock<'block, $ST, $SI>> for Block<'block> {
+            fn from(block: U128SparseBlock<'block, $ST, $SI>) -> Block<'block> {
+                Block::U128Sparse(block)
+            }
+        }
+
         // only for serialization/deserialization purposes
 
         #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-        pub(crate) enum BlockType {
+        pub enum BlockType {
             I8Dense,
             I16Dense,
             I32Dense,
@@ -117,10 +251,30 @@ macro_rules! numeric_block_impl {
                 }
             }
         }
+
+        impl<'block> PartialEq<BlockType> for TyBlock<'block> {
+            fn eq(&self, rhs: &BlockType) -> bool {
+                let self_ty: TyBlockType = self.into();
+                let rhs_ty: TyBlockType = (*rhs).into();
+
+                self_ty == rhs_ty
+            }
+        }
+
+        impl From<BlockTypeMap> for TyBlockTypeMap {
+            fn from(block_hmap: BlockTypeMap) -> TyBlockTypeMap {
+                block_hmap.iter()
+                .map(|(block_id, block_type)| {
+                    (*block_id, (*block_type).into())
+                })
+                .collect::<BlockTypeMapTy>()
+                .into()
+            }
+        }
     };
 
     ($ST: ty) => {
-        numeric_block_impl!($ST, $ST);
+        block_impl!($ST, $ST);
     };
 }
 

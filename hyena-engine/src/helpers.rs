@@ -43,6 +43,25 @@ pub(crate) mod tests {
         }
     }
 
+    macro_rules! hashmap {
+        // support invocations without trailing comma
+
+        ( $($key:expr => $value:expr),* ) => {
+            hashmap! { $( $key => $value,)* }
+        };
+
+        ( $($key:expr => $value:expr,)* ) => {{
+            use std::collections::hash_map::HashMap;
+
+            let mut hash = HashMap::new();
+            $(
+                hash.insert($key, $value);
+            )*
+
+            hash
+        }};
+    }
+
     macro_rules! assert_file_size {
         ($file: expr, $size: expr) => {{
             let metadata = $file.metadata()

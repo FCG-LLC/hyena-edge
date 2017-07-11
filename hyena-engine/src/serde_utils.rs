@@ -9,13 +9,17 @@ pub(crate) mod ser {
 
 
     pub(crate) fn serialize<T>(value: &T) -> Result<Vec<u8>>
-    where T: ?Sized + Serialize {
-        bincode::serialize(value, bincode::Infinite)
-            .chain_err(|| "Serialization failed")
+    where
+        T: ?Sized + Serialize,
+    {
+        bincode::serialize(value, bincode::Infinite).chain_err(|| "Serialization failed")
     }
 
     pub(crate) fn serialize_into<T, W>(value: &T, writer: &mut W) -> Result<()>
-    where T: ?Sized + Serialize, W: ?Sized + Write {
+    where
+        T: ?Sized + Serialize,
+        W: ?Sized + Write,
+    {
         bincode::serialize_into(writer, value, bincode::Infinite)
             .chain_err(|| "Serialization failed")
     }
@@ -28,15 +32,18 @@ pub(crate) mod de {
 
 
     pub(crate) fn deserialize<'de, T>(data: &'de [u8]) -> Result<T>
-    where T: Deserialize<'de> {
-        bincode::deserialize(data)
-            .chain_err(|| "Deserialization failed")
+    where
+        T: Deserialize<'de>,
+    {
+        bincode::deserialize(data).chain_err(|| "Deserialization failed")
     }
 
     pub(crate) fn deserialize_from<T, R>(reader: &mut R) -> Result<T>
-    where for<'de> T: Deserialize<'de>, R: Read {
-        bincode::deserialize_from(reader, bincode::Infinite)
-            .chain_err(|| "Deserialization failed")
+    where
+        for<'de> T: Deserialize<'de>,
+        R: Read,
+    {
+        bincode::deserialize_from(reader, bincode::Infinite).chain_err(|| "Deserialization failed")
     }
 }
 

@@ -185,9 +185,3 @@ pub enum ScanComparison {
     Gt,
     NotEq,
 }
-
-#[cfg(test)]
-pub(crate) mod tests {
-    pub(crate) const BLOCK_FILE_SIZE: usize = 1 << 20; // 1 MiB
-
-}
