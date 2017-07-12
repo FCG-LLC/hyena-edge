@@ -62,6 +62,14 @@ pub(crate) mod tests {
         }};
     }
 
+    macro_rules! count {
+        ($cur: ident $(, $tail: ident)* $(,)*) => {
+            1 + count!($($tail,)*)
+        };
+
+        () => { 0 };
+    }
+
     macro_rules! assert_file_size {
         ($file: expr, $size: expr) => {{
             let metadata = $file.metadata()

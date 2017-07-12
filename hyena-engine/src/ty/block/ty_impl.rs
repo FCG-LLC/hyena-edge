@@ -278,6 +278,52 @@ macro_rules! block_impl {
     };
 }
 
+macro_rules! map_block_type_variants {
+    ($mac: ident $(, $arg: ident),* $(,)*) => {
+        (|| {
+            #[cfg(not(feature = "block_128"))]
+            return $mac!($($arg,)* I8Dense,
+                                    I16Dense,
+                                    I32Dense,
+                                    I64Dense,
+                                    U8Dense,
+                                    U16Dense,
+                                    U32Dense,
+                                    U64Dense,
+                                    I8Sparse,
+                                    I16Sparse,
+                                    I32Sparse,
+                                    I64Sparse,
+                                    U8Sparse,
+                                    U16Sparse,
+                                    U32Sparse,
+                                    U64Sparse);
+
+            #[cfg(feature = "block_128")]
+            return $mac!($($arg,)* I8Dense,
+                                    I16Dense,
+                                    I32Dense,
+                                    I64Dense,
+                                    I128Dense,
+                                    U8Dense,
+                                    U16Dense,
+                                    U32Dense,
+                                    U64Dense,
+                                    U128Dense,
+                                    I8Sparse,
+                                    I16Sparse,
+                                    I32Sparse,
+                                    I64Sparse,
+                                    I128Sparse,
+                                    U8Sparse,
+                                    U16Sparse,
+                                    U32Sparse,
+                                    U64Sparse,
+                                    U128Sparse);
+        })()
+    }
+}
+
 pub(crate) type I8DenseBlock<'block, S> = DenseNumericBlock<'block, i8, S>;
 pub(crate) type I16DenseBlock<'block, S> = DenseNumericBlock<'block, i16, S>;
 pub(crate) type I32DenseBlock<'block, S> = DenseNumericBlock<'block, i32, S>;

@@ -35,6 +35,7 @@ mod storage;
 mod libc_utils;
 mod block;
 
+#[macro_use]
 mod ty;
 mod partition;
 

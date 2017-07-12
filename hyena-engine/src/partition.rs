@@ -142,6 +142,22 @@ mod tests {
     use std::fmt::Debug;
 
 
+    macro_rules! block_test_impl {
+        ($base: ident, $($variant: ident),* $(,)*) => {{
+            let mut idx = 0;
+
+            hashmap! {
+                $(
+                    {idx += 1; idx} => $base::$variant,
+                )*
+            }
+        }};
+
+        ($base: ident) => {
+            map_block_type_variants!(block_test_impl, $base)
+        };
+    }
+
     mod serialize {
         use super::*;
 
@@ -166,7 +182,7 @@ mod tests {
 
             assert_eq!(part.ts_min, ts);
             assert_eq!(part.ts_max, ts);
-            assert_eq!(part.blocks.len(), 2);
+            assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
                 assert_eq!(part.blocks[block_id], *block_type);
             }
@@ -217,7 +233,7 @@ mod tests {
                 .chain_err(|| "Failed to read partition data")
                 .unwrap();
 
-            assert_eq!(part.blocks.len(), 2);
+            assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
                 assert_eq!(part.blocks[block_id], *block_type);
             }
@@ -254,10 +270,7 @@ mod tests {
 
             #[test]
             fn block() {
-                super::super::serialize::block(hashmap! {
-                    10 => MemoryBlockType::U64Dense,
-                    12 => MemoryBlockType::U8Dense,
-                });
+                super::super::serialize::block(block_test_impl!(MemoryBlockType));
             }
         }
 
@@ -266,10 +279,7 @@ mod tests {
 
             #[test]
             fn block() {
-                super::super::deserialize::block(hashmap! {
-                    10 => MemoryBlockType::U64Dense,
-                    12 => MemoryBlockType::U8Dense,
-                });
+                super::super::deserialize::block(block_test_impl!(MemoryBlockType));
             }
         }
     }
@@ -284,10 +294,7 @@ mod tests {
 
             #[test]
             fn block() {
-                super::super::serialize::block(hashmap! {
-                    10 => MmapBlockType::U64Dense,
-                    12 => MmapBlockType::U8Dense,
-                });
+                super::super::serialize::block(block_test_impl!(MmapBlockType));
             }
         }
 
@@ -296,10 +303,7 @@ mod tests {
 
             #[test]
             fn block() {
-                super::super::deserialize::block(hashmap! {
-                    10 => MmapBlockType::U64Dense,
-                    12 => MmapBlockType::U8Dense,
-                });
+                super::super::deserialize::block(block_test_impl!(MmapBlockType));
             }
         }
     }
