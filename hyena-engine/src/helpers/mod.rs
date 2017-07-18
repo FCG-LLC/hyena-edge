@@ -1,10 +1,12 @@
+#[cfg(test)]
+pub(crate) mod random;
+
 #[macro_use]
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
     pub(crate) const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
     pub(crate) const DEFAULT_FILE_SIZE: usize = 1 << 20; // 1 MiB
-
 
     pub(crate) mod persistent_tempdir {
         use tempdir;
@@ -81,6 +83,22 @@ pub(crate) mod tests {
 
         ($file: expr) => {
             assert_file_size!($file, $DEFAULT_FILE_SIZE);
+        };
+    }
+
+    macro_rules! assert_variant {
+        ($what: expr, $variant: pat, $test: expr) => {{
+            let e = $what;
+
+            if let $variant = e {
+                assert!($test);
+            } else {
+                panic!("assert_variant failed: {:?}", e);
+            }
+        }};
+
+        ($what: expr, $variant: pat, $test: expr) => {
+            assert_variant!($what, $variant, ());
         };
     }
 

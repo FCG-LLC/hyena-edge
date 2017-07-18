@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter, Error as FmtError};
 use std::ops::Deref;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub struct Timestamp(u64);
 
 impl From<Timestamp> for u64 {
@@ -76,6 +76,19 @@ impl<T: TimeZone> ToTimestampMicros for DateTime<T> {
     }
 }
 
+impl ToTimestampMicros for NaiveDate {
+    fn to_timestamp_micros(&self) -> u64 {
+        self.and_time(NaiveTime::from_hms(0, 0, 0))
+            .to_timestamp_micros()
+    }
+}
+
+impl ToTimestampMicros for NaiveDateTime {
+    fn to_timestamp_micros(&self) -> u64 {
+        (self.timestamp() * 1_000_000 + self.timestamp_subsec_micros() as i64) as u64
+    }
+}
+
 impl Default for Timestamp {
     fn default() -> Timestamp {
         Utc::now().into()
@@ -98,6 +111,11 @@ impl Deref for Timestamp {
     }
 }
 
+impl Timestamp {
+    pub fn as_micros(&self) -> u64 {
+        self.0
+    }
+}
 
 #[cfg(test)]
 mod tests {

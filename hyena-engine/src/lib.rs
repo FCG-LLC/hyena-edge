@@ -20,6 +20,8 @@ extern crate bincode;
 extern crate tempdir;
 #[cfg(test)]
 extern crate num;
+#[cfg(test)]
+extern crate rand;
 
 pub(crate) mod params;
 
@@ -38,6 +40,8 @@ mod block;
 #[macro_use]
 mod ty;
 mod partition;
+// mod catalog;
+// mod mutator;
 
 #[cfg(test)]
 mod tests {
