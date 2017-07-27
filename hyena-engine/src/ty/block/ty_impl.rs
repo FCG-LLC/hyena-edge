@@ -278,6 +278,7 @@ macro_rules! block_impl {
     };
 }
 
+#[cfg(test)]
 macro_rules! map_block_type_variants {
     ($mac: ident $(, $arg: ident),* $(,)*) => {
         (|| {
