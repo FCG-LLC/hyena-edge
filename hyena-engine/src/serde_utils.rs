@@ -48,6 +48,16 @@ pub(crate) mod de {
 }
 
 macro_rules! deserialize {
+    (file $name: expr, $T: ty) => {{
+        use serde_utils::de::deserialize_from;
+        use std::fs::File;
+
+        let mut file = File::open($name)
+            .chain_err(|| "Failed to open file for deserialization")?;
+
+        deserialize_from::<$T, _>(&mut file)
+    }};
+
     (file $name: expr) => {{
         use serde_utils::de::deserialize_from;
         use std::fs::File;
@@ -56,6 +66,22 @@ macro_rules! deserialize {
             .chain_err(|| "Failed to open file for deserialization")?;
 
         deserialize_from(&mut file)
+    }};
+
+    (buf $buf: expr, $T: ty) => {{
+        use serde_utils::de::deserialize;
+
+        let mut buf = $buf;
+
+        deserialize::<$T, _>(&mut buf)
+    }};
+
+    (buf $buf: expr) => {{
+        use serde_utils::de::deserialize;
+
+        let mut buf = $buf;
+
+        deserialize(&mut buf)
     }};
 
 }
@@ -71,6 +97,14 @@ macro_rules! serialize {
         let value = $value;
 
         serialize_into(&value, &mut file)
+    }};
+
+    (buf $value: expr) => {{
+        use serde_utils::ser::serialize;
+
+        let value = $value;
+
+        serialize(&value)
     }};
 
 }
