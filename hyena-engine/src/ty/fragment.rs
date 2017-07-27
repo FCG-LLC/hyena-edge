@@ -1,77 +1,61 @@
 use error::*;
 use block::SparseIndex;
 use ty::Timestamp;
-use ty::basic::*;
 use std::slice::from_raw_parts;
+use std::mem::transmute;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-pub enum Fragment<'a> {
-    I8Dense(&'a [I8]),
-    I16Dense(&'a [I16]),
-    I32Dense(&'a [I32]),
-    I64Dense(&'a [I64]),
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Fragment {
+    I8Dense(Vec<i8>),
+    I16Dense(Vec<i16>),
+    I32Dense(Vec<i32>),
+    I64Dense(Vec<i64>),
     #[cfg(feature = "block_128")]
-    I128Dense(&'a [I128]),
+    I128Dense(Vec<i128>),
 
     // Dense, Unsigned
-    U8Dense(&'a [U8]),
-    U16Dense(&'a [U16]),
-    U32Dense(&'a [U32]),
-    U64Dense(&'a [U64]),
+    U8Dense(Vec<u8>),
+    U16Dense(Vec<u16>),
+    U32Dense(Vec<u32>),
+    U64Dense(Vec<u64>),
     #[cfg(feature = "block_128")]
-    U128Dense(&'a [U128]),
+    U128Dense(Vec<u128>),
 
     // Sparse, Signed
-    I8Sparse(&'a [I8], &'a [SparseIndex]),
-    I16Sparse(&'a [I16], &'a [SparseIndex]),
-    I32Sparse(&'a [I32], &'a [SparseIndex]),
-    I64Sparse(&'a [I64], &'a [SparseIndex]),
+    I8Sparse(Vec<i8>, Vec<SparseIndex>),
+    I16Sparse(Vec<i16>, Vec<SparseIndex>),
+    I32Sparse(Vec<i32>, Vec<SparseIndex>),
+    I64Sparse(Vec<i64>, Vec<SparseIndex>),
     #[cfg(feature = "block_128")]
-    I128Sparse(&'a [I128], &'a [SparseIndex]),
+    I128Sparse(Vec<i128>, Vec<SparseIndex>),
 
     // Sparse, Unsigned
-    U8Sparse(&'a [U8], &'a [SparseIndex]),
-    U16Sparse(&'a [U16], &'a [SparseIndex]),
-    U32Sparse(&'a [U32], &'a [SparseIndex]),
-    U64Sparse(&'a [U64], &'a [SparseIndex]),
+    U8Sparse(Vec<u8>, Vec<SparseIndex>),
+    U16Sparse(Vec<u16>, Vec<SparseIndex>),
+    U32Sparse(Vec<u32>, Vec<SparseIndex>),
+    U64Sparse(Vec<u64>, Vec<SparseIndex>),
     #[cfg(feature = "block_128")]
-    U128Sparse(&'a [U128], &'a [SparseIndex]),
+    U128Sparse(Vec<u128>, Vec<SparseIndex>),
 }
 
 macro_rules! fragment_variant_impl {
 
-    (dense $($V: ident, $BT: ty, $T: ty);* $(;)*) => {
+    (dense $($V: ident, $T: ty);* $(;)*) => {
         $(
-            impl<'a> From<&'a [$BT]> for Fragment<'a> {
-                fn from(source: &'a [$BT]) -> Fragment<'a> {
+            impl From<Vec<$T>> for Fragment {
+                fn from(source: Vec<$T>) -> Fragment {
                     Fragment::$V(source)
-                }
-            }
-
-            impl<'a> From<&'a [$T]> for Fragment<'a> {
-                fn from(source: &'a [$T]) -> Fragment<'a> {
-                    Fragment::$V(unsafe {
-                        from_raw_parts(source.as_ptr() as *const $BT, source.len())
-                    })
                 }
             }
         )*
     };
 
-    (sparse $($V: ident, $BT: ty, $T: ty);* $(;)*) => {
+    (sparse $($V: ident, $T: ty);* $(;)*) => {
         $(
-            impl<'a> From<(&'a [$BT], &'a [SparseIndex])> for Fragment<'a> {
-                fn from(source: (&'a [$BT], &'a [SparseIndex])) -> Fragment<'a> {
+            impl From<(Vec<$T>, Vec<SparseIndex>)> for Fragment {
+                fn from(source: (Vec<$T>, Vec<SparseIndex>)) -> Fragment {
                     Fragment::$V(source.0, source.1)
-                }
-            }
-
-            impl<'a> From<(&'a [$T], &'a [SparseIndex])> for Fragment<'a> {
-                fn from(source: (&'a [$T], &'a [SparseIndex])) -> Fragment<'a> {
-                    Fragment::$V(unsafe {
-                        from_raw_parts(source.0.as_ptr() as *const $BT, source.0.len())
-                    }, source.1)
                 }
             }
         )*
@@ -79,38 +63,37 @@ macro_rules! fragment_variant_impl {
 }
 
 fragment_variant_impl!(dense
-                       I8Dense, I8, i8;
-                       I16Dense, I16, i16;
-                       I32Dense, I32, i32;
-                       I64Dense, I64, i64;
-                       U8Dense, U8, u8;
-                       U16Dense, U16, u16;
-                       U32Dense, U32, u32;
-                       U64Dense, U64, u64;);
+                       I8Dense, i8;
+                       I16Dense, i16;
+                       I32Dense, i32;
+                       I64Dense, i64;
+                       U8Dense, u8;
+                       U16Dense, u16;
+                       U32Dense, u32;
+                       U64Dense, u64;);
 
 fragment_variant_impl!(sparse
-                       I8Sparse, I8, i8;
-                       I16Sparse, I16, i16;
-                       I32Sparse, I32, i32;
-                       I64Sparse, I64, i64;
-                       U8Sparse, U8, u8;
-                       U16Sparse, U16, u16;
-                       U32Sparse, U32, u32;
-                       U64Sparse, U64, u64;);
+                       I8Sparse, i8;
+                       I16Sparse, i16;
+                       I32Sparse, i32;
+                       I64Sparse, i64;
+                       U8Sparse, u8;
+                       U16Sparse, u16;
+                       U32Sparse, u32;
+                       U64Sparse, u64;);
 
 
-pub struct TimestampFragment<'a>(&'a [Timestamp]);
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimestampFragment(Vec<Timestamp>);
 
-impl<'a> From<&'a [u64]> for TimestampFragment<'a> {
-    fn from(source: &'a [u64]) -> TimestampFragment<'a> {
-        TimestampFragment(unsafe {
-            from_raw_parts(source.as_ptr() as *const Timestamp, source.len())
-        })
+impl From<Vec<u64>> for TimestampFragment {
+    fn from(source: Vec<u64>) -> TimestampFragment {
+        TimestampFragment(unsafe { transmute(source) })
     }
 }
 
-impl<'a> From<&'a [Timestamp]> for TimestampFragment<'a> {
-    fn from(source: &'a [Timestamp]) -> TimestampFragment<'a> {
+impl From<Vec<Timestamp>> for TimestampFragment {
+    fn from(source: Vec<Timestamp>) -> TimestampFragment {
         TimestampFragment(source)
     }
 }
@@ -134,7 +117,7 @@ mod tests {
                         fn is_eq() {
                             let buf = (1..100).into_iter().collect::<Vec<$B>>();
 
-                            let frag = Fragment::from(&buf[..]);
+                            let frag = Fragment::from(buf.clone());
 
                             assert_variant!(frag, Fragment::$T(val), &val[..] == &buf[..])
                         }
@@ -168,7 +151,7 @@ mod tests {
                             let buf = (1..100).into_iter().collect::<Vec<$B>>();
                             let idx = (1..100).into_iter().map(|v| v * 3).collect::<Vec<_>>();
 
-                            let frag = Fragment::from((&buf[..], &idx[..]));
+                            let frag = Fragment::from((buf.clone(), idx.clone()));
 
                             assert_variant!(frag, Fragment::$T(val, vidx),
                                             &val[..] == &buf[..] && &vidx[..] == &idx[..])
@@ -198,7 +181,7 @@ mod tests {
                 .take(100)
                 .collect::<Vec<Timestamp>>();
 
-            let frag = TimestampFragment::from(&buf[..]);
+            let frag = TimestampFragment::from(buf.clone());
 
             assert_eq!(frag.0, &buf[..]);
         }
