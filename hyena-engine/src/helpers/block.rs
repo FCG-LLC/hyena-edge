@@ -54,7 +54,87 @@ macro_rules! block_apply {
         }
     }};
 
-    ($self: expr, $block: ident, $physblock:ident, $what: block) => {{
+    (mut map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
+        use ty::block::Block;
+
+        match *$self {
+            Block::Memory(ref mut $block) => {
+                use ty::block::memory::Block::*;
+
+                match *$block {
+                    I8Dense(ref mut $physblock) => $what,
+                    I16Dense(ref mut $physblock) => $what,
+                    I32Dense(ref mut $physblock) => $what,
+                    I64Dense(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    I128Dense(ref mut $physblock) => $what,
+
+                    // Dense, Unsigned
+                    U8Dense(ref mut $physblock) => $what,
+                    U16Dense(ref mut $physblock) => $what,
+                    U32Dense(ref mut $physblock) => $what,
+                    U64Dense(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    U128Dense(ref mut $physblock) => $what,
+
+                    // Sparse, Signed
+                    I8Sparse(ref mut $physblock) => $what,
+                    I16Sparse(ref mut $physblock) => $what,
+                    I32Sparse(ref mut $physblock) => $what,
+                    I64Sparse(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    I128Sparse(ref mut $physblock) => $what,
+
+                    // Sparse, Unsigned
+                    U8Sparse(ref mut $physblock) => $what,
+                    U16Sparse(ref mut $physblock) => $what,
+                    U32Sparse(ref mut $physblock) => $what,
+                    U64Sparse(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    U128Sparse(ref mut $physblock) => $what,
+                }
+            }
+            #[cfg(feature = "mmap")]
+            Block::Memmap(ref mut $block) => {
+                use ty::block::mmap::Block::*;
+
+                match *$block {
+                    I8Dense(ref mut $physblock) => $what,
+                    I16Dense(ref mut $physblock) => $what,
+                    I32Dense(ref mut $physblock) => $what,
+                    I64Dense(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    I128Dense(ref mut $physblock) => $what,
+
+                    // Dense, Unsigned
+                    U8Dense(ref mut $physblock) => $what,
+                    U16Dense(ref mut $physblock) => $what,
+                    U32Dense(ref mut $physblock) => $what,
+                    U64Dense(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    U128Dense(ref mut $physblock) => $what,
+
+                    // Sparse, Signed
+                    I8Sparse(ref mut $physblock) => $what,
+                    I16Sparse(ref mut $physblock) => $what,
+                    I32Sparse(ref mut $physblock) => $what,
+                    I64Sparse(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    I128Sparse(ref mut $physblock) => $what,
+
+                    // Sparse, Unsigned
+                    U8Sparse(ref mut $physblock) => $what,
+                    U16Sparse(ref mut $physblock) => $what,
+                    U32Sparse(ref mut $physblock) => $what,
+                    U64Sparse(ref mut $physblock) => $what,
+                    #[cfg(feature = "block_128")]
+                    U128Sparse(ref mut $physblock) => $what,
+                }
+            }
+        }
+    }};
+
+    (map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
         use ty::block::Block;
 
         match *$self {
@@ -134,7 +214,7 @@ macro_rules! block_apply {
         }
     }};
 
-    ($self: expr, $block: ident, $what: block) => {
+    (map $self: expr, $block: ident, $what: block) => {
         use ty::block::Block;
 
         match *$self {
