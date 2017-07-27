@@ -209,7 +209,12 @@ mod tests {
 
     #[test]
     fn tempfile_persistent_name() {
-        assert_tempfile(tempfile!(persistent "test"), DEFAULT_TEMPDIR_PREFIX, "test", true);
+        assert_tempfile(
+            tempfile!(persistent "test"),
+            DEFAULT_TEMPDIR_PREFIX,
+            "test",
+            true,
+        );
     }
 
     #[test]

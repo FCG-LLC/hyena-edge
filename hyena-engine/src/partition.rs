@@ -148,7 +148,11 @@ impl<'part> Partition<'part> {
         Uuid::new_v4()
     }
 
-    fn prepare_blocks<P: AsRef<Path>>(root: P, type_map: &BlockTypeMap) -> Result<BlockMap<'part>> {
+    // TODO: to be benched
+    fn prepare_blocks<P: AsRef<Path> + Sync>(
+        root: P,
+        type_map: &BlockTypeMap,
+    ) -> Result<BlockMap<'part>> {
         type_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
@@ -187,7 +191,10 @@ impl<'part> Partition<'part> {
         serialize!(file meta, &data).chain_err(|| "Failed to serialize partition metadata")
     }
 
-    fn deserialize<P: AsRef<Path>, R: AsRef<Path>>(meta: P, root: R) -> Result<Partition<'part>> {
+    fn deserialize<P: AsRef<Path>, R: AsRef<Path> + Sync>(
+        meta: P,
+        root: R,
+    ) -> Result<Partition<'part>> {
         let meta = meta.as_ref();
 
         if !meta.exists() {

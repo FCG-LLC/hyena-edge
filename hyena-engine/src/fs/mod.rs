@@ -1,5 +1,5 @@
 use error::*;
-use std::fs::{File, OpenOptions, create_dir_all};
+use std::fs::{create_dir_all, File, OpenOptions};
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "hole_punching")]

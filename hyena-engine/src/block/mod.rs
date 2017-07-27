@@ -10,8 +10,8 @@ use storage::Storage;
 
 mod numeric;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseNumericBlock, SparseIndexedNumericBlock,
-                               SparseIndex};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock,
+                               SparseNumericBlock};
 
 // This will probably get merged into BlockData
 

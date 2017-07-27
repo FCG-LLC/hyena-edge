@@ -7,9 +7,9 @@ use std::marker::PhantomData;
 use std::fmt::Debug;
 
 use storage::Storage;
-use ty::{ToTimestampMicros, Timestamp};
+use ty::{Timestamp, ToTimestampMicros};
 
-use block::{BlockData, IndexRef, IndexMut, BufferHead};
+use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
@@ -129,7 +129,7 @@ mod tests {
 
     mod generic {
         use super::*;
-        use num::{Integer, Float, Zero};
+        use num::{Float, Integer, Zero};
         use std::mem::size_of;
         use std::fmt::Debug;
         use std::ops::Not;

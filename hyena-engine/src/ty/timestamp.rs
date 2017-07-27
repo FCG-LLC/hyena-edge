@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use std::fmt::{Display, Formatter, Error as FmtError};
+use std::fmt::{Display, Error as FmtError, Formatter};
 use std::ops::Deref;
 
 

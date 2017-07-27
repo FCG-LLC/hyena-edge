@@ -10,7 +10,7 @@ use std::fmt::Debug;
 
 use storage::Storage;
 
-use block::{BlockData, IndexRef, IndexMut, BufferHead};
+use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 
 pub type SparseIndex = u32;
@@ -227,7 +227,7 @@ mod tests {
 
     mod generic {
         use super::*;
-        use num::{Integer, Float, Zero};
+        use num::{Float, Integer, Zero};
         use std::mem::size_of;
         use std::fmt::Debug;
         use std::ops::Not;
@@ -350,7 +350,7 @@ mod tests {
 
     mod memory {
         use super::*;
-        use num::{Integer, Float, Zero};
+        use num::{Float, Integer, Zero};
         use std::mem::size_of;
         use std::fmt::Debug;
         use std::ops::Not;
@@ -455,7 +455,7 @@ mod tests {
     mod mmap {
         use super::*;
         use storage::mmap::MemmapStorage;
-        use num::{Integer, Float, Zero};
+        use num::{Float, Integer, Zero};
         use std::mem::size_of;
         use std::fmt::Debug;
         use std::ops::Not;
