@@ -52,7 +52,7 @@ macro_rules! tempdir {
     }};
 
     (persistent) => {
-        tempdir!(persistent ::helpers::tests::DEFAULT_TEMPDIR_PREFIX)
+        tempdir!(persistent ::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX)
     };
 
     ($prefix: expr) => {{
