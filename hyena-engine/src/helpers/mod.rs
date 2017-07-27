@@ -6,6 +6,21 @@ pub(crate) mod random;
 pub(crate) mod tempfile;
 
 #[macro_use]
+pub(crate) mod block;
+
+/// helper facilitating calling expressions that utilize `std::ops::Carrier`
+/// in functions with no `Result` return type
+
+macro_rules! carry {
+    ($what: expr) => {
+        (|| {
+            $what
+        })()
+    };
+}
+
+
+#[macro_use]
 #[cfg(test)]
 pub(crate) mod tests {
     pub(crate) const DEFAULT_FILE_SIZE: usize = 1 << 20; // 1 MiB
