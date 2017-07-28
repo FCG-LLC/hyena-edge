@@ -27,7 +27,11 @@ pub struct Partition<'part> {
 }
 
 impl<'part> Partition<'part> {
-    pub fn new<P: AsRef<Path>, TS: Into<Timestamp>>(root: P, ts: TS) -> Result<Partition<'part>> {
+    pub fn new<P: AsRef<Path>, TS: Into<Timestamp>>(
+        root: P,
+        id: PartitionId,
+        ts: TS,
+    ) -> Result<Partition<'part>> {
         let root = root.as_ref().to_path_buf();
 
         let meta = root.join(PARTITION_METADATA);
@@ -39,7 +43,7 @@ impl<'part> Partition<'part> {
         let ts = ts.into();
 
         Ok(Partition {
-            id: Partition::gen_id(),
+            id,
             ts_min: ts,
             ts_max: ts,
             blocks: Default::default(),
@@ -80,6 +84,10 @@ impl<'part> Partition<'part> {
             Ok((ts_min.ok_or_else(|| "Failed to get min timestamp")?.into(),
                 ts_max.ok_or_else(|| "Failed to get max timestamp")?.into()))
         })
+    }
+
+    pub fn get_id(&self) -> PartitionId {
+        self.id
     }
 
     pub(crate) fn get_ts(&self) -> (Timestamp, Timestamp) {
@@ -296,7 +304,7 @@ mod tests {
             .ok_or_else(|| "Failed to get maximal timestamp")
             .unwrap();
 
-        let mut part = Partition::new(&root, *ts_min)
+        let mut part = Partition::new(&root, Partition::gen_id(), *ts_min)
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
@@ -373,7 +381,7 @@ mod tests {
 
         let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
 
-        let mut part = Partition::new(&root, ts_min)
+        let mut part = Partition::new(&root, Partition::gen_id(), ts_min)
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
@@ -396,7 +404,7 @@ mod tests {
 
         assert_ne!(ts_min, start_ts);
 
-        let mut part = Partition::new(&root, start_ts)
+        let mut part = Partition::new(&root, Partition::gen_id(), start_ts)
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
@@ -422,7 +430,7 @@ mod tests {
             let root = tempdir!();
             let ts = <Timestamp as Default>::default();
 
-            let mut part = Partition::new(&root, *ts)
+            let mut part = Partition::new(&root, Partition::gen_id(), *ts)
                 .chain_err(|| "Failed to create partition")
                 .unwrap();
 
@@ -478,7 +486,7 @@ mod tests {
             let ts = <Timestamp as Default>::default();
 
             {
-                Partition::new(&root, *ts)
+                Partition::new(&root, Partition::gen_id(), *ts)
                     .chain_err(|| "Failed to create partition")
                     .unwrap();
             }
@@ -504,7 +512,7 @@ mod tests {
             let ts = <Timestamp as Default>::default();
 
             {
-                let mut part = Partition::new(&root, *ts)
+                let mut part = Partition::new(&root, Partition::gen_id(), *ts)
                     .chain_err(|| "Failed to create partition")
                     .unwrap();
 
@@ -555,7 +563,7 @@ mod tests {
             let ts = <Timestamp as Default>::default();
 
             let id = {
-                let part = Partition::new(&root, *ts)
+                let part = Partition::new(&root, Partition::gen_id(), *ts)
                     .chain_err(|| "Failed to create partition")
                     .unwrap();
 

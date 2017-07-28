@@ -40,7 +40,7 @@ mod block;
 #[macro_use]
 mod ty;
 mod partition;
-// mod catalog;
+mod catalog;
 // mod mutator;
 
 #[cfg(test)]
