@@ -1,8 +1,8 @@
 use error::*;
 use uuid::Uuid;
 
-use block::BlockData;
-use ty::{Block, BlockMap, BlockType, BlockTypeMap, Timestamp};
+use block::{BlockData, BufferHead};
+use ty::{Block, BlockHeadMap, BlockMap, BlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use ty::block::memory::BlockType as MemoryBlockType;
@@ -185,8 +185,20 @@ impl<'part> Partition<'part> {
         let meta = meta.as_ref();
 
         let blocks: BlockTypeMap = (&partition.blocks).into();
+        let heads = partition
+            .blocks
+            .iter()
+            .map(|(blockid, block)| {
+                (
+                    *blockid,
+                    block_apply!(map physical block, blk, pb, {
+                    pb.head()
+                }),
+                )
+            })
+            .collect::<BlockHeadMap>();
 
-        let data = (partition, blocks);
+        let data = (partition, blocks, heads);
 
         serialize!(file meta, &data).chain_err(|| "Failed to serialize partition metadata")
     }
@@ -201,11 +213,23 @@ impl<'part> Partition<'part> {
             bail!("Cannot find partition metadata {:?}", meta);
         }
 
-        let (mut partition, blocks): (Partition, BlockTypeMap) = deserialize!(file meta)
-            .chain_err(|| "Failed to read partition metadata")?;
+        let (mut partition, blocks, heads): (Partition, BlockTypeMap, BlockHeadMap) =
+            deserialize!(file meta)
+                .chain_err(|| "Failed to read partition metadata")?;
 
         partition.blocks = Partition::prepare_blocks(&root, &blocks)
             .chain_err(|| "Failed to read block data")?;
+
+        let partid = partition.id;
+
+        for (blockid, block) in &mut partition.blocks {
+            block_apply!(mut map physical block, blk, pb, {
+                let head = heads.get(blockid)
+                    .ok_or_else(||
+                        format!("Unable to read block head ptr of partition {}", partid))?;
+                *(pb.mut_head()) = *head;
+            })
+        }
 
         partition.data_root = root.as_ref().to_path_buf();
 
@@ -388,7 +412,7 @@ mod tests {
         use super::*;
 
 
-        pub(super) fn block<'block, T>(type_map: HashMap<BlockId, T>)
+        pub(super) fn blocks<'block, T>(type_map: HashMap<BlockId, T>)
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
@@ -406,12 +430,46 @@ mod tests {
                 .chain_err(|| "Failed to create blocks")
                 .unwrap();
 
+            part.flush().chain_err(|| "Partition flush failed").unwrap();
+
             assert_eq!(part.ts_min, ts);
             assert_eq!(part.ts_max, ts);
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
                 assert_eq!(part.blocks[block_id], *block_type);
             }
+        }
+
+        pub(super) fn heads<'part, 'block, P, T>(
+            root: P,
+            type_map: HashMap<BlockId, T>,
+            ts_ty: T,
+            count: usize,
+        ) where
+            'part: 'block,
+            T: Debug + Clone + Copy,
+            Block<'block>: PartialEq<T>,
+            BlockType: From<T>,
+            BlockTypeMap: From<HashMap<BlockId, T>>,
+            P: AsRef<Path>,
+        {
+            let (mut part, _, _) = ts_init(&root, ts_ty, count);
+
+            part.ensure_blocks(&(type_map.into()))
+                .chain_err(|| "Failed to create blocks")
+                .unwrap();
+
+            for (blockid, block) in part.mut_blocks() {
+                if *blockid != 0 {
+                    block_apply!(mut map physical block, blk, pb, {
+                        pb.set_written(count)
+                            .chain_err(|| "Unable to move head ptr")
+                            .unwrap();
+                    });
+                }
+            }
+
+            part.flush().chain_err(|| "Partition flush failed").unwrap();
         }
 
         #[test]
@@ -435,7 +493,7 @@ mod tests {
         use super::*;
 
 
-        pub(super) fn block<'block, T>(type_map: HashMap<BlockId, T>)
+        pub(super) fn blocks<'block, T>(type_map: HashMap<BlockId, T>)
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
@@ -462,6 +520,32 @@ mod tests {
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
                 assert_eq!(part.blocks[block_id], *block_type);
+            }
+        }
+
+        pub(super) fn heads<'part, 'block, P, T>(
+            root: P,
+            type_map: HashMap<BlockId, T>,
+            ts_ty: T,
+            count: usize,
+        ) where
+            'part: 'block,
+            T: Debug + Clone + Copy,
+            Block<'block>: PartialEq<T>,
+            BlockType: From<T>,
+            BlockTypeMap: From<HashMap<BlockId, T>>,
+            P: AsRef<Path>,
+        {
+            super::serialize::heads(&root, type_map.clone(), ts_ty, count);
+
+            let part = Partition::with_data(&root)
+                .chain_err(|| "Failed to read partition data")
+                .unwrap();
+
+            for (blockid, block) in &part.blocks {
+                block_apply!(map physical block, blk, pb, {
+                    assert_eq!(pb.len(), count);
+                });
             }
         }
 
@@ -505,8 +589,20 @@ mod tests {
             use super::*;
 
             #[test]
-            fn block() {
-                super::super::serialize::block(block_test_impl!(MemoryBlockType));
+            fn blocks() {
+                super::super::serialize::blocks(block_test_impl!(MemoryBlockType));
+            }
+
+            #[test]
+            fn heads() {
+                let root = tempdir!();
+
+                super::super::serialize::heads(
+                    &root,
+                    block_test_impl!(MemoryBlockType),
+                    MemoryBlockType::U64Dense,
+                    100,
+                );
             }
         }
 
@@ -514,8 +610,20 @@ mod tests {
             use super::*;
 
             #[test]
-            fn block() {
-                super::super::deserialize::block(block_test_impl!(MemoryBlockType));
+            fn blocks() {
+                super::super::deserialize::blocks(block_test_impl!(MemoryBlockType));
+            }
+
+            #[test]
+            fn heads() {
+                let root = tempdir!();
+
+                super::super::deserialize::heads(
+                    &root,
+                    block_test_impl!(MemoryBlockType),
+                    MemoryBlockType::U64Dense,
+                    100,
+                );
             }
         }
     }
@@ -539,8 +647,20 @@ mod tests {
             use super::*;
 
             #[test]
-            fn block() {
-                super::super::serialize::block(block_test_impl!(MmapBlockType));
+            fn blocks() {
+                super::super::serialize::blocks(block_test_impl!(MmapBlockType));
+            }
+
+            #[test]
+            fn heads() {
+                let root = tempdir!();
+
+                super::super::serialize::heads(
+                    &root,
+                    block_test_impl!(MmapBlockType),
+                    MmapBlockType::U64Dense,
+                    100,
+                );
             }
         }
 
@@ -548,8 +668,20 @@ mod tests {
             use super::*;
 
             #[test]
-            fn block() {
-                super::super::deserialize::block(block_test_impl!(MmapBlockType));
+            fn blocks() {
+                super::super::deserialize::blocks(block_test_impl!(MmapBlockType));
+            }
+
+            #[test]
+            fn heads() {
+                let root = tempdir!();
+
+                super::super::deserialize::heads(
+                    &root,
+                    block_test_impl!(MmapBlockType),
+                    MmapBlockType::U64Dense,
+                    100,
+                );
             }
         }
     }

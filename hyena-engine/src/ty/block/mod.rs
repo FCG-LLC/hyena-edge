@@ -12,6 +12,7 @@ pub(crate) mod mmap;
 pub type BlockId = usize;
 
 pub type BlockMap<'block> = HashMap<BlockId, Block<'block>>;
+pub(crate) type BlockHeadMap = HashMap<BlockId, usize>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockTypeMap(BlockTypeMapTy);
