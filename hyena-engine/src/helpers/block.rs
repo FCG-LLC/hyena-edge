@@ -4,8 +4,11 @@ macro_rules! block_apply {
     (mut expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) =>
     {{
         use ty::block::Block;
+        use error::*;
 
-        match *$self {
+        let mut lock = acquire!(write $self);
+
+        match *lock {
             Block::Memory(ref mut $block) => {
                 use ty::block::memory;
 
@@ -30,8 +33,11 @@ macro_rules! block_apply {
 
     (expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) => {{
         use ty::block::Block;
+        use error::*;
 
-        match *$self {
+        let lock = acquire!(read $self);
+
+        match *lock {
             Block::Memory(ref $block) => {
                 use ty::block::memory;
 
@@ -56,8 +62,11 @@ macro_rules! block_apply {
 
     (mut map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
         use ty::block::Block;
+        use error::*;
 
-        match *$self {
+        let mut lock = acquire!(write $self);
+
+        match *lock {
             Block::Memory(ref mut $block) => {
                 use ty::block::memory::Block::*;
 
@@ -136,8 +145,11 @@ macro_rules! block_apply {
 
     (map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
         use ty::block::Block;
+        use error::*;
 
-        match *$self {
+        let lock = acquire!(read $self);
+
+        match *lock {
             Block::Memory(ref $block) => {
                 use ty::block::memory::Block::*;
 
@@ -214,21 +226,16 @@ macro_rules! block_apply {
         }
     }};
 
-    (map $self: expr, $block: ident, $what: block) => {
+    (map $self: expr, $block: ident, $what: block) => {{
         use ty::block::Block;
+        use error::*;
 
-        match *$self {
+        let mut lock = acquire!(read $self);
+
+        match *lock {
             Block::Memory(ref $block) => $what,
             #[cfg(feature = "mmap")]
             Block::Memmap(ref $block) => $what,
         }
-    };
-
-    ($self: expr, $block: ident, $physblock:ident, $what: expr) => {
-        block_apply!($self, $block, $physblock, {$what})
-    };
-
-    ($self: expr, $block: ident, $what: expr) => {
-        block_apply!($self, $block, {$what})
-    };
+    }};
 }

@@ -1,5 +1,7 @@
+use error::*;
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::RwLock;
 
 
 #[macro_use]
@@ -11,12 +13,12 @@ pub(crate) mod mmap;
 
 pub type BlockId = usize;
 
-pub type BlockMap<'block> = HashMap<BlockId, Block<'block>>;
+pub type BlockMap<'block> = HashMap<BlockId, RwLock<Block<'block>>>;
 pub(crate) type BlockHeadMap = HashMap<BlockId, usize>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockTypeMap(BlockTypeMapTy);
-type BlockTypeMapTy = HashMap<BlockId, BlockType>;
+pub(crate) type BlockTypeMapTy = HashMap<BlockId, BlockType>;
 
 
 impl<'block> Deref for BlockTypeMap {
@@ -73,5 +75,11 @@ impl<'block, 'a> From<&'a Block<'block>> for BlockType {
             #[cfg(feature = "mmap")]
             Block::Memmap(ref b) => BlockType::Memmap(b.into()),
         }
+    }
+}
+
+impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockType {
+    fn from(block: &RwLock<Block>) -> BlockType {
+        (&*acquire!(read block)).into()
     }
 }

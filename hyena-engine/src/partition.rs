@@ -2,13 +2,16 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead};
-use ty::{Block, BlockHeadMap, BlockMap, BlockType, BlockTypeMap, Timestamp};
+use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use ty::block::memory::BlockType as MemoryBlockType;
+use std::collections::HashMap;
 #[cfg(feature = "mmap")]
 use ty::block::mmap::BlockType as MmapBlockType;
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use params::PARTITION_METADATA;
+use std::sync::RwLock;
 
 
 pub(crate) type PartitionId = Uuid;
@@ -143,7 +146,15 @@ impl<'part> Partition<'part> {
     }
 
     pub fn ensure_blocks(&mut self, type_map: &BlockTypeMap) -> Result<()> {
-        let blocks = Partition::prepare_blocks(&self.data_root, type_map)
+        let fmap = type_map.par_iter().filter_map(|(block_id, block_type)| {
+            if self.blocks.contains_key(block_id) {
+               None
+            } else {
+                Some((*block_id, *block_type))
+            }
+        }).collect::<HashMap<_, _>>();
+
+        let blocks = Partition::prepare_blocks(&self.data_root, &fmap)
             .chain_err(|| "Unable to create block map")?;
 
         self.blocks.extend(blocks);
@@ -157,25 +168,26 @@ impl<'part> Partition<'part> {
     }
 
     // TODO: to be benched
-    fn prepare_blocks<P: AsRef<Path> + Sync>(
-        root: P,
-        type_map: &BlockTypeMap,
-    ) -> Result<BlockMap<'part>> {
+    fn prepare_blocks<'i, P, BT>(root: P, type_map: &'i BT) -> Result<BlockMap<'part>>
+    where
+        P: AsRef<Path> + Sync,
+        BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+    {
         type_map
-            .iter()
+            .par_iter()
             .map(|(block_id, block_type)| match *block_type {
                 BlockType::Memory(bty) => {
                     use ty::block::memory::Block;
 
                     Block::create(bty)
-                        .map(|block| (*block_id, block.into()))
+                        .map(|block| (*block_id, locked!(rw block.into())))
                         .chain_err(|| "Unable to create in-memory block")
                 }
                 BlockType::Memmap(bty) => {
                     use ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
-                        .map(|block| (*block_id, block.into()))
+                        .map(|block| (*block_id, locked!(rw block.into())))
                         .chain_err(|| "Unable to create mmap block")
                 }
             })
@@ -225,7 +237,7 @@ impl<'part> Partition<'part> {
             deserialize!(file meta)
                 .chain_err(|| "Failed to read partition metadata")?;
 
-        partition.blocks = Partition::prepare_blocks(&root, &blocks)
+        partition.blocks = Partition::prepare_blocks(&root, &*blocks)
             .chain_err(|| "Failed to read block data")?;
 
         let partid = partition.id;
@@ -376,6 +388,39 @@ mod tests {
     }
 
     #[test]
+    fn ensure_blocks() {
+        let root = tempdir!(persistent);
+
+        let ts = RandomTimestampGen::random::<u64>();
+
+        let mut part = Partition::new(&root, Partition::gen_id(), ts)
+            .chain_err(|| "Failed to create partition")
+            .unwrap();
+
+        let blockmap = hashmap! {
+            0 => MemoryBlockType::U64Dense,
+            1 => MemoryBlockType::U32Dense,
+        }.into();
+
+        part.ensure_blocks(&blockmap)
+            .chain_err(|| "Unable to create block map")
+            .unwrap();
+
+
+        let blockmap = hashmap! {
+            0 => MemoryBlockType::U64Dense,
+            1 => MemoryBlockType::U32Dense,
+            2 => MemoryBlockType::U64Dense,
+            3 => MemoryBlockType::U32Dense,
+        }.into();
+
+        part.ensure_blocks(&blockmap)
+            .chain_err(|| "Unable to create block map")
+            .unwrap();
+
+    }
+
+    #[test]
     fn get_ts() {
         let root = tempdir!();
 
@@ -444,7 +489,7 @@ mod tests {
             assert_eq!(part.ts_max, ts);
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
-                assert_eq!(part.blocks[block_id], *block_type);
+                assert_eq!(*acquire!(read part.blocks[block_id]), *block_type);
             }
         }
 
@@ -527,7 +572,7 @@ mod tests {
 
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
-                assert_eq!(part.blocks[block_id], *block_type);
+                assert_eq!(*acquire!(read part.blocks[block_id]), *block_type);
             }
         }
 

@@ -8,6 +8,7 @@ macro_rules! block_impl {
         use ty::block::{Block as TyBlock, BlockType as TyBlockType, BlockTypeMapTy,
                         BlockTypeMap as TyBlockTypeMap};
         use std::collections::hash_map::HashMap;
+        use std::sync::RwLock;
 
 
         pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
@@ -249,6 +250,12 @@ macro_rules! block_impl {
                     #[cfg(feature = "block_128")]
                     U128Sparse(..) => BlockType::U128Sparse,
                 }
+            }
+        }
+
+        impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockType {
+            fn from(block: &RwLock<Block>) -> BlockType {
+                (&*acquire!(read block)).into()
             }
         }
 
