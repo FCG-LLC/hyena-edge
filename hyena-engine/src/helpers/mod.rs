@@ -1,3 +1,6 @@
+#[macro_use]
+pub(crate) mod lock;
+
 #[cfg(test)]
 pub(crate) mod random;
 
