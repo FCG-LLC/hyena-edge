@@ -1,11 +1,29 @@
 pub(crate) mod timestamp {
-    use rand::{thread_rng, Rng};
+    use rand::{random, thread_rng, Rand, Rng};
     use ty::timestamp::{Timestamp, ToTimestampMicros};
     use chrono::prelude::*;
     use chrono::naive::{MAX_DATE, MIN_DATE};
     use std::iter::repeat;
 
-    // these should be moved associated consts stabilize
+    macro_rules! random {
+        ($ty: ty) => {{
+            use rand::random;
+
+            random::<$ty>()
+        }};
+
+        (gen $ty: ty, $count: expr) => {{
+            use rand::{thread_rng, Rng};
+            use std::iter::repeat;
+
+            let mut rng = thread_rng();
+
+            rng.gen_iter::<$ty>().take($count).collect::<Vec<_>>()
+        }};
+
+    }
+
+    // these should be moved associated when consts stabilize
     // https://github.com/rust-lang/rust/issues/29646
 
     /// minimal UNIX timestamp, used in the random generator
@@ -171,6 +189,12 @@ pub(crate) mod timestamp {
     impl RandomTimestamp for RandomTimestampGen {}
     impl RandomTimestamp for Timestamp {}
 
+    impl Rand for Timestamp {
+        fn rand<R: Rng>(rng: &mut R) -> Self {
+            Self::random_rng(rng)
+        }
+    }
+
 
     #[cfg(test)]
     mod tests {
@@ -332,6 +356,41 @@ pub(crate) mod timestamp {
                 assert!(hi >= plo);
                 assert!(lo >= &rlo && hi <= &rhi);
                 plo = &hi;
+            }
+        }
+
+        #[test]
+        fn with_rand() {
+            let v = random::<Timestamp>();
+
+            assert!(*v >= TS_MIN);
+            assert!(*v <= TS_MAX);
+        }
+
+        #[test]
+        fn with_rand_iter() {
+            let mut rng = thread_rng();
+            let v = rng.gen_iter::<Timestamp>().take(100).collect::<Vec<_>>();
+
+            for t in &v {
+                assert!(**t >= TS_MIN);
+                assert!(**t <= TS_MAX);
+            }
+        }
+
+        mod random_macro {
+            use super::*;
+
+            #[test]
+            fn single_typed() {
+                let v = random!(u64);
+            }
+
+            #[test]
+            fn gen_typed() {
+                let v = random!(gen u64, 100);
+
+                assert_eq!(v.len(), 100);
             }
         }
     }
