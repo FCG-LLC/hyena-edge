@@ -1,27 +1,45 @@
+macro_rules! random {
+    ($ty: ty) => {{
+        use rand::random;
+
+        random::<$ty>()
+    }};
+
+    (gen $ty: ty, $count: expr) => {{
+        use rand::{thread_rng, Rng};
+        use std::iter::repeat;
+
+        let mut rng = thread_rng();
+
+        rng.gen_iter::<$ty>().take($count).collect::<Vec<_>>()
+    }};
+
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_typed() {
+        let v = random!(u64);
+    }
+
+    #[test]
+    fn gen_typed() {
+        let v = random!(gen u64, 100);
+
+        assert_eq!(v.len(), 100);
+    }
+}
+
+
 pub(crate) mod timestamp {
     use rand::{random, thread_rng, Rand, Rng};
     use ty::timestamp::{Timestamp, ToTimestampMicros};
     use chrono::prelude::*;
     use chrono::naive::{MAX_DATE, MIN_DATE};
     use std::iter::repeat;
-
-    macro_rules! random {
-        ($ty: ty) => {{
-            use rand::random;
-
-            random::<$ty>()
-        }};
-
-        (gen $ty: ty, $count: expr) => {{
-            use rand::{thread_rng, Rng};
-            use std::iter::repeat;
-
-            let mut rng = thread_rng();
-
-            rng.gen_iter::<$ty>().take($count).collect::<Vec<_>>()
-        }};
-
-    }
 
     // these should be moved associated when consts stabilize
     // https://github.com/rust-lang/rust/issues/29646
@@ -375,22 +393,6 @@ pub(crate) mod timestamp {
             for t in &v {
                 assert!(**t >= TS_MIN);
                 assert!(**t <= TS_MAX);
-            }
-        }
-
-        mod random_macro {
-            use super::*;
-
-            #[test]
-            fn single_typed() {
-                let v = random!(u64);
-            }
-
-            #[test]
-            fn gen_typed() {
-                let v = random!(gen u64, 100);
-
-                assert_eq!(v.len(), 100);
             }
         }
     }
