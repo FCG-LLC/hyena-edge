@@ -80,6 +80,6 @@ impl<'block, 'a> From<&'a Block<'block>> for BlockType {
 
 impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockType {
     fn from(block: &RwLock<Block>) -> BlockType {
-        (&*acquire!(read block)).into()
+        (acquire!(read block)).into()
     }
 }

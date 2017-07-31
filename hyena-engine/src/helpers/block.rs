@@ -6,7 +6,7 @@ macro_rules! block_apply {
         use ty::block::Block;
         use error::*;
 
-        let mut lock = acquire!(write $self);
+        let mut lock = acquire!(raw write $self);
 
         match *lock {
             Block::Memory(ref mut $block) => {
@@ -35,7 +35,7 @@ macro_rules! block_apply {
         use ty::block::Block;
         use error::*;
 
-        let lock = acquire!(read $self);
+        let lock = acquire!(raw read $self);
 
         match *lock {
             Block::Memory(ref $block) => {
@@ -64,7 +64,7 @@ macro_rules! block_apply {
         use ty::block::Block;
         use error::*;
 
-        let mut lock = acquire!(write $self);
+        let mut lock = acquire!(raw write $self);
 
         match *lock {
             Block::Memory(ref mut $block) => {
@@ -147,7 +147,7 @@ macro_rules! block_apply {
         use ty::block::Block;
         use error::*;
 
-        let lock = acquire!(read $self);
+        let lock = acquire!(raw read $self);
 
         match *lock {
             Block::Memory(ref $block) => {
@@ -230,7 +230,7 @@ macro_rules! block_apply {
         use ty::block::Block;
         use error::*;
 
-        let mut lock = acquire!(read $self);
+        let mut lock = acquire!(raw read $self);
 
         match *lock {
             Block::Memory(ref $block) => $what,

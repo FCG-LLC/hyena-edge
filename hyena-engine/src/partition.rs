@@ -337,7 +337,7 @@ mod tests {
 
                 ops.as_mut_slice().par_iter_mut().for_each(
                     |&mut (ref mut block, ref data)| {
-                        let mut b = &mut *acquire!(write block);
+                        let mut b = acquire!(write block);
 
                         map_fragment!(mut map physical b, *data, blk, frg, fidx, {
                             // destination bounds checking intentionally left out
@@ -388,7 +388,7 @@ mod tests {
         (read $ops: expr) => {
                 $ops.as_slice().par_iter().for_each(
                     |&(ref block, ref data)| {
-                        let b = &*acquire!(read block);
+                        let b = acquire!(read block);
 
                         map_fragment!(map physical b, *data, blk, frg, fidx, {
                             // destination bounds checking intentionally left out
@@ -563,7 +563,7 @@ mod tests {
             assert_eq!(part.ts_max, ts);
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
-                assert_eq!(*acquire!(read part.blocks[block_id]), *block_type);
+                assert_eq!(*acquire!(raw read part.blocks[block_id]), *block_type);
             }
         }
 
@@ -646,7 +646,7 @@ mod tests {
 
             assert_eq!(part.blocks.len(), type_map.len());
             for (block_id, block_type) in &type_map {
-                assert_eq!(*acquire!(read part.blocks[block_id]), *block_type);
+                assert_eq!(*acquire!(raw read part.blocks[block_id]), *block_type);
             }
         }
 
