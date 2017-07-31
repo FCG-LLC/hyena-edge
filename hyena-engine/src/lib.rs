@@ -4,6 +4,8 @@
 extern crate log;
 #[macro_use]
 extern crate error_chain;
+#[macro_use]
+extern crate cfg_if;
 extern crate rayon;
 extern crate chrono;
 #[cfg(feature = "mmap")]

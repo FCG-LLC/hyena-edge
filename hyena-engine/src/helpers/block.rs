@@ -239,3 +239,314 @@ macro_rules! block_apply {
         }
     }};
 }
+
+
+/// Unwrap Block and Fragment, verifying that the underlying types are the same
+///
+/// After both types are unwrapped given block is executed within the unwrapped context
+///
+/// # Arguments
+///
+/// `$block` - `ty::block::Block` to unwrap
+/// `$frag` - `ty::fragment::Fragment` to combine with the block
+/// `$bid` - unwrapped block identifier, for use within `$what`
+/// `$fid` - unwrapped fragment's block identifier, for use within `$what`
+/// `$fidx` - unwrapped fragment's index identifier (for sparse blocks)
+/// `$what` - an expression block to eval
+///
+/// # Return values
+///
+/// Result<`$what`, `error::Error`>
+
+macro_rules! map_fragment {
+
+    // `public`, map mutable block
+    // will call `@cfg map physical` private API with every available Block variant
+
+    (mut map physical
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "mmap")] {
+                macro_rules! __cond_mmap_mut {
+                    () => {{
+                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        [
+                            [ Block::Memory, use ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                        ],
+                        mut)
+                    }};
+                }
+            } else {
+                macro_rules! __cond_mmap_mut {
+                    () => {{
+                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
+                        mut)
+                    }};
+                }
+            }
+        }
+
+        __cond_mmap_mut!()
+    }};
+
+    // `public`, map immutable block
+    // will call `@cfg map physical` private API with every available Block variant
+
+    (map physical
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "mmap")] {
+                macro_rules! __cond_mmap {
+                    () => {{
+                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        [
+                            [ Block::Memory, use ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                        ],
+                        map)
+                    }};
+                }
+            } else {
+                macro_rules! __cond_mmap {
+                    () => {{
+                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
+                        map)
+                    }};
+                }
+            }
+        }
+
+        __cond_mmap!()
+    }};
+
+    // `private`, map mutable/immutable block, determined by `$modifiers`
+    // will call `@ map physical` private API with every available Block variant
+    // and BlockType / Fragment variants combination
+
+    (@cfg map physical
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block,
+        [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
+        $modifiers: tt) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "block_128")] {
+                macro_rules! __cond {
+                    (map) => {{
+                        map_fragment!(@ map physical $block, $frag, $bid, $fid, $fidx, $what,
+
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+
+                    (mut) => {{
+                        map_fragment!(@ mut map physical $block, $frag, $bid, $fid, $fidx, $what,
+
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+                }
+            } else {
+                macro_rules! __cond {
+                    (map) => {{
+                        map_fragment!(@ map physical $block, $frag, $bid, $fid, $fidx, $what,
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse
+                                ]
+                            )*
+                        )
+                    }};
+
+                    (mut) => {{
+                        map_fragment!(@ mut map physical $block, $frag, $bid, $fid, $fidx, $what,
+                            $(
+                                $bvars, $use,
+
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse
+                                ]
+                            )*
+                        )
+                    }};
+                }
+            }
+        }
+
+        __cond!($modifiers)
+    }};
+
+    // `private`, map mutable block given Block variants and types combination
+
+    (@ mut map physical
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block,
+
+        $(
+            $variant: path,
+            $use: item,
+            dense [ $($dense_var: ident),+ $(,)* ]
+            sparse [ $($sparse_var: ident),+ $(,)* ]
+        )*
+
+        ) => {{
+
+        use ty::block::Block;
+        use ty::fragment::Fragment;
+        use error::*;
+
+
+        match *$block {
+            $(
+            $variant(ref mut block) => {
+                $use;
+
+                match *block {
+                    // Dense
+
+                    $(
+                    $dense_var(ref mut $bid) => {
+                        if let Fragment::$dense_var(ref $fid) = *$frag {
+                            Ok($what)
+                        } else {
+                            Err::<_, Error>("Incompatible block and fragment types".into())
+                        }
+                    }
+                    )+
+
+                    // Sparse
+
+                    $(
+                    $sparse_var(ref mut $bid) => {
+                        if let Fragment::$sparse_var(ref $fid, ref $fidx) = *$frag {
+                            Ok($what)
+                        } else {
+                            Err("Incompatible block and fragment types".into())
+                        }
+                    }
+                    )+
+                }
+            }
+            )*
+        }
+    }};
+
+    // `private`, map immutable block given Block variants and types combination
+
+    (@ map physical
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block,
+        $(
+            $variant: path,
+            $use: item,
+            dense [ $($dense_var: ident),+ $(,)* ]
+            sparse [ $($sparse_var: ident),+ $(,)* ]
+        )*
+    )
+        => {{
+        use ty::block::Block;
+        use ty::fragment::Fragment;
+        use error::*;
+
+
+        match *$block {
+            $(
+            $variant(ref block) => {
+                $use;
+
+                match *block {
+                    // Dense
+
+                    $(
+                    $dense_var(ref $bid) => {
+                        if let Fragment::$dense_var(ref $fid) = *$frag {
+                            Ok($what)
+                        } else {
+                            Err::<_, Error>("Incompatible block and fragment types".into())
+                        }
+                    }
+                    )+
+
+                    // Sparse
+
+                    $(
+                    $sparse_var(ref $bid) => {
+                        if let Fragment::$sparse_var(ref $fid, ref $fidx) = *$frag {
+                            Ok($what)
+                        } else {
+                            Err("Incompatible block and fragment types".into())
+                        }
+                    }
+                    )+
+                }
+            }
+            )*
+        }
+    }};
+}
