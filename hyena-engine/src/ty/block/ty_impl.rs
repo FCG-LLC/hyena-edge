@@ -9,6 +9,7 @@ macro_rules! block_impl {
                         BlockTypeMap as TyBlockTypeMap};
         use std::collections::hash_map::HashMap;
         use std::sync::RwLock;
+        use block::BlockData;
 
 
         pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
@@ -46,6 +47,35 @@ macro_rules! block_impl {
             U64Sparse(U64SparseBlock<'block, $ST, $SI>),
             #[cfg(feature = "block_128")]
             U128Sparse(U128SparseBlock<'block, $ST, $SI>),
+        }
+
+        impl<'block> Block<'block> {
+            #[inline]
+            pub(crate) fn len(&self) -> usize {
+                use self::Block::*;
+
+                block_map_expr!(*self, blk, {
+                    blk.len()
+                })
+            }
+
+            #[inline]
+            pub(crate) fn size(&self) -> usize {
+                use self::Block::*;
+
+                block_map_expr!(*self, blk, {
+                    blk.size()
+                })
+            }
+
+            #[inline]
+            pub(crate) fn is_empty(&self) -> bool {
+                use self::Block::*;
+
+                block_map_expr!(*self, blk, {
+                    blk.is_empty()
+                })
+            }
         }
 
         impl<'block> From<I8DenseBlock<'block, $ST>> for Block<'block> {
@@ -330,6 +360,50 @@ macro_rules! map_block_type_variants {
                                     U128Sparse);
         })()
     }
+}
+
+macro_rules! block_map_expr {
+    (@ $block: expr, $blockref: ident, $body: block [ $($variant: ident),+ $(,)* ]) => {
+        match $block {
+            $(
+                $variant(ref $blockref) => $body,
+            )+
+        }
+    };
+
+    ($block: expr, $blockref: ident, $body: block) => {{
+        cfg_if! {
+            if #[cfg(feature = "block_128")] {
+                macro_rules! __cond {
+                    () => {{
+                        block_map_expr!(@ $block, $blockref, $body
+                            [
+                                I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                                I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                            ]
+                        )
+                    }};
+                }
+            } else {
+                macro_rules! __cond {
+                    () => {{
+                        block_map_expr!(@ $block, $blockref, $body
+                            [
+                                I8Dense, I16Dense, I32Dense, I64Dense,
+                                U8Dense, U16Dense, U32Dense, U64Dense,
+                                I8Sparse, I16Sparse, I32Sparse, I64Sparse,
+                                U8Sparse, U16Sparse, U32Sparse, U64Sparse
+                            ]
+                        )
+                    }};
+                }
+            }
+        }
+
+        __cond!()
+    }};
 }
 
 pub(crate) type I8DenseBlock<'block, S> = DenseNumericBlock<'block, i8, S>;

@@ -68,6 +68,39 @@ pub enum BlockType {
     Memmap(mmap::BlockType),
 }
 
+macro_rules! block_map_expr {
+    ($self: expr, $blockref: ident, $body: block) => {
+        match $self {
+            Memory(ref $blockref) => $body,
+            #[cfg(feature = "mmap")]
+            Memmap(ref $blockref) => $body,
+        }
+    };
+}
+
+impl<'block> Block<'block> {
+    #[inline]
+    pub(crate) fn len(&self) -> usize {
+        use self::Block::*;
+
+        block_map_expr!(*self, blk, { blk.len() })
+    }
+
+    #[inline]
+    pub(crate) fn size(&self) -> usize {
+        use self::Block::*;
+
+        block_map_expr!(*self, blk, { blk.size() })
+    }
+
+    #[inline]
+    pub(crate) fn is_empty(&self) -> bool {
+        use self::Block::*;
+
+        block_map_expr!(*self, blk, { blk.is_empty() })
+    }
+}
+
 impl<'block, 'a> From<&'a Block<'block>> for BlockType {
     fn from(block: &Block) -> BlockType {
         match *block {
