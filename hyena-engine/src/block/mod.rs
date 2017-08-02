@@ -109,18 +109,22 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     /// The length of valid data buffer
     ///
     /// This should be interpreted as self.data[0..self.head]
+    #[inline]
     fn len(&self) -> usize {
         self.head()
     }
 
+    #[inline]
     fn size(&self) -> usize {
         self.as_ref().len()
     }
 
+    #[inline]
     fn is_empty(&self) -> bool {
         self.as_ref().is_empty()
     }
 
+    #[inline]
     fn set_written(&mut self, count: usize) -> Result<()> {
         let size = self.size();
         let mut head = self.mut_head();
