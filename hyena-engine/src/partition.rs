@@ -137,11 +137,28 @@ impl<'part> Partition<'part> {
         Ok(())
     }
 
-    pub fn get_blocks(&self) -> &BlockMap<'part> {
+    pub fn len_for_blocks(&self, indices: &[usize]) -> usize {
+        indices.iter()
+            .filter_map(|block_id| {
+                if let Some(block) = self.blocks.get(block_id) {
+                    let b = acquire!(read block);
+                    Some(b.size() - b.len())
+                } else {
+                    None
+                }
+            })
+            .min()
+            // the default shouldn't ever happen, as there always should be ts block
+            // but in case it happens, this will return 0
+            // which in turn will cause new partition to be used
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn get_blocks(&self) -> &BlockMap<'part> {
         &self.blocks
     }
 
-    pub fn mut_blocks(&mut self) -> &mut BlockMap<'part> {
+    pub(crate) fn mut_blocks(&mut self) -> &mut BlockMap<'part> {
         &mut self.blocks
     }
 
@@ -339,7 +356,7 @@ mod tests {
                     |&mut (ref mut block, ref data)| {
                         let mut b = acquire!(write block);
 
-                        map_fragment!(mut map physical b, *data, blk, frg, fidx, {
+                        map_fragment!(mut map physical b, *data, blk, frg, _fidx, {
                             // destination bounds checking intentionally left out
                             let slen = frg.len();
 
@@ -390,7 +407,7 @@ mod tests {
                     |&(ref block, ref data)| {
                         let b = acquire!(read block);
 
-                        map_fragment!(map physical b, *data, blk, frg, fidx, {
+                        map_fragment!(map physical b, *data, blk, frg, _fidx, {
                             // destination bounds checking intentionally left out
                             assert_eq!(blk.len(), frg.len());
                             assert_eq!(blk.as_slice(), frg.as_slice());
@@ -492,6 +509,99 @@ mod tests {
 
         assert_eq!(part.ts_min, ts_min);
         assert_eq!(part.ts_max, ts_max);
+    }
+
+    macro_rules! block_write {
+        ($part: expr, $blockmap: expr, $frags: expr) => {{
+            let blockmap = $blockmap;
+            let mut part = $part;
+            let frags = $frags;
+
+            part.ensure_blocks(&blockmap)
+                .chain_err(|| "Unable to create block map")
+                .unwrap();
+
+            {
+                let mut ops = frags.iter()
+                    .filter_map(|(ref blk_idx, ref frag)| {
+                        if let Some(block) = part.blocks.get(blk_idx) {
+                            Some((block, frags.get(blk_idx).unwrap()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                ops.as_mut_slice().par_iter_mut().for_each(
+                    |&mut (ref mut block, ref data)| {
+                        let mut b = acquire!(write block);
+
+                        map_fragment!(mut map physical b, *data, blk, frg, _fidx, {
+                            // destination bounds checking intentionally left out
+                            let slen = frg.len();
+
+                            blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
+                            blk.set_written(slen).unwrap();
+
+                        }).unwrap()
+                    },
+                );
+            }
+        }};
+    }
+
+    #[test]
+    fn len_for_blocks() {
+        use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
+        use block::BlockData;
+        use std::mem::size_of;
+        use params::BLOCK_SIZE;
+        use std::iter::FromIterator;
+
+
+        // reserve 20 records on timestamp
+        let count = BLOCK_SIZE / size_of::<u64>() - 20;
+
+        let root = tempdir!(persistent);
+
+        let ts = RandomTimestampGen::random::<u64>();
+
+        let mut part = Partition::new(&root, Partition::gen_id(), ts)
+            .chain_err(|| "Failed to create partition")
+            .unwrap();
+
+        let blocks = hashmap! {
+            0 => MemoryBlockType::U64Dense,
+            1 => MemoryBlockType::U32Dense,
+        }.into();
+
+        let frags = hashmap! {
+            0 => Fragment::from(random!(gen u64, count)),
+            1 => Fragment::from(random!(gen u32, count)),
+        };
+
+        block_write!(&mut part, blocks, frags);
+
+        let blocks = hashmap! {
+            2 => MemoryBlockType::U64Sparse,
+        }.into();
+
+        let frags = hashmap! {
+            2 => Fragment::from((random!(gen u64, count), random!(gen u32, count))),
+        };
+
+        block_write!(&mut part, blocks, frags);
+
+        let blocks = hashmap! {
+            0 => MemoryBlockType::U64Dense,
+            1 => MemoryBlockType::U32Dense,
+            2 => MemoryBlockType::U64Dense,
+        };
+
+        assert_eq!(
+            part.len_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()),
+            20
+        );
     }
 
     #[test]
