@@ -43,7 +43,7 @@ mod block;
 mod ty;
 mod partition;
 mod catalog;
-// mod mutator;
+mod mutator;
 
 #[cfg(test)]
 mod tests {
