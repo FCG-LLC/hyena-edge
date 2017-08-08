@@ -1,6 +1,6 @@
 use error::*;
 use block::SparseIndex;
-use ty::Timestamp;
+use ty::{BlockTypeMap, Timestamp};
 use std::slice::from_raw_parts;
 use std::mem::transmute;
 
@@ -39,6 +39,151 @@ pub enum Fragment {
     U128Sparse(Vec<u128>, Vec<SparseIndex>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum FragmentRef<'frag> {
+    I8Dense(&'frag [i8]),
+    I16Dense(&'frag [i16]),
+    I32Dense(&'frag [i32]),
+    I64Dense(&'frag [i64]),
+    #[cfg(feature = "block_128")]
+    I128Dense(&'fag [i128]),
+
+    // Dense, Unsigned
+    U8Dense(&'frag [u8]),
+    U16Dense(&'frag [u16]),
+    U32Dense(&'frag [u32]),
+    U64Dense(&'frag [u64]),
+    #[cfg(feature = "block_128")]
+    U128Dense(&'frag [u128]),
+
+    // Sparse, Signed
+    I8Sparse(&'frag [i8], &'frag [SparseIndex]),
+    I16Sparse(&'frag [i16], &'frag [SparseIndex]),
+    I32Sparse(&'frag [i32], &'frag [SparseIndex]),
+    I64Sparse(&'frag [i64], &'frag [SparseIndex]),
+    #[cfg(feature = "block_128")]
+    I128Sparse(&'frag [i128], &'frag [SparseIndex]),
+
+    // Sparse, Unsigned
+    U8Sparse(&'frag [u8], &'frag [SparseIndex]),
+    U16Sparse(&'frag [u16], &'frag [SparseIndex]),
+    U32Sparse(&'frag [u32], &'frag [SparseIndex]),
+    U64Sparse(&'frag [u64], &'frag [SparseIndex]),
+    #[cfg(feature = "block_128")]
+    U128Sparse(&'frag [u128], &'frag [SparseIndex]),
+}
+
+macro_rules! frag_apply {
+    (@ $self: expr, $block: ident, $idx: ident
+        dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
+        sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
+
+        match $self {
+            $(
+                $dense_variants(ref $block) => $dense,
+            )+
+
+            $(
+                $sparse_variants(ref $block, ref $idx) => $sparse,
+            )+
+        }
+    }};
+
+    ($self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
+        frag_apply!(@ $self, $block, $idx
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse ]
+        )
+    };
+}
+
+impl Fragment {
+    pub fn split_at<'frag: 'fragref, 'fragref>(
+        &'frag self,
+        mid: usize,
+    ) -> (FragmentRef<'fragref>, FragmentRef<'fragref>) {
+        use self::Fragment::*;
+
+        frag_apply!(
+            *self,
+            blk,
+            idx,
+            {
+                let fragments = &blk[..].split_at(mid);
+                (fragments.0.into(), fragments.1.into())
+            },
+            {
+                let fragments = &blk[..].split_at(mid);
+                let indices = &idx[..].split_at(mid);
+                (
+                    (fragments.0, indices.0).into(),
+                    (fragments.1, indices.1).into(),
+                )
+            }
+        )
+    }
+}
+
+impl<'fragref> FragmentRef<'fragref> {
+    pub fn split_at<'frag>(
+        &'frag self,
+        mid: usize,
+    ) -> (FragmentRef<'fragref>, FragmentRef<'fragref>) {
+        use self::FragmentRef::*;
+
+        frag_apply!(
+            *self,
+            blk,
+            idx,
+            {
+                let fragments = &blk[..].split_at(mid);
+                (fragments.0.into(), fragments.1.into())
+            },
+            {
+                let fragments = &blk[..].split_at(mid);
+                let indices = &idx[..].split_at(mid);
+                (
+                    (fragments.0, indices.0).into(),
+                    (fragments.1, indices.1).into(),
+                )
+            }
+        )
+    }
+}
+
+
+impl<'frag> From<&'frag Fragment> for FragmentRef<'frag> {
+    fn from(source: &'frag Fragment) -> FragmentRef<'frag> {
+        use self::Fragment::*;
+
+        frag_apply!(*source, blk, idx, { FragmentRef::from(blk.as_slice()) }, {
+            FragmentRef::from((blk.as_slice(), idx.as_slice()))
+        })
+    }
+}
+
+impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
+    fn from(source: &'frag TimestampFragment) -> FragmentRef<'frag> {
+        use self::Fragment::*;
+
+        FragmentRef::from(unsafe {
+            transmute::<&'frag [Timestamp], &'frag [u64]>(&source.0)
+        })
+    }
+}
+
+impl<'frag> From<&'frag [Timestamp]> for FragmentRef<'frag> {
+    fn from(source: &'frag [Timestamp]) -> FragmentRef<'frag> {
+        use self::Fragment::*;
+
+        FragmentRef::from(unsafe {
+            transmute::<&'frag [Timestamp], &'frag [u64]>(source)
+        })
+    }
+}
+
 macro_rules! fragment_variant_impl {
 
     (dense $($V: ident, $T: ty);* $(;)*) => {
@@ -46,6 +191,12 @@ macro_rules! fragment_variant_impl {
             impl From<Vec<$T>> for Fragment {
                 fn from(source: Vec<$T>) -> Fragment {
                     Fragment::$V(source)
+                }
+            }
+
+            impl<'frag> From<&'frag [$T]> for FragmentRef<'frag> {
+                fn from(source: &'frag [$T]) -> FragmentRef<'frag> {
+                    FragmentRef::$V(source)
                 }
             }
         )*
@@ -56,6 +207,12 @@ macro_rules! fragment_variant_impl {
             impl From<(Vec<$T>, Vec<SparseIndex>)> for Fragment {
                 fn from(source: (Vec<$T>, Vec<SparseIndex>)) -> Fragment {
                     Fragment::$V(source.0, source.1)
+                }
+            }
+
+            impl<'frag> From<(&'frag [$T], &'frag [SparseIndex])> for FragmentRef<'frag> {
+                fn from(source: (&'frag [$T], &'frag [SparseIndex])) -> FragmentRef<'frag> {
+                    FragmentRef::$V(source.0, source.1)
                 }
             }
         )*
@@ -86,6 +243,20 @@ fragment_variant_impl!(sparse
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TimestampFragment(Vec<Timestamp>);
 
+impl TimestampFragment {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn as_slice(&self) -> &[Timestamp] {
+        self.0.as_slice()
+    }
+}
+
 impl From<Vec<u64>> for TimestampFragment {
     fn from(source: Vec<u64>) -> TimestampFragment {
         TimestampFragment(unsafe { transmute(source) })
@@ -95,6 +266,12 @@ impl From<Vec<u64>> for TimestampFragment {
 impl From<Vec<Timestamp>> for TimestampFragment {
     fn from(source: Vec<Timestamp>) -> TimestampFragment {
         TimestampFragment(source)
+    }
+}
+
+impl From<TimestampFragment> for Fragment {
+    fn from(source: TimestampFragment) -> Fragment {
+        Fragment::from(unsafe { transmute::<Vec<Timestamp>, Vec<u64>>(source.0) })
     }
 }
 
