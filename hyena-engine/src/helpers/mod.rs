@@ -7,6 +7,10 @@ pub(crate) mod random;
 
 #[macro_use]
 #[cfg(test)]
+pub(crate) mod seq;
+
+#[macro_use]
+#[cfg(test)]
 pub(crate) mod tempfile;
 
 #[macro_use]
