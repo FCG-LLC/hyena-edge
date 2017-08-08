@@ -11,7 +11,7 @@ macro_rules! random {
 
         let mut rng = thread_rng();
 
-        rng.gen_iter::<$ty>().take($count).collect::<Vec<_>>()
+        rng.gen_iter::<$ty>().take($count).collect::<Vec<$ty>>()
     }};
 
 }
@@ -31,6 +31,13 @@ mod tests {
 
         assert_eq!(v.len(), 100);
     }
+
+    #[test]
+    fn gen_long() {
+        let v = random!(gen u32, 1 << 20);
+
+        assert_eq!(v.len(), 1 << 20);
+    }
 }
 
 
@@ -45,9 +52,9 @@ pub(crate) mod timestamp {
     // https://github.com/rust-lang/rust/issues/29646
 
     /// minimal UNIX timestamp, used in the random generator
-    const TS_MIN: u64 = 1_u64;
+    pub const TS_MIN: u64 = 1_u64;
     // arbitrary upper bound, maximal UNIX timestamp, used in the random generator
-    const TS_MAX: u64 = 2_147_472_000_000_000_u64;
+    pub const TS_MAX: u64 = 2_147_472_000_000_000_u64;
 
     pub(crate) trait RandomTimestamp {
         fn random<T>() -> T
@@ -122,6 +129,17 @@ pub(crate) mod timestamp {
                 repeat(RandomTimestampGen)
                     .map(move |_| Self::random_range(from.clone(), to.clone())),
             )
+        }
+
+        pub(crate) fn iter_range_from<T, TS>(from: TS) -> Box<Iterator<Item = T>>
+        where
+            T: From<Timestamp>,
+            Timestamp: From<T> + From<TS>,
+            TS: Clone + 'static,
+        {
+            Box::new(repeat(RandomTimestampGen).map(move |_| {
+                Self::random_range(Timestamp::from(from.clone()), Timestamp::from(TS_MAX))
+            }))
         }
 
         pub(crate) fn iter_rng<T, R>(rng: R) -> Box<Iterator<Item = T>>
