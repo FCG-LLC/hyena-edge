@@ -61,13 +61,6 @@ impl<'block> PartialEq<BlockType> for Block<'block> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum BlockType {
-    Memory(memory::BlockType),
-    #[cfg(feature = "mmap")]
-    Memmap(mmap::BlockType),
-}
-
 macro_rules! block_map_expr {
     ($self: expr, $blockref: ident, $body: block) => {
         match $self {
@@ -76,6 +69,21 @@ macro_rules! block_map_expr {
             Memmap(ref $blockref) => $body,
         }
     };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BlockType {
+    Memory(memory::BlockType),
+    #[cfg(feature = "mmap")]
+    Memmap(mmap::BlockType),
+}
+
+impl BlockType {
+    pub fn size_of(&self) -> usize {
+        use self::BlockType::*;
+
+        block_map_expr!(*self, block, { block.size_of() })
+    }
 }
 
 impl<'block> Block<'block> {
