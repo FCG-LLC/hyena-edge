@@ -260,22 +260,64 @@ macro_rules! block_apply {
 
 macro_rules! map_fragment {
 
-    // `public`, map mutable block
-    // will call `@cfg map physical` private API with every available Block variant
-
-    (mut map physical
+    (mut map owned
         $block: expr,
         $frag: expr,
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {{
+        $what: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $what, Fragment)
+    };
+
+    (map owned
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $what, Fragment)
+    };
+
+    (mut map ref
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $what, FragmentRef)
+    };
+
+    (map ref
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $what, FragmentRef)
+    };
+
+    // `public`, map mutable block
+    // will call `@cfg map physical` private API with every available Block variant
+
+    (mut map
+        $block: expr,
+        $frag: expr,
+        $bid: ident,
+        $fid: ident,
+        $fidx: ident,
+        $what: block,
+        $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -286,7 +328,8 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         mut)
                     }};
@@ -300,19 +343,21 @@ macro_rules! map_fragment {
     // `public`, map immutable block
     // will call `@cfg map physical` private API with every available Block variant
 
-    (map physical
+    (map
         $block: expr,
         $frag: expr,
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {{
+        $what: block,
+        $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -323,7 +368,8 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         map)
                     }};
@@ -338,13 +384,14 @@ macro_rules! map_fragment {
     // will call `@ map physical` private API with every available Block variant
     // and BlockType / Fragment variants combination
 
-    (@cfg map physical
+    (@cfg map
         $block: expr,
         $frag: expr,
         $bid: ident,
         $fid: ident,
         $fidx: ident,
         $what: block,
+        $ty: ident,
         [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
         $modifiers: tt) => {{
 
@@ -352,7 +399,7 @@ macro_rules! map_fragment {
             if #[cfg(feature = "block_128")] {
                 macro_rules! __cond {
                     (map) => {{
-                        map_fragment!(@ map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $what, $ty,
 
                             $(
                                 $bvars, $use,
@@ -371,8 +418,8 @@ macro_rules! map_fragment {
                     }};
 
                     (mut) => {{
-                        map_fragment!(@ mut map physical $block, $frag, $bid, $fid, $fidx, $what,
-
+                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $what,
+                            $ty,
                             $(
                                 $bvars, $use,
 
@@ -392,7 +439,7 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond {
                     (map) => {{
-                        map_fragment!(@ map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $what, $ty,
                             $(
                                 $bvars, $use,
 
@@ -410,7 +457,8 @@ macro_rules! map_fragment {
                     }};
 
                     (mut) => {{
-                        map_fragment!(@ mut map physical $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $what,
+                            $ty,
                             $(
                                 $bvars, $use,
 
@@ -436,14 +484,14 @@ macro_rules! map_fragment {
 
     // `private`, map mutable block given Block variants and types combination
 
-    (@ mut map physical
+    (@ mut map
         $block: expr,
         $frag: expr,
         $bid: ident,
         $fid: ident,
         $fidx: ident,
         $what: block,
-
+        $ty: ident,
         $(
             $variant: path,
             $use: item,
@@ -454,7 +502,7 @@ macro_rules! map_fragment {
         ) => {{
 
         use ty::block::Block;
-        use ty::fragment::Fragment;
+        use ty::fragment::$ty;
         use error::*;
 
 
@@ -468,7 +516,7 @@ macro_rules! map_fragment {
 
                     $(
                     $dense_var(ref mut $bid) => {
-                        if let Fragment::$dense_var(ref $fid) = *$frag {
+                        if let $ty::$dense_var(ref $fid) = *$frag {
                             Ok($what)
                         } else {
                             Err::<_, Error>("Incompatible block and fragment types".into())
@@ -480,7 +528,7 @@ macro_rules! map_fragment {
 
                     $(
                     $sparse_var(ref mut $bid) => {
-                        if let Fragment::$sparse_var(ref $fid, ref $fidx) = *$frag {
+                        if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
                             Ok($what)
                         } else {
                             Err("Incompatible block and fragment types".into())
@@ -495,13 +543,14 @@ macro_rules! map_fragment {
 
     // `private`, map immutable block given Block variants and types combination
 
-    (@ map physical
+    (@ map
         $block: expr,
         $frag: expr,
         $bid: ident,
         $fid: ident,
         $fidx: ident,
         $what: block,
+        $ty: ident,
         $(
             $variant: path,
             $use: item,
@@ -511,7 +560,7 @@ macro_rules! map_fragment {
     )
         => {{
         use ty::block::Block;
-        use ty::fragment::Fragment;
+        use ty::fragment::$ty;
         use error::*;
 
 
@@ -525,7 +574,7 @@ macro_rules! map_fragment {
 
                     $(
                     $dense_var(ref $bid) => {
-                        if let Fragment::$dense_var(ref $fid) = *$frag {
+                        if let $ty::$dense_var(ref $fid) = *$frag {
                             Ok($what)
                         } else {
                             Err::<_, Error>("Incompatible block and fragment types".into())
@@ -537,7 +586,7 @@ macro_rules! map_fragment {
 
                     $(
                     $sparse_var(ref $bid) => {
-                        if let Fragment::$sparse_var(ref $fid, ref $fidx) = *$frag {
+                        if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
                             Ok($what)
                         } else {
                             Err("Incompatible block and fragment types".into())
