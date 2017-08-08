@@ -9,9 +9,12 @@ use ty::block::memory::BlockType as MemoryBlockType;
 use std::collections::HashMap;
 #[cfg(feature = "mmap")]
 use ty::block::mmap::BlockType as MmapBlockType;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator,
+                  ParallelIterator};
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
+use ty::fragment::FragmentRef;
+use mutator::BlockRefData;
 
 
 pub(crate) type PartitionId = Uuid;
@@ -62,6 +65,47 @@ impl<'part> Partition<'part> {
         Partition::deserialize(&meta, &root)
     }
 
+    pub(crate) fn append<'frag>(
+        &mut self,
+        blockmap: &BlockTypeMap,
+        frags: &BlockRefData<'frag>,
+    ) -> Result<usize> {
+
+        self.ensure_blocks(&blockmap)
+            .chain_err(|| "Unable to create block map")
+            .unwrap();
+
+        let mut ops = frags
+            .iter()
+            .filter_map(|(ref blk_idx, ref frag)| {
+                if let Some(block) = self.blocks.get(blk_idx) {
+                    Some((block, frags.get(blk_idx).unwrap()))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        ops.as_mut_slice().par_iter_mut().for_each(
+            |&mut (ref mut block, ref data)| {
+                let mut b = acquire!(write block);
+
+
+                map_fragment!(mut map ref b, *data, blk, frg, _fidx, {
+                    // destination bounds checking intentionally left out
+                    let slen = frg.len();
+
+                    blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
+                    blk.set_written(slen).unwrap();
+
+                }).unwrap()
+            },
+        );
+
+        // todo: fix this (should be slen)
+        Ok(42)
+    }
+
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
         let ts_block = self.blocks
             .get(&0)
@@ -96,7 +140,6 @@ impl<'part> Partition<'part> {
     pub(crate) fn get_ts(&self) -> (Timestamp, Timestamp) {
         (self.ts_min, self.ts_max)
     }
-
     #[must_use]
     pub(crate) fn set_ts<TS>(&mut self, ts_min: Option<TS>, ts_max: Option<TS>) -> Result<()>
     where
@@ -137,7 +180,7 @@ impl<'part> Partition<'part> {
         Ok(())
     }
 
-    pub fn len_for_blocks(&self, indices: &[usize]) -> usize {
+    pub fn space_for_blocks(&self, indices: &[usize]) -> usize {
         indices.iter()
             .filter_map(|block_id| {
                 if let Some(block) = self.blocks.get(block_id) {
@@ -356,7 +399,7 @@ mod tests {
                     |&mut (ref mut block, ref data)| {
                         let mut b = acquire!(write block);
 
-                        map_fragment!(mut map physical b, *data, blk, frg, _fidx, {
+                        map_fragment!(mut map owned b, *data, blk, frg, _fidx, {
                             // destination bounds checking intentionally left out
                             let slen = frg.len();
 
@@ -407,7 +450,7 @@ mod tests {
                     |&(ref block, ref data)| {
                         let b = acquire!(read block);
 
-                        map_fragment!(map physical b, *data, blk, frg, _fidx, {
+                        map_fragment!(map owned b, *data, blk, frg, _fidx, {
                             // destination bounds checking intentionally left out
                             assert_eq!(blk.len(), frg.len());
                             assert_eq!(blk.as_slice(), frg.as_slice());
@@ -536,7 +579,7 @@ mod tests {
                     |&mut (ref mut block, ref data)| {
                         let mut b = acquire!(write block);
 
-                        map_fragment!(mut map physical b, *data, blk, frg, _fidx, {
+                        map_fragment!(mut map owned b, *data, blk, frg, _fidx, {
                             // destination bounds checking intentionally left out
                             let slen = frg.len();
 
@@ -551,7 +594,7 @@ mod tests {
     }
 
     #[test]
-    fn len_for_blocks() {
+    fn space_for_blocks() {
         use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
         use block::BlockData;
         use std::mem::size_of;
@@ -562,7 +605,7 @@ mod tests {
         // reserve 20 records on timestamp
         let count = BLOCK_SIZE / size_of::<u64>() - 20;
 
-        let root = tempdir!(persistent);
+        let root = tempdir!();
 
         let ts = RandomTimestampGen::random::<u64>();
 
@@ -599,7 +642,7 @@ mod tests {
         };
 
         assert_eq!(
-            part.len_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()),
+            part.space_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()),
             20
         );
     }
