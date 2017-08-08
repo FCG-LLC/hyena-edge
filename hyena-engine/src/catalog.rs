@@ -1,25 +1,32 @@
 use error::*;
-use ty::{BlockType, Timestamp};
+use ty::{BlockType, ColumnId, Timestamp};
 use partition::{Partition, PartitionId};
 use storage::manager::{PartitionGroupManager, PartitionManager};
 use std::collections::hash_map::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Error as FmtError, Formatter};
 use std::default::Default;
 use std::hash::Hash;
 use std::ops::Deref;
+use std::result::Result as StdResult;
+use std::sync::{RwLock, RwLockWriteGuard};
 use serde::{Deserialize, Serialize};
 use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
+use mutator::append::Append;
+use ty::block::{BlockTypeMap, BlockTypeMapTy};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator,
+                  ParallelIterator};
 
 
 pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
 pub(crate) type PartitionGroupMap<'pg> = HashMap<SourceId, PartitionGroup<'pg>>;
+pub type ColumnMap = HashMap<ColumnId, Column>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
-    columns: Vec<Column>,
+    columns: ColumnMap,
 
     groups: PartitionGroupMap<'cat>,
 
@@ -37,7 +44,7 @@ pub(crate) struct PartitionGroup<'pg> {
     immutable_partitions: PartitionMap<'pg>,
 
     #[serde(skip)]
-    mutable_partitions: VecDeque<Partition<'pg>>,
+    mutable_partitions: RwLock<VecDeque<Partition<'pg>>>,
 
     #[serde(skip)]
     data_root: PathBuf,
@@ -74,6 +81,147 @@ impl<'pg> PartitionGroup<'pg> {
         let meta = self.data_root.join(PARTITION_GROUP_METADATA);
 
         PartitionGroup::serialize(self, &meta)
+    }
+
+    fn append(&self, catalog: &Catalog, data: &Append) -> Result<usize> {
+        use std::iter::{once, repeat};
+        use ty::fragment::FragmentRef;
+
+        // calculate the size of the append (in records)
+
+        let mut colindices = vec![0, 1]; // ts and source_id
+        colindices.extend(data.data.keys());
+
+        let columns = catalog.as_ref();
+
+        let typemap: BlockTypeMap = colindices
+            .iter()
+            .map(|colidx| if let Some(col) = columns.get(colidx) {
+                Ok((*colidx, **col))
+            } else {
+                bail!("column {} not found", colidx)
+            })
+            .collect::<Result<BlockTypeMapTy>>()
+            .chain_err(|| "failed to prepare all columns")?
+            .into();
+
+        let fragcount = data.len();
+
+        let (emptycap, currentcap) = {
+            let mut partitions = acquire!(read carry self.mutable_partitions);
+            // current partition capacity
+            let curpart = partitions
+                .back()
+                .ok_or_else(|| "Mutable partitions pool is empty")?;
+
+            // empty partition capacity for this append
+            let emptycap = catalog.space_for_blocks(&colindices);
+            let currentcap = curpart.space_for_blocks(&colindices);
+
+            (emptycap, currentcap)
+        };
+
+        // check if we can fit the data within current partition
+        // or additional ones are needed
+
+        let (curfrags, reqparts) = if fragcount > currentcap {
+            let emptyfrags = fragcount - currentcap;
+            let lastfull = emptyfrags % emptycap == 0;
+
+            (
+                currentcap,
+                (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1
+            )
+        } else {
+            (fragcount, 0)
+        };
+
+        // prepare source slices
+
+        let mut fragments = Vec::with_capacity(reqparts + 1);
+
+        let (mut fragments, ts_1, mut frag_1, mut ts_idx) = once(curfrags)
+            .filter(|c| *c != 0)
+            .chain(repeat(emptycap).take(reqparts))
+            .fold(
+                (
+                    &mut fragments,
+                    data.ts.as_slice(),
+                    data.data
+                        .iter()
+                        .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag)))
+                        .collect::<HashMap<_, _>>(),
+                    vec![],
+                ),
+                |store, mid| {
+
+                    let (mut fragments, ts_data, frag_data, mut ts_idx) = store;
+
+                    let (ts_0, ts_1) = ts_data.split_at(mid);
+                    let (mut frag_0, frag_1) = frag_data.iter().fold(
+                        (HashMap::new(), HashMap::new()),
+                        |acc, (col_id, frag)| {
+                            let (mut hm_0, mut hm_1) = acc;
+                            let (frag_0, frag_1) = frag.split_at(mid);
+
+                            hm_0.insert(*col_id, frag_0);
+                            hm_1.insert(*col_id, frag_1);
+
+                            (hm_0, hm_1)
+                        },
+                    );
+
+                    // as we did split, ts_0 cannot be empty
+                    ts_idx.push(
+                        *(&ts_0[..]
+                            .first()
+                            .ok_or_else(|| "ts_0 was empty, this shouldn't happen")
+                            .unwrap()),
+                    );
+                    frag_0.insert(0, FragmentRef::from(&ts_0[..]));
+                    fragments.push(frag_0);
+
+                    (fragments, ts_1, frag_1, ts_idx)
+                },
+            );
+
+        if !ts_1.is_empty() {
+            ts_idx.push(*(&ts_1[..].first().unwrap()));
+            frag_1.insert(0, FragmentRef::from(&ts_1[..]));
+            fragments.push(frag_1);
+        }
+
+        // create partition pool
+
+        let mut partitions = acquire!(write carry self.mutable_partitions);
+
+        let curidx = partitions.len();
+
+        let newparts = ts_idx
+            .par_iter()
+            .skip(if curfrags == 0 { 0 } else { 1 })
+            .map(|ts| {
+                self.create_partition(**ts);
+            })
+            .collect::<Result<Vec<_>>>()
+            .chain_err(|| "Unable to create partition for writing")?;
+
+        partitions.extend(newparts);
+
+        // write data
+
+        partitions
+            .par_iter_mut()
+            .skip(curidx - if curfrags == 0 { 0 } else { 1 })
+            .zip(fragments.par_iter())
+            .for_each(|(mut partition, fragment)| {
+                partition
+                    .append(&typemap, &fragment)
+                    .chain_err(|| "partition append failed")
+                    .unwrap();
+            });
+
+        Ok(0)
     }
 
     fn create_partition<'part, TS>(&self, ts: TS) -> Result<Partition<'part>>
@@ -138,7 +286,7 @@ impl<'pg> PartitionGroup<'pg> {
         let meta = meta.as_ref();
 
         let im_partition_metas = Vec::from_iter(pg.immutable_partitions.keys());
-        let mut_partition_metas = pg.mutable_partitions
+        let mut_partition_metas = acquire!(write carry pg.mutable_partitions)
             .iter()
             .map(PartitionMeta::from)
             .collect::<Vec<_>>();
@@ -168,8 +316,9 @@ impl<'pg> PartitionGroup<'pg> {
         pg.immutable_partitions = PartitionGroup::prepare_partitions(&root, im_partition_metas)
             .chain_err(|| "Failed to read immutable partitions data")?;
 
-        pg.mutable_partitions = PartitionGroup::prepare_mut_partitions(&root, mut_partition_metas)
-            .chain_err(|| "Failed to read mutable partitions data")?;
+        pg.mutable_partitions = locked!(rw PartitionGroup::prepare_mut_partitions(
+            &root, mut_partition_metas)
+            .chain_err(|| "Failed to read mutable partitions data")?);
 
         pg.data_root = root.as_ref().to_path_buf();
 
@@ -189,6 +338,29 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 pub struct Column {
     ty: BlockType,
     name: String,
+}
+
+impl Column {
+    pub fn new(ty: BlockType, name: &str) -> Column {
+        Column {
+            ty,
+            name: name.to_owned(),
+        }
+    }
+}
+
+impl Deref for Column {
+    type Target = BlockType;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ty
+    }
+}
+
+impl Display for Column {
+    fn fmt(&self, fmt: &mut Formatter) -> StdResult<(), FmtError> {
+        write!(fmt, "{}", self.name)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, Hash)]
@@ -257,11 +429,49 @@ impl<'cat> Catalog<'cat> {
         Catalog::deserialize(&meta, &root)
     }
 
+    pub fn append(&self, data: &Append) -> Result<usize> {
+        if data.is_empty() {
+            bail!("Provided Append contains no data");
+        }
+
+        // dispatch to proper PartitionGroup
+        if let Some(pg) = self.groups.get(&data.source_id) {
+            pg.append(&self, &data)
+        } else {
+            bail!("No PartitionGroup found for source_id = {}", data.source_id);
+        }
+    }
+
     fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(CATALOG_METADATA);
 
         Catalog::serialize(self, &meta)
+    }
+
+    pub fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
+        self.columns.extend(type_map);
+
+        Ok(())
+    }
+
+    /// Calculate an empty partition's capacity for given column set
+    fn space_for_blocks(&self, indices: &[usize]) -> usize {
+        use params::BLOCK_SIZE;
+
+        indices.iter()
+            .filter_map(|col_id| {
+                if let Some(column) = self.columns.get(col_id) {
+                    Some(BLOCK_SIZE / column.size_of())
+                } else {
+                    None
+                }
+            })
+            .min()
+            // the default shouldn't ever happen, as there always should be ts block
+            // but in case it happens, this will return 0
+            // which in turn will cause new partition to be used
+            .unwrap_or_default()
     }
 
     fn create_partition<'part, TS>(
@@ -358,6 +568,11 @@ impl<'cat> Drop for Catalog<'cat> {
     }
 }
 
+impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
+    fn as_ref(&self) -> &ColumnMap {
+        &self.columns
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -386,7 +601,201 @@ mod tests {
             .into_iter()
             .map(|(_, part)| (PartitionMeta::from(&part), part))
             .collect();
-        pg.mutable_partitions = mutparts.into_iter().map(|(_, part)| part).collect();
+        pg.mutable_partitions = locked!(rw mutparts.into_iter().map(|(_, part)| part).collect());
+    }
+
+    mod append {
+        use super::*;
+        use params::BLOCK_SIZE;
+        use std::mem::size_of;
+
+        macro_rules! append_test_impl {
+            (init append $record_count: expr) => {{
+                let mut init = append_test_impl!(init);
+                append_test_impl!(append init.0, init.1, init.2, $record_count)
+            }};
+
+            (init) => {{
+                use chrono::prelude::*;
+                use ty::block::mmap::BlockType as MemmapBlockTy;
+
+                let source_ids = [1, 5, 7];
+
+                let root = tempdir!(persistent);
+
+                let mut cat = Catalog::new(&root)
+                    .chain_err(|| "Unable to create catalog")
+                    .unwrap();
+
+                cat.ensure_columns(
+                    hashmap! {
+                        0 => Column::new(MemmapBlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(MemmapBlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(MemmapBlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(MemmapBlockTy::U32Dense.into(), "col2"),
+                    }.into(),
+                ).unwrap();
+
+                let ts_min: Timestamp = RandomTimestampGen::random_from(Utc::now().naive_local());
+
+                for source_id in &source_ids {
+
+                    let pg = cat.ensure_group(*source_id)
+                        .chain_err(|| "Unable to retrieve partition group")
+                        .unwrap();
+
+                    let mut part = pg.create_partition(ts_min)
+                        .chain_err(|| "Unable to create partition")
+                        .unwrap();
+
+                    part.ensure_blocks(&(hashmap! {
+                        0 => MemmapBlockTy::U64Dense,
+                        1 => MemmapBlockTy::U32Dense,
+                        2 => MemmapBlockTy::U8Dense,
+                        3 => MemmapBlockTy::U32Dense,
+                    }).into())
+                        .chain_err(|| "Failed to create blocks")
+                        .unwrap();
+
+                    let mut vp = VecDeque::new();
+                    vp.push_front(part);
+
+                    pg.mutable_partitions = locked!(rw vp);
+                }
+
+                (root, cat, ts_min)
+            }};
+
+            (append $root:expr, $cat: expr, $ts_min: expr, $record_count: expr) => {{
+                let root = &$root;
+                let mut cat = &mut $cat;
+                let ts_min = $ts_min;
+                let record_count = $record_count;
+
+                // append
+                let append = Append {
+                    ts: RandomTimestampGen::iter_range_from(ts_min)
+                        .take(record_count)
+                        .collect::<Vec<Timestamp>>()
+                        .into(),
+                    source_id: 1,
+                    data: hashmap! {
+                        2 => random!(gen u8, record_count).into(),
+                        3 => random!(gen u32, record_count).into(),
+                    },
+                };
+
+                cat.append(&append).expect("unable to append fragment");
+            }};
+
+            (seq append $root:expr,
+                        $cat: expr,
+                        $ts_min: expr,
+                        $record_count: expr,
+                        $start: expr) => {{
+
+                let root = &$root;
+                let mut cat = &mut $cat;
+                let ts_min = $ts_min;
+                let record_count = $record_count;
+
+                // append
+                let append = Append {
+                    ts: RandomTimestampGen::iter_range_from(ts_min)
+                        .take(record_count)
+                        .collect::<Vec<Timestamp>>()
+                        .into(),
+                    source_id: 1,
+                    data: hashmap! {
+                        2 => seqfill!(vec u8, record_count, $start).into(),
+                        3 => seqfill!(vec u32, record_count, $start).into(),
+                    },
+                };
+
+                cat.append(&append).expect("unable to append fragment");
+            }};
+        }
+
+        #[cfg(all(feature = "nightly", test))]
+        mod benches {
+            use test::Bencher;
+            use super::*;
+
+            #[bench]
+            fn small(b: &mut Bencher) {
+                let mut init = append_test_impl!(init);
+
+                b.iter(|| append_test_impl!(append init.0, init.1, init.2, 100));
+            }
+        }
+
+        #[test]
+        fn current_only() {
+            append_test_impl!(init append 100);
+        }
+
+        #[test]
+        fn current_almost_full() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+            append_test_impl!(init append max_records - 1);
+        }
+
+        #[test]
+        fn current_full() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+            append_test_impl!(init append max_records);
+        }
+
+        #[test]
+        fn two() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+            append_test_impl!(init append max_records + 100);
+        }
+
+        #[test]
+        fn two_full() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+            append_test_impl!(init append max_records * 2);
+        }
+
+        #[test]
+        fn consecutive_small() {
+            let mut init = append_test_impl!(init);
+
+            append_test_impl!(append init.0, init.1, init.2, 100);
+            append_test_impl!(append init.0, init.1, init.2, 100);
+        }
+
+        #[test]
+        fn consecutive_two() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+            let mut init = append_test_impl!(init);
+
+            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
+            append_test_impl!(append init.0, init.1, init.2, 100);
+        }
+
+        #[test]
+        fn consecutive_two_full() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+            let mut init = append_test_impl!(init);
+
+            append_test_impl!(append init.0, init.1, init.2, max_records);
+            append_test_impl!(append init.0, init.1, init.2, max_records);
+        }
+
+        #[test]
+        fn consecutive_two_overflow() {
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+            let mut init = append_test_impl!(init);
+
+            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
+            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
+        }
     }
 
     mod partition_meta {
@@ -417,7 +826,7 @@ mod tests {
                 .unwrap();
 
             assert!(pg.immutable_partitions.is_empty());
-            assert!(pg.mutable_partitions.is_empty());
+            assert!(acquire!(read pg.mutable_partitions).is_empty());
             assert_eq!(pg.source_id, source_id);
             assert_eq!(pg.data_root.as_path(), root.as_ref());
         }
@@ -442,7 +851,7 @@ mod tests {
                 .unwrap();
 
             assert!(pg.immutable_partitions.len() == im_part_count);
-            assert!(pg.mutable_partitions.len() == mut_part_count);
+            assert!(acquire!(read pg.mutable_partitions).len() == mut_part_count);
             assert_eq!(pg.source_id, source_id);
             assert_eq!(pg.data_root.as_path(), root.as_ref());
         }

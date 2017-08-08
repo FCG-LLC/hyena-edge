@@ -1,4 +1,8 @@
 #![cfg_attr(feature = "block_128", feature(i128_type))]
+#![cfg_attr(feature = "nightly", feature(test))]
+
+#[cfg(all(feature = "nightly", test))]
+extern crate test;
 
 #[macro_use]
 extern crate log;
