@@ -654,13 +654,13 @@ mod tests {
             }};
 
             (init) => {{
-                use ty::block::mmap::BlockType as MemmapBlockTy;
+                use ty::block::mmap::BlockType as BlockTy;
 
                 let columns = hashmap! {
-                    0 => Column::new(MemmapBlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(MemmapBlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(MemmapBlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(MemmapBlockTy::U32Dense.into(), "col2"),
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
                 };
 
                 append_test_impl!(init columns)
@@ -675,31 +675,45 @@ mod tests {
                     3 => u32);
             };
 
+            (gen append $root:expr,
+                         $cat: expr,
+                         $ts: expr,
+                         $data: expr) => {{
+                let root = &$root;
+                let mut cat = &mut $cat;
+                let ts = $ts;
+                let data = $data;
+
+                // append
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                cat.append(&append).expect("unable to append fragment");
+            }};
+
             (rand append $root:expr,
                          $cat: expr,
                          $ts_min: expr,
                          $record_count: expr,
                          $( $idx: expr => $ty: ty ),+ $(,)*) => {{
-                let root = &$root;
-                let mut cat = &mut $cat;
                 let ts_min = $ts_min;
                 let record_count = $record_count;
 
-                // append
-                let append = Append {
-                    ts: RandomTimestampGen::iter_range_from(ts_min)
+                let ts = RandomTimestampGen::iter_range_from(ts_min)
                         .take(record_count)
                         .collect::<Vec<Timestamp>>()
-                        .into(),
-                    source_id: 1,
-                    data: hashmap! {
-                        $(
-                        $idx => random!(gen $ty, record_count).into(),
-                        )+
-                    },
+                        .into();
+
+                let data = hashmap! {
+                    $(
+                    $idx => random!(gen $ty, record_count).into(),
+                    )+
                 };
 
-                cat.append(&append).expect("unable to append fragment");
+                append_test_impl!(gen append $root, $cat, ts, data)
             }};
 
             (seq append $root:expr,
@@ -709,26 +723,21 @@ mod tests {
                         $start: expr,
                         $( $idx: expr => $ty: ty ),+ $(,)*) => {{
 
-                let root = &$root;
-                let mut cat = &mut $cat;
                 let ts_min = $ts_min;
                 let record_count = $record_count;
 
-                // append
-                let append = Append {
-                    ts: RandomTimestampGen::iter_range_from(ts_min)
+                let ts = RandomTimestampGen::iter_range_from(ts_min)
                         .take(record_count)
                         .collect::<Vec<Timestamp>>()
-                        .into(),
-                    source_id: 1,
-                    data: hashmap! {
-                        $(
-                        $idx => seqfill!(vec $ty, record_count, $start).into(),
-                        )+
-                    },
+                        .into();
+
+                let data = hashmap! {
+                    $(
+                    $idx => seqfill!(vec $ty, record_count, $start).into(),
+                    )+
                 };
 
-                cat.append(&append).expect("unable to append fragment");
+                append_test_impl!(gen append $root, $cat, ts, data)
             }};
         }
 
@@ -739,9 +748,121 @@ mod tests {
 
             #[bench]
             fn small(b: &mut Bencher) {
-                let mut init = append_test_impl!(init);
+                use ty::block::mmap::BlockType as BlockTy;
 
-                b.iter(|| append_test_impl!(append init.0, init.1, init.2, 100));
+                let record_count = 100;
+
+                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+                let columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                };
+
+                let data = hashmap! {
+                    2 => random!(gen u8, record_count).into(),
+                    3 => random!(gen u32, record_count).into(),
+                };
+
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let mut cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
+            fn lots_columns(b: &mut Bencher) {
+                use ty::block::mmap::BlockType as BlockTy;
+
+                let record_count = 100;
+                let column_count = 10000;
+
+                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+                let mut columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                };
+
+                let mut data = hashmap!{};
+
+                for idx in 2..column_count {
+                    columns.insert(
+                        idx,
+                        Column::new(BlockTy::U32Dense.into(), &format!("col{}", idx)),
+                    );
+                    data.insert(idx, random!(gen u32, record_count).into());
+                }
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let mut cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
+            fn big_data(b: &mut Bencher) {
+                use ty::block::mmap::BlockType as BlockTy;
+
+                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+                let record_count = max_records;
+
+                let columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                };
+
+                let data = hashmap! {
+                    2 => random!(gen u8, record_count).into(),
+                    3 => random!(gen u32, record_count).into(),
+                };
+
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let mut cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
             }
         }
 
@@ -812,6 +933,41 @@ mod tests {
             append_test_impl!(append init.0, init.1, init.2, max_records + 100);
             append_test_impl!(append init.0, init.1, init.2, max_records + 100);
         }
+
+        #[test]
+        fn lots_columns() {
+            use ty::block::mmap::BlockType as BlockTy;
+
+            let record_count = 100;
+            let column_count = 10000;
+
+            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+            let mut columns = hashmap! {
+                0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                1 => Column::new(BlockTy::U32Dense.into(), "source"),
+            };
+
+            let mut data = hashmap!{};
+
+            for idx in 2..column_count {
+                columns.insert(
+                    idx,
+                    Column::new(BlockTy::U32Dense.into(), &format!("col{}", idx)),
+                );
+                data.insert(idx, random!(gen u32, record_count).into());
+            }
+
+            let mut init = append_test_impl!(init columns);
+
+            let ts = RandomTimestampGen::iter_range_from(init.2)
+                .take(record_count)
+                .collect::<Vec<Timestamp>>()
+                .into();
+
+            append_test_impl!(gen append init.0, init.1, ts, data);
+        }
+
     }
 
     mod partition_meta {
