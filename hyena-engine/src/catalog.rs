@@ -615,9 +615,8 @@ mod tests {
                 append_test_impl!(append init.0, init.1, init.2, $record_count)
             }};
 
-            (init) => {{
+            (init $columns: expr) => {{
                 use chrono::prelude::*;
-                use ty::block::mmap::BlockType as MemmapBlockTy;
 
                 let source_ids = [1, 5, 7];
 
@@ -627,13 +626,10 @@ mod tests {
                     .chain_err(|| "Unable to create catalog")
                     .unwrap();
 
+                let columns = $columns;
+
                 cat.ensure_columns(
-                    hashmap! {
-                        0 => Column::new(MemmapBlockTy::U64Dense.into(), "ts"),
-                        1 => Column::new(MemmapBlockTy::U32Dense.into(), "source"),
-                        2 => Column::new(MemmapBlockTy::U8Dense.into(), "col1"),
-                        3 => Column::new(MemmapBlockTy::U32Dense.into(), "col2"),
-                    }.into(),
+                    columns.into(),
                 ).unwrap();
 
                 let ts_min: Timestamp = RandomTimestampGen::random_from(Utc::now().naive_local());
@@ -648,15 +644,6 @@ mod tests {
                         .chain_err(|| "Unable to create partition")
                         .unwrap();
 
-                    part.ensure_blocks(&(hashmap! {
-                        0 => MemmapBlockTy::U64Dense,
-                        1 => MemmapBlockTy::U32Dense,
-                        2 => MemmapBlockTy::U8Dense,
-                        3 => MemmapBlockTy::U32Dense,
-                    }).into())
-                        .chain_err(|| "Failed to create blocks")
-                        .unwrap();
-
                     let mut vp = VecDeque::new();
                     vp.push_front(part);
 
@@ -666,7 +653,33 @@ mod tests {
                 (root, cat, ts_min)
             }};
 
-            (append $root:expr, $cat: expr, $ts_min: expr, $record_count: expr) => {{
+            (init) => {{
+                use ty::block::mmap::BlockType as MemmapBlockTy;
+
+                let columns = hashmap! {
+                    0 => Column::new(MemmapBlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(MemmapBlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(MemmapBlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(MemmapBlockTy::U32Dense.into(), "col2"),
+                };
+
+                append_test_impl!(init columns)
+            }};
+
+            (append $root:expr,
+                    $cat: expr,
+                    $ts_min: expr,
+                    $record_count: expr) => {
+                append_test_impl!(rand append $root, $cat, $ts_min, $record_count,
+                    2 => u8,
+                    3 => u32);
+            };
+
+            (rand append $root:expr,
+                         $cat: expr,
+                         $ts_min: expr,
+                         $record_count: expr,
+                         $( $idx: expr => $ty: ty ),+ $(,)*) => {{
                 let root = &$root;
                 let mut cat = &mut $cat;
                 let ts_min = $ts_min;
@@ -680,8 +693,9 @@ mod tests {
                         .into(),
                     source_id: 1,
                     data: hashmap! {
-                        2 => random!(gen u8, record_count).into(),
-                        3 => random!(gen u32, record_count).into(),
+                        $(
+                        $idx => random!(gen $ty, record_count).into(),
+                        )+
                     },
                 };
 
@@ -692,7 +706,8 @@ mod tests {
                         $cat: expr,
                         $ts_min: expr,
                         $record_count: expr,
-                        $start: expr) => {{
+                        $start: expr,
+                        $( $idx: expr => $ty: ty ),+ $(,)*) => {{
 
                 let root = &$root;
                 let mut cat = &mut $cat;
@@ -707,8 +722,9 @@ mod tests {
                         .into(),
                     source_id: 1,
                     data: hashmap! {
-                        2 => seqfill!(vec u8, record_count, $start).into(),
-                        3 => seqfill!(vec u32, record_count, $start).into(),
+                        $(
+                        $idx => seqfill!(vec $ty, record_count, $start).into(),
+                        )+
                     },
                 };
 
