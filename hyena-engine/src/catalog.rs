@@ -751,6 +751,45 @@ mod tests {
             use super::*;
 
             #[bench]
+            fn tiny(b: &mut Bencher) {
+                use ty::block::mmap::BlockType as BlockTy;
+
+                let record_count = 1;
+
+                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+
+                let columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                };
+
+                let data = hashmap! {
+                    2 => random!(gen u8, record_count).into(),
+                    3 => random!(gen u32, record_count).into(),
+                };
+
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let mut cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
             fn small(b: &mut Bencher) {
                 use ty::block::mmap::BlockType as BlockTy;
 
