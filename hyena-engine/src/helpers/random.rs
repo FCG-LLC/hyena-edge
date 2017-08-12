@@ -43,7 +43,7 @@ mod tests {
 
 pub(crate) mod timestamp {
     use rand::{random, thread_rng, Rand, Rng};
-    use ty::timestamp::{Timestamp, ToTimestampMicros};
+    use ty::timestamp::{Timestamp, ToTimestampMicros, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
     use chrono::prelude::*;
     use chrono::naive::{MAX_DATE, MIN_DATE};
     use std::iter::repeat;
@@ -52,9 +52,9 @@ pub(crate) mod timestamp {
     // https://github.com/rust-lang/rust/issues/29646
 
     /// minimal UNIX timestamp, used in the random generator
-    pub const TS_MIN: u64 = 1_u64;
-    // arbitrary upper bound, maximal UNIX timestamp, used in the random generator
-    pub const TS_MAX: u64 = 2_147_472_000_000_000_u64;
+    pub const TS_MIN: u64 = MIN_TIMESTAMP_VALUE;
+    // arbitrary upper bound, chrono::naive::MAX_DATE, ty::Timestamp::MAX_TIMESTAMP
+    pub const TS_MAX: u64 = MAX_TIMESTAMP_VALUE;
 
     pub(crate) trait RandomTimestamp {
         fn random<T>() -> T

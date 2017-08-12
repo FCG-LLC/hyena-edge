@@ -130,7 +130,7 @@ impl<'pg> PartitionGroup<'pg> {
 
             (
                 currentcap,
-                (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1
+                (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1,
             )
         } else {
             (fragcount, 0)
@@ -200,9 +200,7 @@ impl<'pg> PartitionGroup<'pg> {
         let newparts = ts_idx
             .par_iter()
             .skip(if curfrags == 0 { 0 } else { 1 })
-            .map(|ts| {
-                self.create_partition(**ts);
-            })
+            .map(|ts| { self.create_partition(**ts) })
             .collect::<Result<Vec<_>>>()
             .chain_err(|| "Unable to create partition for writing")?;
 

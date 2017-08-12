@@ -2,6 +2,11 @@ use chrono::prelude::*;
 use std::fmt::{Display, Error as FmtError, Formatter};
 use std::ops::Deref;
 
+pub const MIN_TIMESTAMP_VALUE: u64 = 1_u64;
+pub const MAX_TIMESTAMP_VALUE: u64 = 8_210_298_326_400_000_000_u64;
+
+pub const MIN_TIMESTAMP: Timestamp = Timestamp(MIN_TIMESTAMP_VALUE);
+pub const MAX_TIMESTAMP: Timestamp = Timestamp(MAX_TIMESTAMP_VALUE);
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
 pub struct Timestamp(u64);
