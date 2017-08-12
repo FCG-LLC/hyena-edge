@@ -16,15 +16,23 @@ macro_rules! seqfill {
     };
 
     (gen $ty: ty, $count: expr, $start: expr, $step: expr) => {{
-        use rayon::prelude::*;
+        use num::NumCast;
+        use error::*;
 
+        let start = $start;
+        let step = $step;
         let count: usize = $count;
 
         (0..count)
-            .into_par_iter()
+            .into_iter()
             .enumerate()
             .map(|(idx, _)| {
-                ($start + (idx * $step)) as $ty
+                let v = seqfill!(@ as start, u64)
+                        + seqfill!(@ as idx, u64)
+                        * seqfill!(@ as step, u64);
+
+                <$ty as NumCast>::from(v)
+                    .unwrap_or_else(|| {v as $ty})
             })
             .collect()
     }};
@@ -37,25 +45,45 @@ macro_rules! seqfill {
         seqfill!(gen $ty, $count, 0, 1)
     };
 
+    (@ as $v: expr, $ty: ty ) => {
+        <$ty as NumCast>::from($v)
+            .ok_or_else(|| "Unable to convert seq value")
+            .unwrap()
+    };
+
     ($ty: ty, $slice: expr, $start: expr, $step: expr) => {{
-        use rayon::prelude::*;
+        use num::NumCast;
+        use error::*;
 
-        $slice.par_iter_mut()
-            .enumerate()
-            .for_each(|(idx, ref mut el)| {
-                **el = ($start + (idx * $step)) as $ty;
-            });
+        let start = $start;
+        let step = $step;
 
-        $slice.len() + ($start * $step)
+        for (idx, ref mut el) in $slice.iter_mut()
+            .enumerate() {
+                let v = seqfill!(@ as start, u64)
+                        + seqfill!(@ as idx, u64)
+                        * seqfill!(@ as step, u64);
+
+                **el = <$ty as NumCast>::from(v)
+                    .ok_or_else(|| "Unable to convert seq value")
+                    .unwrap();
+        }
+
+        seqfill!(@ as seqfill!(@ as $slice.len(), usize)
+            + (seqfill!(@ as start, usize) * seqfill!(@ as step, usize)), $ty)
     }};
 
-    ($ty: ty, $slice: expr, $start: expr) => {
-        seqfill!($ty, $slice, $start, 1)
-    };
+    ($ty: ty, $slice: expr, $start: expr) => {{
+        use num::One;
 
-    ($ty: ty, $slice: expr) => {
-        seqfill!($ty, $slice, 0, 1)
-    };
+        seqfill!($ty, $slice, $start, <$ty as One>::one())
+    }};
+
+    ($ty: ty, $slice: expr) => {{
+        use num::{Zero, One};
+
+        seqfill!($ty, $slice, <$ty as Zero>::zero(), <$ty as One>::one())
+    }};
 }
 
 #[cfg(test)]
@@ -121,4 +149,45 @@ mod tests {
 
         assert_eq!(v, v2);
     }
+
+    #[cfg(all(feature = "nightly", test))]
+    mod benches {
+        use test::Bencher;
+        use super::*;
+
+        #[bench]
+        fn simple(b: &mut Bencher) {
+            let mut v = vec![0_u32; 10];
+
+            b.iter(|| seqfill!(u32, &mut v[..]));
+        }
+
+        #[bench]
+        fn as_long_vec(b: &mut Bencher) {
+            b.iter(|| seqfill!(vec u8, 131072));
+        }
+    }
+
+    mod ts {
+        use super::*;
+        use ty::timestamp::{Timestamp, MIN_TIMESTAMP};
+
+        #[test]
+        fn simple() {
+            use num::Zero;
+
+            let mut v = vec![Timestamp::zero(); 10];
+            let s = <Timestamp as Default>::default();
+
+            let cont = seqfill!(Timestamp, &mut v[..], s);
+
+            let seq = s.as_micros();
+            let c = Timestamp::from(seq + 10);
+            let seq = (seq..seq + 10).map(Timestamp::from).collect::<Vec<_>>();
+
+            assert_eq!(&v[..], &seq[..]);
+            assert_eq!(cont, c);
+        }
+    }
+
 }

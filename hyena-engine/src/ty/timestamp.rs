@@ -116,6 +116,67 @@ impl Deref for Timestamp {
     }
 }
 
+cfg_if! {
+    if #[cfg(test)] {
+        use num::{ToPrimitive, NumCast, Zero, One};
+        use std::ops::{Add, Mul};
+
+        impl ToPrimitive for Timestamp {
+            fn to_i64(&self) -> Option<i64> {
+                self.0.to_i64()
+            }
+
+            fn to_u64(&self) -> Option<u64> {
+                Some(self.0)
+            }
+        }
+
+        impl NumCast for Timestamp {
+            fn from<T>(n: T) -> Option<Self>
+            where T: ToPrimitive {
+                if let Some(v) = n.to_u64() {
+                    Some(Timestamp(v))
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl Zero for Timestamp {
+            fn zero() -> Timestamp {
+                0.into()
+            }
+
+            fn is_zero(&self) -> bool {
+                self.0 == 0
+            }
+        }
+
+        impl One for Timestamp {
+            fn one() -> Timestamp {
+                MIN_TIMESTAMP
+            }
+        }
+
+        impl Add<Timestamp> for Timestamp {
+            type Output = Timestamp;
+
+            fn add(self, rhs: Timestamp) -> Self::Output {
+                (self.0 + rhs.0).into()
+            }
+        }
+
+        impl Mul<Timestamp> for Timestamp {
+            type Output = Timestamp;
+
+            fn mul(self, rhs: Timestamp) -> Self::Output {
+                (self.0 * rhs.0).into()
+            }
+        }
+    }
+}
+
+
 impl Timestamp {
     pub fn as_micros(&self) -> u64 {
         self.0
@@ -126,6 +187,30 @@ impl Timestamp {
 mod tests {
     use super::*;
 
+    #[test]
+    fn u64() {
+        let src: Timestamp = Default::default();
 
+        let to_u64 = src.as_micros();
 
+        assert_eq!(src, to_u64.into());
+    }
+
+    #[test]
+    fn min() {
+        assert_eq!(
+            <Timestamp as From<_>>::from(1_u64).as_micros(),
+            MIN_TIMESTAMP_VALUE
+        );
+    }
+
+    #[test]
+    fn max() {
+        use chrono::naive::MAX_DATE;
+
+        assert_eq!(
+            <Timestamp as From<_>>::from(MAX_DATE).as_micros(),
+            MAX_TIMESTAMP_VALUE
+        );
+    }
 }
