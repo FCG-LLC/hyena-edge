@@ -1,4 +1,7 @@
 #[macro_use]
+pub(crate) mod flame;
+
+#[macro_use]
 pub(crate) mod lock;
 
 #[macro_use]
@@ -15,6 +18,7 @@ pub(crate) mod tempfile;
 
 #[macro_use]
 pub(crate) mod block;
+
 
 /// helper facilitating calling expressions that utilize `std::ops::Carrier`
 /// in functions with no `Result` return type

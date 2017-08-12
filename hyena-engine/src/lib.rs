@@ -28,6 +28,8 @@ extern crate tempdir;
 extern crate num;
 #[cfg(test)]
 extern crate rand;
+#[cfg(feature = "perf")]
+extern crate flame;
 
 pub(crate) mod params;
 
