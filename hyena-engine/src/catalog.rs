@@ -124,16 +124,17 @@ impl<'pg> PartitionGroup<'pg> {
         // check if we can fit the data within current partition
         // or additional ones are needed
 
-        let (curfrags, reqparts) = if fragcount > currentcap {
+        let (curfrags, reqparts, current_is_full) = if fragcount > currentcap {
             let emptyfrags = fragcount - currentcap;
             let lastfull = emptyfrags % emptycap == 0;
 
             (
                 currentcap,
                 (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1,
+                lastfull,
             )
         } else {
-            (fragcount, 0)
+            (fragcount, 0, fragcount == currentcap)
         };
 
         // prepare source slices
@@ -199,7 +200,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         let newparts = ts_idx
             .iter()
-            .skip(if curfrags == 0 { 0 } else { 1 })
+            .skip(if current_is_full { 0 } else { 1 })
             .map(|ts| self.create_partition(**ts))
             .collect::<Result<Vec<_>>>()
             .chain_err(|| "Unable to create partition for writing")?;
@@ -210,7 +211,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         for (mut partition, fragment) in partitions
             .iter_mut()
-            .skip(curidx - if curfrags == 0 { 0 } else { 1 })
+            .skip(curidx - if current_is_full { 0 } else { 1 })
             .zip(fragments.iter())
         {
             partition
