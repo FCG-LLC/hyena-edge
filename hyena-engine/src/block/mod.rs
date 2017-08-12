@@ -51,16 +51,19 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     {
     // data only
 
+    #[inline]
     fn as_slice(&self) -> &[T] {
         let head = self.head();
         &self.as_ref()[..head]
     }
 
+    #[inline]
     fn as_mut_slice(&mut self) -> &mut [T] {
         let head = self.head();
         &mut self.as_mut()[..head]
     }
 
+    #[inline]
     fn as_mut_slice_append(&mut self) -> &mut [T] {
         let head = self.head();
         &mut self.as_mut()[head..]
@@ -68,16 +71,19 @@ pub trait BlockData<'block, T: 'block, I: 'block>
 
     // index only
 
+    #[inline]
     fn as_index_slice(&self) -> &[I] {
         let head = self.head();
         &self.as_ref_index()[..head]
     }
 
+    #[inline]
     fn as_mut_index_slice(&mut self) -> &mut [I] {
         let head = self.head();
         &mut self.as_mut_index()[..head]
     }
 
+    #[inline]
     fn as_mut_index_slice_append(&mut self) -> &mut [I] {
         let head = self.head();
         &mut self.as_mut_index()[head..]
@@ -85,23 +91,27 @@ pub trait BlockData<'block, T: 'block, I: 'block>
 
     // both data and index
 
+    #[inline]
     fn as_indexed_slice(&self) -> (&[I], &[T]) {
         let head = self.head();
         (&self.as_ref_index()[..head], &self.as_ref()[..head])
     }
 
+    #[inline]
     fn as_mut_indexed_slice(&mut self) -> (&mut [I], &mut [T]) {
         let head = self.head();
 
         (&mut [][..], &mut self.as_mut()[..head])
     }
 
+    #[inline]
     fn as_mut_indexed_slice_append(&mut self) -> (&mut [I], &mut [T]) {
         let head = self.head();
 
         (&mut [][..], &mut self.as_mut()[head..])
     }
 
+    #[inline]
     fn is_indexed() -> bool {
         false
     }

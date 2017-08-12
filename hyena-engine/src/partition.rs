@@ -9,8 +9,7 @@ use ty::block::memory::BlockType as MemoryBlockType;
 use std::collections::HashMap;
 #[cfg(feature = "mmap")]
 use ty::block::mmap::BlockType as MmapBlockType;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator,
-                  ParallelIterator};
+use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
 use ty::fragment::FragmentRef;
@@ -83,24 +82,27 @@ impl<'part> Partition<'part> {
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<_>>();
+            });
 
-        ops.as_mut_slice().par_iter_mut().for_each(
-            |&mut (ref mut block, ref data)| {
-                let mut b = acquire!(write block);
+        for (ref mut block, ref data) in ops {
+            let mut b = acquire!(write block);
 
+            let r = map_fragment!(mut map ref b, *data, blk, frg, _fidx, {
+                // destination bounds checking intentionally left out
+                let slen = frg.len();
 
-                map_fragment!(mut map ref b, *data, blk, frg, _fidx, {
-                    // destination bounds checking intentionally left out
-                    let slen = frg.len();
+                {
+                    let mut blkslice = blk.as_mut_slice_append();
+                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                }
 
-                    blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
-                    blk.set_written(slen).unwrap();
+                blk.set_written(slen).unwrap();
 
-                }).unwrap()
-            },
-        );
+            });
+
+            r.unwrap()
+        }
+
 
         // todo: fix this (should be slen)
         Ok(42)
@@ -205,9 +207,10 @@ impl<'part> Partition<'part> {
         &mut self.blocks
     }
 
+    #[inline]
     pub fn ensure_blocks(&mut self, type_map: &BlockTypeMap) -> Result<()> {
         let fmap = type_map
-            .par_iter()
+            .iter()
             .filter_map(|(block_id, block_type)| {
                 if self.blocks.contains_key(block_id) {
                     None
@@ -231,13 +234,15 @@ impl<'part> Partition<'part> {
     }
 
     // TODO: to be benched
-    fn prepare_blocks<'i, P, BT>(root: P, type_map: &'i BT) -> Result<BlockMap<'part>>
+    fn prepare_blocks<'i, P>(
+        root: P,
+        type_map: &'i HashMap<BlockId, BlockType>,
+    ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
-        BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
     {
         type_map
-            .par_iter()
+            .iter()
             .map(|(block_id, block_type)| match *block_type {
                 BlockType::Memory(bty) => {
                     use ty::block::memory::Block;

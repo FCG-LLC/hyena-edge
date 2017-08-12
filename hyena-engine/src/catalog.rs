@@ -198,7 +198,7 @@ impl<'pg> PartitionGroup<'pg> {
         let curidx = partitions.len();
 
         let newparts = ts_idx
-            .par_iter()
+            .iter()
             .skip(if curfrags == 0 { 0 } else { 1 })
             .map(|ts| self.create_partition(**ts))
             .collect::<Result<Vec<_>>>()
@@ -208,16 +208,16 @@ impl<'pg> PartitionGroup<'pg> {
 
         // write data
 
-        partitions
-            .par_iter_mut()
+        for (mut partition, fragment) in partitions
+            .iter_mut()
             .skip(curidx - if curfrags == 0 { 0 } else { 1 })
-            .zip(fragments.par_iter())
-            .for_each(|(mut partition, fragment)| {
-                partition
-                    .append(&typemap, &fragment)
-                    .chain_err(|| "partition append failed")
-                    .unwrap();
-            });
+            .zip(fragments.iter())
+        {
+            partition
+                .append(&typemap, &fragment)
+                .chain_err(|| "partition append failed")
+                .unwrap();
+        }
 
         Ok(0)
     }
