@@ -614,8 +614,8 @@ mod tests {
                 append_test_impl!(append init.0, init.1, init.2, $record_count)
             }};
 
-            (init $columns: expr) => {{
-                use chrono::prelude::*;
+            (init $columns: expr, $ts_min: expr) => {{
+                let ts_min = $ts_min;
 
                 let source_ids = [1, 5, 7];
 
@@ -630,8 +630,6 @@ mod tests {
                 cat.ensure_columns(
                     columns.into(),
                 ).unwrap();
-
-                let ts_min: Timestamp = RandomTimestampGen::random_from(Utc::now().naive_local());
 
                 for source_id in &source_ids {
 
@@ -650,6 +648,13 @@ mod tests {
                 }
 
                 (root, cat, ts_min)
+            }};
+
+            (init $columns: expr) => {{
+                use chrono::prelude::*;
+
+                let ts_min: Timestamp = RandomTimestampGen::random_from(Utc::now().naive_local());
+                append_test_impl!(init $columns, ts_min)
             }};
 
             (init) => {{
@@ -725,10 +730,10 @@ mod tests {
                 let ts_min = $ts_min;
                 let record_count = $record_count;
 
-                let ts = RandomTimestampGen::iter_range_from(ts_min)
-                        .take(record_count)
-                        .collect::<Vec<Timestamp>>()
-                        .into();
+                let mut v = vec![Timestamp::from(0); record_count];
+
+                let ts = seqfill!(Timestamp, &mut v[..], ts_min);
+                let ts = v.into();
 
                 let data = hashmap! {
                     $(
@@ -764,7 +769,6 @@ mod tests {
                     2 => random!(gen u8, record_count).into(),
                     3 => random!(gen u32, record_count).into(),
                 };
-
 
                 let init = append_test_impl!(init columns);
 
@@ -967,6 +971,34 @@ mod tests {
             append_test_impl!(gen append init.0, init.1, ts, data);
         }
 
+        mod seq {
+            use super::*;
+
+            #[test]
+            fn current_only() {
+                use ty::block::mmap::BlockType as BlockTy;
+                let now = <Timestamp as Default>::default();
+
+                let columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                };
+
+                let mut init = append_test_impl!(init columns, now);
+
+                append_test_impl!(seq append
+                    init.0,
+                    init.1,
+                    init.2,
+                    100,
+                    now,
+                    2 => u8,
+                    3 => u32,
+                );
+            }
+        }
     }
 
     mod partition_meta {
