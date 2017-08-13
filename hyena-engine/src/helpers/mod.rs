@@ -84,7 +84,7 @@ pub(crate) mod tests {
             }
         }};
 
-        ($what: expr, $variant: pat, $test: expr) => {
+        ($what: expr, $variant: pat) => {
             assert_variant!($what, $variant, ());
         };
     }
