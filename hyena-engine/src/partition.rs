@@ -411,7 +411,7 @@ mod tests {
                             blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
                             blk.set_written(count).unwrap();
 
-                        }).unwrap()
+                        }, {}).unwrap()
                     },
                 );
             }
@@ -459,7 +459,7 @@ mod tests {
                             // destination bounds checking intentionally left out
                             assert_eq!(blk.len(), frg.len());
                             assert_eq!(blk.as_slice(), frg.as_slice());
-                        }).unwrap()
+                        }, {}).unwrap()
                     },
                 );
         };
@@ -591,7 +591,7 @@ mod tests {
                             blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
                             blk.set_written(slen).unwrap();
 
-                        }).unwrap()
+                        }, {}).unwrap()
                     },
                 );
             }

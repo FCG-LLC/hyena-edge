@@ -266,8 +266,9 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {
-        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $what, Fragment)
+        $dense: block,
+        $sparse: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, Fragment)
     };
 
     (map owned
@@ -276,8 +277,9 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {
-        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $what, Fragment)
+        $dense: block,
+        $sparse: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, Fragment)
     };
 
     (mut map ref
@@ -286,8 +288,9 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {
-        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $what, FragmentRef)
+        $dense: block,
+        $sparse: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, FragmentRef)
     };
 
     (map ref
@@ -296,8 +299,9 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block) => {
-        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $what, FragmentRef)
+        $dense: block,
+        $sparse: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, FragmentRef)
     };
 
     // `public`, map mutable block
@@ -309,14 +313,15 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block,
+        $dense: block,
+        $sparse: block,
         $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                         $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
@@ -328,7 +333,7 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                         $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         mut)
@@ -349,14 +354,15 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block,
+        $dense: block,
+        $sparse: block,
         $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                         $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
@@ -368,7 +374,7 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                         $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         map)
@@ -390,7 +396,8 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block,
+        $dense: block,
+        $sparse: block,
         $ty: ident,
         [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
         $modifiers: tt) => {{
@@ -399,7 +406,7 @@ macro_rules! map_fragment {
             if #[cfg(feature = "block_128")] {
                 macro_rules! __cond {
                     (map) => {{
-                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $what, $ty,
+                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, $ty,
 
                             $(
                                 $bvars, $use,
@@ -418,7 +425,7 @@ macro_rules! map_fragment {
                     }};
 
                     (mut) => {{
-                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                             $ty,
                             $(
                                 $bvars, $use,
@@ -439,7 +446,7 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond {
                     (map) => {{
-                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $what, $ty,
+                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, $ty,
                             $(
                                 $bvars, $use,
 
@@ -457,7 +464,7 @@ macro_rules! map_fragment {
                     }};
 
                     (mut) => {{
-                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $what,
+                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
                             $ty,
                             $(
                                 $bvars, $use,
@@ -490,7 +497,8 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block,
+        $dense: block,
+        $sparse: block,
         $ty: ident,
         $(
             $variant: path,
@@ -517,7 +525,7 @@ macro_rules! map_fragment {
                     $(
                     $dense_var(ref mut $bid) => {
                         if let $ty::$dense_var(ref $fid) = *$frag {
-                            Ok($what)
+                            Ok($dense)
                         } else {
                             Err::<_, Error>("Incompatible block and fragment types".into())
                         }
@@ -529,7 +537,7 @@ macro_rules! map_fragment {
                     $(
                     $sparse_var(ref mut $bid) => {
                         if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
-                            Ok($what)
+                            Ok($sparse)
                         } else {
                             Err("Incompatible block and fragment types".into())
                         }
@@ -549,7 +557,8 @@ macro_rules! map_fragment {
         $bid: ident,
         $fid: ident,
         $fidx: ident,
-        $what: block,
+        $dense: block,
+        $sparse: block,
         $ty: ident,
         $(
             $variant: path,
@@ -575,7 +584,7 @@ macro_rules! map_fragment {
                     $(
                     $dense_var(ref $bid) => {
                         if let $ty::$dense_var(ref $fid) = *$frag {
-                            Ok($what)
+                            Ok($dense)
                         } else {
                             Err::<_, Error>("Incompatible block and fragment types".into())
                         }
@@ -587,7 +596,7 @@ macro_rules! map_fragment {
                     $(
                     $sparse_var(ref $bid) => {
                         if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
-                            Ok($what)
+                            Ok($sparse)
                         } else {
                             Err("Incompatible block and fragment types".into())
                         }
