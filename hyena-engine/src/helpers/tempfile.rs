@@ -1,11 +1,61 @@
 pub(crate) const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
 pub(crate) const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
 
+pub(crate) mod tempdir_tools {
+    use error::*;
+    use std::path::{Path, PathBuf};
+    use std::fs::File;
+    use std::io::Read;
+    use tempdir;
+
+    pub trait TempDirExt: AsRef<Path> {
+        fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
+            self.relative_path(path).exists()
+        }
+
+        fn exists_file<P: AsRef<Path>>(&self, path: P) -> bool {
+            let p = self.relative_path(path);
+
+            p.exists() && p.is_file()
+        }
+
+        fn exists_dir<P: AsRef<Path>>(&self, path: P) -> bool {
+            let p = self.relative_path(path);
+
+            p.exists() && p.is_dir()
+        }
+
+        fn read_vec<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
+            let p = self.relative_path(path);
+
+            if p.exists() && p.is_file() {
+                let mut f = File::open(p).chain_err(|| "unable to open file")?;
+                let mut buf = Vec::new();
+
+                f.read_to_end(&mut buf)
+                    .chain_err(|| "unable to read from file")?;
+
+                Ok(buf)
+            } else {
+                Err("file doesn't exist or is not a file".into())
+            }
+        }
+
+        #[inline]
+        fn relative_path<P: AsRef<Path>>(&self, path: P) -> PathBuf {
+            self.as_ref().join(path)
+        }
+    }
+
+    impl TempDirExt for tempdir::TempDir {}
+}
+
 pub(crate) mod persistent_tempdir {
     use tempdir;
     use std::io::Result;
     use std::path::Path;
     use std::mem::{forget, replace};
+    use super::tempdir_tools::TempDirExt;
 
     #[derive(Debug)]
     pub struct TempDir(Option<tempdir::TempDir>);
@@ -23,6 +73,8 @@ pub(crate) mod persistent_tempdir {
             }
         }
     }
+
+    impl TempDirExt for TempDir {}
 
     impl AsRef<Path> for TempDir {
         fn as_ref(&self) -> &Path {
@@ -235,5 +287,145 @@ mod tests {
             "testfile",
             true,
         );
+    }
+
+    mod tempdir_tools {
+        use super::*;
+        use super::super::tempdir_tools::TempDirExt;
+        use std::fs::{create_dir, remove_dir, remove_file, File};
+        use std::io::{Read, Write};
+
+        fn exists<T: TempDirExt>(td: T, cleanup: bool) {
+            assert!(td.exists(""));
+
+            if cleanup {
+                remove_dir(td)
+                    .chain_err(|| "unable to remove directory")
+                    .unwrap();
+            }
+        }
+
+        fn exists_file<T: TempDirExt>(td: T, cleanup: bool) {
+            let p = td.as_ref().join("testfile");
+
+            {
+                let f = File::create(&p)
+                    .chain_err(|| "unable to create file")
+                    .unwrap();
+            }
+
+            assert!(td.exists_file("testfile"));
+            assert!(!td.exists_dir("testfile"));
+
+            if cleanup {
+                remove_file(p)
+                    .chain_err(|| "unable to remove file")
+                    .unwrap();
+                remove_dir(td)
+                    .chain_err(|| "unable to remove directory")
+                    .unwrap();
+            }
+        }
+
+        fn exists_dir<T: TempDirExt>(td: T, cleanup: bool) {
+            let p = td.as_ref().join("testdir");
+
+            {
+                create_dir(&p)
+                    .chain_err(|| "unable to create directory")
+                    .unwrap();
+            }
+
+            assert!(td.exists_dir("testdir"));
+            assert!(!td.exists_file("testdir"));
+
+            if cleanup {
+                remove_dir(p)
+                    .chain_err(|| "unable to remove directory")
+                    .unwrap();
+                remove_dir(td)
+                    .chain_err(|| "unable to remove directory")
+                    .unwrap();
+            }
+
+        }
+
+        fn read_vec<T: TempDirExt>(td: T, cleanup: bool) {
+            let p = td.as_ref().join("testfile");
+            let testdata = (1..100).collect::<Vec<u8>>();
+
+            {
+                let mut f = File::create(&p)
+                    .chain_err(|| "unable to create file")
+                    .unwrap();
+
+                f.write_all(&testdata)
+                    .chain_err(|| "unable to write test data")
+                    .unwrap();
+            }
+
+            let rdata = td.read_vec(&p)
+                .chain_err(|| "unable to read test data")
+                .unwrap();
+
+            assert_eq!(&testdata[..], &testdata[..]);
+
+            if cleanup {
+                remove_file(p)
+                    .chain_err(|| "unable to remove file")
+                    .unwrap();
+                remove_dir(td)
+                    .chain_err(|| "unable to remove directory")
+                    .unwrap();
+            }
+        }
+
+        mod volatile {
+            use super::*;
+
+            #[test]
+            fn exists() {
+                super::exists(tempdir!(), false)
+            }
+
+            #[test]
+            fn exists_file() {
+                super::exists_file(tempdir!(), false)
+            }
+
+            #[test]
+            fn exists_dir() {
+                super::exists_dir(tempdir!(), false)
+            }
+
+            #[test]
+            fn read_vec() {
+                super::read_vec(tempdir!(), false)
+            }
+        }
+
+        mod persistent {
+            use super::*;
+
+            #[test]
+            fn exists() {
+                super::exists(tempdir!(persistent), true)
+            }
+
+            #[test]
+            fn exists_file() {
+                super::exists_file(tempdir!(persistent), true)
+            }
+
+            #[test]
+            fn exists_dir() {
+                super::exists_dir(tempdir!(persistent), true)
+            }
+
+            #[test]
+            fn read_vec() {
+                super::read_vec(tempdir!(persistent), true)
+            }
+        }
     }
 }
