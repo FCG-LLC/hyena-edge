@@ -84,6 +84,12 @@ impl BlockType {
 
         block_map_expr!(*self, block, { block.size_of() })
     }
+
+    pub fn is_sparse(&self) -> bool {
+        use self::BlockType::*;
+
+        block_map_expr!(*self, block, { block.is_sparse() })
+    }
 }
 
 impl<'block> Block<'block> {
@@ -106,6 +112,13 @@ impl<'block> Block<'block> {
         use self::Block::*;
 
         block_map_expr!(*self, blk, { blk.is_empty() })
+    }
+
+    #[inline]
+    pub fn is_sparse(&self) -> bool {
+        use self::Block::*;
+
+        block_map_expr!(*self, block, { block.is_sparse() })
     }
 }
 

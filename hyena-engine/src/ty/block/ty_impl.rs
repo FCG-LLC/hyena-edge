@@ -76,6 +76,11 @@ macro_rules! block_impl {
                     blk.is_empty()
                 })
             }
+
+            #[inline]
+            pub fn is_sparse(&self) -> bool {
+                BlockType::from(self).is_sparse()
+            }
         }
 
         impl<'block> From<I8DenseBlock<'block, $ST>> for Block<'block> {
@@ -256,6 +261,27 @@ macro_rules! block_impl {
                     I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
                     #[cfg(feature = "block_128")]
                     I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
+                }
+            }
+
+            #[inline]
+            pub fn is_sparse(&self) -> bool {
+                use self::BlockType::*;
+
+                match *self {
+                    I8Dense | U8Dense |
+                    I16Dense | U16Dense |
+                    I32Dense | U32Dense |
+                    I64Dense | U64Dense => false,
+                    #[cfg(feature = "block_128")]
+                    I128Dense | U128Dense => false,
+
+                    I8Sparse | U8Sparse |
+                    I16Sparse | U16Sparse |
+                    I32Sparse | U32Sparse |
+                    I64Sparse | U64Sparse  => true,
+                    #[cfg(feature = "block_128")]
+                    I128Sparse | U128Sparse => true,
                 }
             }
         }
