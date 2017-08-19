@@ -138,28 +138,20 @@ impl Fragment {
         use self::Fragment::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(
-                *self,
-                blk,
-                blk_idx,
-                {
-                    unreachable!()
-                },
-                {
-                    let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
-                        idx
-                    } else {
-                        0
-                    };
+            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+                let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
+                    idx
+                } else {
+                    blk_idx.len()
+                };
 
-                    let fragments = &blk[..].split_at(mid);
-                    let indices = &blk_idx[..].split_at(mid);
-                    (
-                        (fragments.0, indices.0).into(),
-                        (fragments.1, indices.1).into(),
-                    )
-                }
-            ))
+                let fragments = &blk[..].split_at(mid);
+                let indices = &blk_idx[..].split_at(mid);
+                (
+                    (fragments.0, indices.0).into(),
+                    (fragments.1, indices.1).into(),
+                )
+            }))
         } else {
             Err("split_at_idx called on a dense block".into())
         }
@@ -380,7 +372,7 @@ mod tests {
                         }
 
                         #[test]
-                        fn is_spase() {
+                        fn is_sparse() {
                             let buf = (1..100).into_iter().collect::<Vec<$B>>();
 
                             let frag = Fragment::from(buf.clone());
@@ -434,7 +426,7 @@ mod tests {
                         }
 
                         #[test]
-                        fn is_spase() {
+                        fn is_sparse() {
                             let buf = (1..100).into_iter().collect::<Vec<$B>>();
                             let idx = (1..100).into_iter().map(|v| v * 3).collect::<Vec<_>>();
 
@@ -461,6 +453,29 @@ mod tests {
 
                             assert_variant!(right, FragmentRef::$T(_, vidx),
                                             *vidx.first().unwrap() >= 100);
+                        }
+
+                        #[test]
+                        fn split_at_idx_2() {
+                            // 40 dense records
+                            let dense_count = 50;
+                            let sparse_count = 10;
+                            let sparse_step = 4;
+
+                            let buf = seqfill!(vec $B, sparse_count);
+                            let idx = seqfill!(vec u32, sparse_count, 0, sparse_step);
+
+                            let frag = Fragment::from((buf, idx));
+
+                            let (left, right) = frag.split_at_idx(dense_count)
+                                .chain_err(|| "failed to split sparse fragment")
+                                .unwrap();
+
+                            assert_eq!(left.len(), 10);
+                            assert!(right.is_empty());
+
+                            assert_variant!(left, FragmentRef::$T(_, vidx),
+                                            *vidx.last().unwrap() < dense_count);
                         }
                     }
                 )*
