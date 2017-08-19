@@ -1,6 +1,8 @@
 pub(super) mod timestamp;
 #[macro_use]
 pub(super) mod block;
+
+#[macro_use]
 pub mod fragment;
 
 pub(crate) use self::timestamp::{Timestamp, ToTimestampMicros};

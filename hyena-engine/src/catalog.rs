@@ -607,6 +607,7 @@ impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use storage::manager::RootManager;
     use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
 
     fn create_random_partitions(pg: &mut PartitionGroup, im_count: usize, mut_count: usize) {
@@ -638,13 +639,18 @@ mod tests {
         use super::*;
         use params::BLOCK_SIZE;
         use std::mem::size_of;
+        use ty::fragment::Fragment;
+
+        // until const fn stabilizes we have to use this hack
+        // see https://github.com/rust-lang/rust/issues/24111
+
+        // make sure that size_of::<Timestamp>() == 8
+        assert_eq_size!(timestamp_size_check; u64, Timestamp);
+
+        const TIMESTAMP_SIZE: usize = 8; // should be `size_of::<Timestamp>()`
+        const MAX_RECORDS: usize = BLOCK_SIZE / TIMESTAMP_SIZE;
 
         macro_rules! append_test_impl {
-            (init append $record_count: expr) => {{
-                let mut init = append_test_impl!(init);
-                append_test_impl!(append init.0, init.1, init.2, $record_count)
-            }};
-
             (init $columns: expr, $ts_min: expr) => {{
                 let ts_min = $ts_min;
 
@@ -681,98 +687,181 @@ mod tests {
                 (root, cat, ts_min)
             }};
 
-            (init $columns: expr) => {{
-                use chrono::prelude::*;
+            ($schema: expr,
+                $now: expr,
+                $expected_partitions: expr, // Vec<>
+                $([
+                    $ts: expr,
+                    $ts_count: expr,
+                    $block_counts: expr,
+                    $data: expr    // HashMap
+                ]),+ $(,)*) => {{
 
-                let ts_min: Timestamp = RandomTimestampGen::random_from(Utc::now().naive_local());
-                append_test_impl!(init $columns, ts_min)
-            }};
-
-            (init) => {{
                 use ty::block::mmap::BlockType as BlockTy;
+                use ty::block::BlockId;
+                use helpers::tempfile::tempdir_tools::TempDirExt;
+                use params::PARTITION_METADATA;
+                use ty::fragment::Fragment::*;
+                use std::mem::transmute;
 
-                let columns = hashmap! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
-                };
+                let columns = $schema;
+                let expected_partitions = $expected_partitions;
 
-                append_test_impl!(init columns)
-            }};
+                let now = $now;
 
-            (append $root:expr,
-                    $cat: expr,
-                    $ts_min: expr,
-                    $record_count: expr) => {
-                append_test_impl!(rand append $root, $cat, $ts_min, $record_count,
-                    2 => u8,
-                    3 => u32);
-            };
+                let (td, part_ids) = {
 
-            (gen append $root:expr,
-                         $cat: expr,
-                         $ts: expr,
-                         $data: expr) => {{
-                let root = &$root;
-                let mut cat = &mut $cat;
-                let ts = $ts;
-                let data = $data;
+                    let init = append_test_impl!(init columns.clone(), now);
+                    let mut cat = init.1;
 
-                // append
-                let append = Append {
-                    ts,
-                    source_id: 1,
-                    data,
-                };
-
-                cat.append(&append).expect("unable to append fragment");
-            }};
-
-            (rand append $root:expr,
-                         $cat: expr,
-                         $ts_min: expr,
-                         $record_count: expr,
-                         $( $idx: expr => $ty: ty ),+ $(,)*) => {{
-                let ts_min = $ts_min;
-                let record_count = $record_count;
-
-                let ts = RandomTimestampGen::iter_range_from(ts_min)
-                        .take(record_count)
-                        .collect::<Vec<Timestamp>>()
-                        .into();
-
-                let data = hashmap! {
                     $(
-                    $idx => random!(gen $ty, record_count).into(),
+
+                    let block_counts: HashMap<BlockId, (usize, usize, usize)> = $block_counts;
+                    let ts_count = $ts_count;
+                    let data = $data;
+
+                    // assert block counts
+                    for (id, &(count, step, start)) in &block_counts {
+                        assert!(
+                            ts_count >= start + count * step,
+                            "too many records for block {}",
+                            id
+                        );
+                    }
+
+
+                    let append = Append {
+                        ts: $ts,
+                        source_id: 1,
+                        data,
+                    };
+
+
+                    cat.append(&append).expect("unable to append fragment");
+
                     )+
+
+                    let parts = acquire!(read cat.groups[&1].mutable_partitions);
+                    let pids = parts.iter().map(|p| p.get_id()).collect::<Vec<_>>();
+
+                    (init.0, pids)
                 };
 
-                append_test_impl!(gen append $root, $cat, ts, data)
-            }};
+                let root = RootManager::new(&td)
+                    .chain_err(|| "unable to instantiate RootManager")
+                    .unwrap();
 
-            (seq append $root:expr,
-                        $cat: expr,
-                        $ts_min: expr,
-                        $record_count: expr,
-                        $start: expr,
-                        $( $idx: expr => $ty: ty ),+ $(,)*) => {{
+                let pg_root = PartitionGroupManager::new(&root, 1)
+                    .chain_err(|| "unable to instantiate PartitionGroupManager")
+                    .unwrap();
 
-                let ts_min = $ts_min;
-                let record_count = $record_count;
+                    // assert catalog meta data
+                    assert!(td.exists_file(CATALOG_METADATA), "catalog metadata not found");
 
-                let mut v = vec![Timestamp::from(0); record_count];
+                    // assert partition group meta data
+                    assert!(td.exists_file(
+                            pg_root.as_ref().join(PARTITION_GROUP_METADATA)
+                        ),
+                        "partition group metadata not found"
+                    );
 
-                let ts = seqfill!(Timestamp, &mut v[..], ts_min);
-                let ts = v.into();
+                part_ids.par_iter().enumerate().for_each(|(pidx, part_id)| {
 
-                let data = hashmap! {
-                    $(
-                    $idx => seqfill!(vec $ty, record_count, $start).into(),
-                    )+
-                };
+                    let block_data = expected_partitions.get(pidx)
+                        .ok_or_else(|| "expected a partition assertion data")
+                        .unwrap();
 
-                append_test_impl!(gen append $root, $cat, ts, data)
+                    let part_root = PartitionManager::new(&pg_root, part_id, now)
+                        .chain_err(|| "unable to instantiate PartitionManager")
+                        .unwrap();
+
+                    // assert partition meta data
+                    assert!(
+                        td.exists_file(part_root.as_ref().join(PARTITION_METADATA)),
+                        "partition {} metadata not found",
+                        part_id
+                    );
+
+                    // assert blocks
+                    columns.par_iter().for_each(|(id, col)| {
+                        if block_data.contains_key(&id) {
+                            assert!(td.exists_file(
+                                    part_root.as_ref().join(format!("block_{}.data", id))
+                                ),
+                                "couldn't find block {}",
+                                id);
+
+                            if (*col).is_sparse() {
+                                assert!(td.exists_file(
+                                        part_root.as_ref().join(format!("block_{}.index", id))
+                                    ),
+                                    "couldn't find block {} index file",
+                                    id);
+                            }
+                        }
+                    });
+
+                    // assert data
+                    block_data.par_iter().for_each(|(id, frag)| {
+                        frag_apply!(
+                            *frag,
+                            blk,
+                            idx,
+                            {
+                                let block = format!("block_{}.data", id);
+
+                                let bdata = td.read_vec(part_root.as_ref().join(block))
+                                    .chain_err(|| "unable to read block data")
+                                    .unwrap();
+
+                                let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
+
+                                assert_eq!(
+                                    &mapped[..],
+                                    &bdata[..mapped.len()],
+                                    "dense block {} of partition {} ({}) data verification failed",
+                                    id,
+                                    part_id,
+                                    pidx);
+                            },
+                            {
+                                let block = format!("block_{}.data", id);
+                                let index = format!("block_{}.index", id);
+
+                                let bdata = td.read_vec(part_root.as_ref().join(block))
+                                    .chain_err(|| "unable to read block data")
+                                    .unwrap();
+
+                                let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
+
+                                assert_eq!(
+                                    &mapped[..],
+                                    &bdata[..mapped.len()],
+                                    "sparse block {} of partition {} ({}) data verification failed",
+                                    id,
+                                    part_id,
+                                    pidx
+                                );
+
+                                let bidx = td.read_vec(part_root.as_ref().join(index))
+                                    .chain_err(|| "unable to read index data")
+                                    .unwrap();
+
+                                let mapped = unsafe { transmute::<_, &[u8]>(idx.as_slice()) };
+
+                                assert_eq!(
+                                    &mapped[..],
+                                    &bidx[..mapped.len()],
+                                    "sparse block {} of partition {} ({}) index verification \
+                                    failed",
+                                    id,
+                                    part_id,
+                                    pidx
+                                );
+                            }
+                        );
+                    });
+                });
             }};
         }
 
@@ -786,8 +875,6 @@ mod tests {
                 use ty::block::mmap::BlockType as BlockTy;
 
                 let record_count = 1;
-
-                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
 
                 let columns = hashmap! {
                     0 => Column::new(BlockTy::U64Dense.into(), "ts"),
@@ -826,8 +913,6 @@ mod tests {
 
                 let record_count = 100;
 
-                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-
                 let columns = hashmap! {
                     0 => Column::new(BlockTy::U64Dense.into(), "ts"),
                     1 => Column::new(BlockTy::U32Dense.into(), "source"),
@@ -864,8 +949,6 @@ mod tests {
 
                 let record_count = 100;
                 let column_count = 10000;
-
-                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
 
                 let mut columns = hashmap! {
                     0 => Column::new(BlockTy::U64Dense.into(), "ts"),
@@ -904,8 +987,7 @@ mod tests {
             fn big_data(b: &mut Bencher) {
                 use ty::block::mmap::BlockType as BlockTy;
 
-                let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-                let record_count = max_records;
+                let record_count = MAX_RECORDS;
 
                 let columns = hashmap! {
                     0 => Column::new(BlockTy::U64Dense.into(), "ts"),
@@ -939,134 +1021,754 @@ mod tests {
             }
         }
 
-        #[test]
-        fn current_only() {
-            append_test_impl!(init append 100);
-        }
+        mod dense {
+            use super::*;
 
-        #[test]
-        fn current_almost_full() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+            #[test]
+            fn ts_only() {
+                use std::mem::transmute;
 
-            append_test_impl!(init append max_records - 1);
-        }
+                let now = <Timestamp as Default>::default();
 
-        #[test]
-        fn current_full() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+                let record_count = 100;
 
-            append_test_impl!(init append max_records);
-        }
+                let data = seqfill!(vec u64, record_count);
 
-        #[test]
-        fn two() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
+                let v = unsafe { transmute::<_, Vec<Timestamp>>(data.clone()) };
 
-            append_test_impl!(init append max_records + 100);
-        }
+                let mut expected = hashmap! {
+                    0 => Fragment::from(data)
+                };
 
-        #[test]
-        fn two_full() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-
-            append_test_impl!(init append max_records * 2);
-        }
-
-        #[test]
-        fn consecutive_small() {
-            let mut init = append_test_impl!(init);
-
-            append_test_impl!(append init.0, init.1, init.2, 100);
-            append_test_impl!(append init.0, init.1, init.2, 100);
-        }
-
-        #[test]
-        fn consecutive_two() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-            let mut init = append_test_impl!(init);
-
-            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
-            append_test_impl!(append init.0, init.1, init.2, 100);
-        }
-
-        #[test]
-        fn consecutive_two_full() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-            let mut init = append_test_impl!(init);
-
-            append_test_impl!(append init.0, init.1, init.2, max_records);
-            append_test_impl!(append init.0, init.1, init.2, max_records);
-        }
-
-        #[test]
-        fn consecutive_two_overflow() {
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-            let mut init = append_test_impl!(init);
-
-            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
-            append_test_impl!(append init.0, init.1, init.2, max_records + 100);
-        }
-
-        #[test]
-        fn lots_columns() {
-            use ty::block::mmap::BlockType as BlockTy;
-
-            let record_count = 100;
-            let column_count = 10000;
-
-            let max_records = BLOCK_SIZE / size_of::<Timestamp>();
-
-            let mut columns = hashmap! {
-                0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                1 => Column::new(BlockTy::U32Dense.into(), "source"),
-            };
-
-            let mut data = hashmap!{};
-
-            for idx in 2..column_count {
-                columns.insert(
-                    idx,
-                    Column::new(BlockTy::U32Dense.into(), &format!("col{}", idx)),
-                );
-                data.insert(idx, random!(gen u32, record_count).into());
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                    },
+                    now,
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {},
+                        hashmap! {}
+                    ]
+                )
             }
 
-            let mut init = append_test_impl!(init columns);
+            #[test]
+            fn current_only() {
+                let now = <Timestamp as Default>::default();
 
-            let ts = RandomTimestampGen::iter_range_from(init.2)
-                .take(record_count)
-                .collect::<Vec<Timestamp>>()
-                .into();
+                let record_count = 100;
 
-            append_test_impl!(gen append init.0, init.1, ts, data);
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u8, record_count)),
+                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+                };
+
+                let mut expected = data.clone();
+
+                expected.insert(0, Fragment::from(v.clone()));
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn current_full() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = MAX_RECORDS - 1;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u8, record_count)),
+                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+                };
+
+                let mut expected = data.clone();
+
+                expected.insert(0, Fragment::from(v.clone()));
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn two() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = MAX_RECORDS + 100;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u8, record_count)),
+                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+                };
+
+                let mut expected = vec![
+                    hashmap! {
+                        0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
+                        2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
+                        3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS)),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(Vec::from(&v[MAX_RECORDS..])),
+                        2 => Fragment::from(seqfill!(vec u8, 100, MAX_RECORDS)),
+                        3 => Fragment::from(seqfill!(vec u32, 100, MAX_RECORDS)),
+                    },
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn two_full() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = MAX_RECORDS * 2;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u8, record_count)),
+                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+                };
+
+                let mut expected = vec![
+                    hashmap!{},
+                    hashmap! {
+                        0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
+                        2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
+                        3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS)),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(Vec::from(&v[MAX_RECORDS..])),
+                        2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
+                        3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
+                    },
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn consecutive_small() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = 100;
+
+                let mut v_1 = vec![Timestamp::from(0); record_count];
+                let ts_base = seqfill!(Timestamp, &mut v_1[..], now);
+
+                let mut v_2 = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v_2[..], ts_base);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u8, record_count)),
+                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+                };
+
+                let mut expected = vec![
+                    hashmap! {
+                        0 => <Fragment as From<Vec<Timestamp>>>::from(
+                            merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
+                        ),
+                        2 => Fragment::from(multiply_vec!(seqfill!(vec u8, record_count), 2)),
+                        3 => Fragment::from(multiply_vec!(seqfill!(vec u32, record_count), 2)),
+                    },
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v_1.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data.clone()
+                    ],
+                    [
+                        v_2.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn consecutive_two() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count_1 = MAX_RECORDS + 100;
+                let record_count_2 = 100;
+
+                let mut v_1 = vec![Timestamp::from(0); record_count_1];
+                let ts_base = seqfill!(Timestamp, &mut v_1[..], now);
+
+                let mut v_2 = vec![Timestamp::from(0); record_count_2];
+                seqfill!(Timestamp, &mut v_2[..], ts_base);
+
+                let b1_c2 = seqfill!(vec u8, record_count_1);
+                let b1_c3 = seqfill!(vec u32, record_count_1);
+
+                let data_1 = hashmap! {
+                    2 => Fragment::from(b1_c2.clone()),
+                    3 => Fragment::from(b1_c3.clone()),
+                };
+
+                let b2_c2 = seqfill!(vec u8, record_count_2);
+                let b2_c3 = seqfill!(vec u32, record_count_2);
+
+                let data_2 = hashmap! {
+                    2 => Fragment::from(b2_c2.clone()),
+                    3 => Fragment::from(b2_c3.clone()),
+                };
+
+                let expected = vec![
+                    hashmap! {
+                        0 => Fragment::from(v_1[..MAX_RECORDS].to_vec()),
+                        2 => Fragment::from(b1_c2[..MAX_RECORDS].to_vec()),
+                        3 => Fragment::from(b1_c3[..MAX_RECORDS].to_vec()),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(merge_iter!(
+                                into Vec<Timestamp>,
+                                v_1[MAX_RECORDS..].iter().cloned(),
+                                v_2.clone().into_iter()
+                        )),
+                        2 => Fragment::from(merge_iter!(
+                                into Vec<u8>,
+                                b1_c2[MAX_RECORDS..].iter().cloned(),
+                                b2_c2.into_iter()
+                        )),
+                        3 => Fragment::from(merge_iter!(
+                                into Vec<u32>,
+                                b1_c3[MAX_RECORDS..].iter().cloned(),
+                                b2_c3.into_iter()
+                        )),
+                    }
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v_1.into(),
+                        record_count_1,
+                        hashmap! {
+                            2 => (record_count_1, 0, 0),
+                            3 => (record_count_1, 0, 0),
+                        },
+                        data_1
+                    ],
+                    [
+                        v_2.into(),
+                        record_count_2,
+                        hashmap! {
+                            2 => (record_count_2, 0, 0),
+                            3 => (record_count_2, 0, 0),
+                        },
+                        data_2
+                    ]
+                )
+            }
+
+            #[test]
+            fn consecutive_two_full() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count_1 = MAX_RECORDS;
+                let record_count_2 = MAX_RECORDS;
+
+                let mut v_1 = vec![Timestamp::from(0); record_count_1];
+                let ts_base = seqfill!(Timestamp, &mut v_1[..], now);
+
+                let mut v_2 = vec![Timestamp::from(0); record_count_2];
+                seqfill!(Timestamp, &mut v_2[..], ts_base);
+
+                let b1_c2 = seqfill!(vec u8, record_count_1);
+                let b1_c3 = seqfill!(vec u32, record_count_1);
+
+                let data_1 = hashmap! {
+                    2 => Fragment::from(b1_c2.clone()),
+                    3 => Fragment::from(b1_c3.clone()),
+                };
+
+                let b2_c2 = seqfill!(vec u8, record_count_2);
+                let b2_c3 = seqfill!(vec u32, record_count_2);
+
+                let data_2 = hashmap! {
+                    2 => Fragment::from(b2_c2.clone()),
+                    3 => Fragment::from(b2_c3.clone()),
+                };
+
+                let expected = vec![
+                    hashmap! {},
+                    hashmap! {
+                        0 => Fragment::from(v_1.clone()),
+                        2 => Fragment::from(b1_c2),
+                        3 => Fragment::from(b1_c3),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(v_2.clone()),
+                        2 => Fragment::from(b2_c2),
+                        3 => Fragment::from(b2_c3),
+                    },
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v_1.into(),
+                        record_count_1,
+                        hashmap! {
+                            2 => (record_count_1, 0, 0),
+                            3 => (record_count_1, 0, 0),
+                        },
+                        data_1
+                    ],
+                    [
+                        v_2.into(),
+                        record_count_2,
+                        hashmap! {
+                            2 => (record_count_2, 0, 0),
+                            3 => (record_count_2, 0, 0),
+                        },
+                        data_2
+                    ]
+                )
+            }
+
+            #[test]
+            fn consecutive_two_overflow() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count_1 = MAX_RECORDS + 100;
+                let record_count_2 = MAX_RECORDS + 100;
+
+                let mut v_1 = vec![Timestamp::from(0); record_count_1];
+                let ts_base = seqfill!(Timestamp, &mut v_1[..], now);
+
+                let mut v_2 = vec![Timestamp::from(0); record_count_2];
+                seqfill!(Timestamp, &mut v_2[..], ts_base);
+
+                let b1_c2 = seqfill!(vec u8, record_count_1);
+                let b1_c3 = seqfill!(vec u32, record_count_1);
+
+                let data_1 = hashmap! {
+                    2 => Fragment::from(b1_c2.clone()),
+                    3 => Fragment::from(b1_c3.clone()),
+                };
+
+                let b2_c2 = seqfill!(vec u8, record_count_2);
+                let b2_c3 = seqfill!(vec u32, record_count_2);
+
+                let data_2 = hashmap! {
+                    2 => Fragment::from(b2_c2.clone()),
+                    3 => Fragment::from(b2_c3.clone()),
+                };
+
+                let expected = vec![
+                    hashmap! {
+                        0 => Fragment::from(v_1[..MAX_RECORDS].to_vec()),
+                        2 => Fragment::from(b1_c2[..MAX_RECORDS].to_vec()),
+                        3 => Fragment::from(b1_c3[..MAX_RECORDS].to_vec()),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(merge_iter!(
+                                into Vec<Timestamp>,
+                                v_1[MAX_RECORDS..].iter().cloned(),
+                                v_2[..MAX_RECORDS - 100].iter().cloned(),
+                        )),
+                        2 => Fragment::from(merge_iter!(
+                                into Vec<u8>,
+                                b1_c2[MAX_RECORDS..].iter().cloned(),
+                                b2_c2[..MAX_RECORDS - 100].iter().cloned(),
+                        )),
+                        3 => Fragment::from(merge_iter!(
+                                into Vec<u32>,
+                                b1_c3[MAX_RECORDS..].iter().cloned(),
+                                b2_c3[..MAX_RECORDS - 100].iter().cloned(),
+                        )),
+                    },
+                    hashmap! {
+                        0 => Fragment::from(merge_iter!(
+                                into Vec<Timestamp>,
+                                v_2[MAX_RECORDS - 100..].iter().cloned(),
+                        )),
+                        2 => Fragment::from(merge_iter!(
+                                into Vec<u8>,
+                                b2_c2[MAX_RECORDS - 100..].iter().cloned(),
+                        )),
+                        3 => Fragment::from(merge_iter!(
+                                into Vec<u32>,
+                                b2_c3[MAX_RECORDS - 100..].iter().cloned(),
+                        )),
+                    }
+                ];
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    },
+                    now,
+                    expected,
+                    [
+                        v_1.into(),
+                        record_count_1,
+                        hashmap! {
+                            2 => (record_count_1, 0, 0),
+                            3 => (record_count_1, 0, 0),
+                        },
+                        data_1
+                    ],
+                    [
+                        v_2.into(),
+                        record_count_2,
+                        hashmap! {
+                            2 => (record_count_2, 0, 0),
+                            3 => (record_count_2, 0, 0),
+                        },
+                        data_2
+                    ]
+                )
+            }
+
+            #[test]
+            fn u32_10k_columns() {
+                use ty::block::mmap::BlockType as BlockTy;
+
+                let now = <Timestamp as Default>::default();
+
+                let record_count = 100;
+                let column_count = 10_000;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let mut columns = hashmap! {
+                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                };
+
+                let mut data = hashmap!{};
+                let mut expected = hashmap! {
+                    0 => Fragment::from(v.clone()),
+                };
+                let mut counts = hashmap! {};
+
+                for idx in 2..column_count {
+                    columns.insert(
+                        idx,
+                        Column::new(BlockTy::U32Dense.into(), &format!("col{}", idx)),
+                    );
+
+                    let d = seqfill!(vec u32, record_count);
+
+                    data.insert(idx, Fragment::from(d.clone()));
+
+                    expected.insert(idx, Fragment::from(d));
+
+                    counts.insert(idx, (record_count, 0, 0));
+                }
+
+                append_test_impl!(
+                    columns,
+                    now,
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        counts,
+                        data
+                    ],
+                )
+            }
         }
 
-        mod seq {
+        mod sparse {
             use super::*;
 
             #[test]
             fn current_only() {
-                use ty::block::mmap::BlockType as BlockTy;
                 let now = <Timestamp as Default>::default();
 
-                let columns = hashmap! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                let record_count = 100;
+                let sparse_count_2 = 25;
+                let sparse_step_2 = 4;
+                let sparse_count_3 = 14;
+                let sparse_step_3 = 7;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
+                            seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
+                        )),
+                    3 => Fragment::from((seqfill!(vec u32, sparse_count_3),
+                            seqfill!(vec u32, sparse_count_3, 0, sparse_step_3)
+                        )),
                 };
 
-                let mut init = append_test_impl!(init columns, now);
+                let mut expected = data.clone();
 
-                append_test_impl!(seq append
-                    init.0,
-                    init.1,
-                    init.2,
-                    100,
+                expected.insert(0, Fragment::from(v.clone()));
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Sparse.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Sparse.into(), "col2"),
+                    },
                     now,
-                    2 => u8,
-                    3 => u32,
-                );
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (sparse_count_2, sparse_step_2, 0),
+                            3 => (sparse_count_3, sparse_step_3, 0),
+                        },
+                        data
+                    ]
+                )
+            }
+
+            #[test]
+            fn consecutive_two() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = 100;
+                let sparse_count_2 = 25;
+                let sparse_step_2 = 4;
+                let sparse_count_3 = 14;
+                let sparse_step_3 = 7;
+
+                let mut v_1 = vec![Timestamp::from(0); record_count];
+                let ts_start = seqfill!(Timestamp, &mut v_1[..], now);
+
+                let data_1 = hashmap! {
+                    2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
+                            seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
+                        )),
+                    3 => Fragment::from((seqfill!(vec u32, sparse_count_3),
+                            seqfill!(vec u32, sparse_count_3, 0, sparse_step_3)
+                        )),
+                };
+
+                let mut v_2 = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v_2[..], ts_start);
+
+                let data_2 = hashmap! {
+                    2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
+                            seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
+                        )),
+                    3 => Fragment::from((seqfill!(vec u32, sparse_count_3),
+                            seqfill!(vec u32, sparse_count_3, 0, sparse_step_3)
+                        )),
+                };
+
+                let expected = hashmap! {
+                    0 => Fragment::from(
+                        v_1.clone().into_iter().chain(v_2.clone().into_iter()).collect::<Vec<_>>()
+                    ),
+                    2 => Fragment::from(({
+                                let mut v = seqfill!(vec u8, sparse_count_2);
+                                let mut vc = v.clone();
+                                v.append(&mut vc);
+                                v
+                            },
+                            seqfill!(vec u32, sparse_count_2 * 2, 0, sparse_step_2)
+                        )),
+                    3 => Fragment::from(({
+                                let mut v = seqfill!(vec u32, sparse_count_3);
+                                let mut vc = v.clone();
+                                v.append(&mut vc);
+                                v
+                            },
+                            seqfill!(vec u32, sparse_count_3 * 2, 0, sparse_step_3)
+                        )),
+                };
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Sparse.into(), "col1"),
+                        3 => Column::new(BlockTy::U32Sparse.into(), "col2"),
+                    },
+                    now,
+                    vec![expected],
+                    [
+                        v_1.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (sparse_count_2, sparse_step_2, 0),
+                            3 => (sparse_count_3, sparse_step_3, 0),
+                        },
+                        data_1
+                    ],
+                    [
+                        v_2.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (sparse_count_2, sparse_step_2, 0),
+                            3 => (sparse_count_3, sparse_step_3, 0),
+                        },
+                        data_2
+                    ]
+                )
+            }
+
+            #[test]
+            fn single_full() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = MAX_RECORDS;
+                let sparse_count_2 = MAX_RECORDS / 2;
+                let sparse_step_2 = 2;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
+                            seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
+                        )),
+                };
+
+                let mut expected = data.clone();
+
+                expected.insert(0, Fragment::from(v.clone()));
+
+                append_test_impl!(
+                    hashmap! {
+                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
+                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
+                        2 => Column::new(BlockTy::U8Sparse.into(), "col1"),
+                    },
+                    now,
+                    vec![hashmap!{}, expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (sparse_count_2, sparse_step_2, 0),
+                        },
+                        data
+                    ]
+                )
             }
         }
     }

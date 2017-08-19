@@ -31,6 +31,9 @@ extern crate rand;
 #[cfg(feature = "perf")]
 extern crate flame;
 
+#[macro_use]
+extern crate static_assertions;
+
 pub(crate) mod params;
 
 mod error;
