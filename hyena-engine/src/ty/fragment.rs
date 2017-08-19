@@ -156,6 +156,18 @@ impl Fragment {
             Err("split_at_idx called on a dense block".into())
         }
     }
+
+    pub fn len(&self) -> usize {
+        use self::Fragment::*;
+
+        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        use self::Fragment::*;
+
+        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
+    }
 }
 
 impl<'fragref> FragmentRef<'fragref> {
@@ -197,31 +209,35 @@ impl<'fragref> FragmentRef<'fragref> {
         use self::FragmentRef::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(
-                *self,
-                blk,
-                blk_idx,
-                {
-                    unreachable!()
-                },
-                {
-                    let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
-                        idx
-                    } else {
-                        0
-                    };
+            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+                let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
+                    idx
+                } else {
+                    blk_idx.len()
+                };
 
-                    let fragments = &blk[..].split_at(mid);
-                    let indices = &blk_idx[..].split_at(mid);
-                    (
-                        (fragments.0, indices.0).into(),
-                        (fragments.1, indices.1).into(),
-                    )
-                }
-            ))
+                let fragments = &blk[..].split_at(mid);
+                let indices = &blk_idx[..].split_at(mid);
+                (
+                    (fragments.0, indices.0).into(),
+                    (fragments.1, indices.1).into(),
+                )
+            }))
         } else {
             Err("split_at_idx called on a dense block".into())
         }
+    }
+
+    pub fn len(&self) -> usize {
+        use self::FragmentRef::*;
+
+        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        use self::FragmentRef::*;
+
+        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
     }
 }
 
@@ -344,6 +360,12 @@ impl From<Vec<Timestamp>> for TimestampFragment {
 impl From<TimestampFragment> for Fragment {
     fn from(source: TimestampFragment) -> Fragment {
         Fragment::from(unsafe { transmute::<Vec<Timestamp>, Vec<u64>>(source.0) })
+    }
+}
+
+impl From<Vec<Timestamp>> for Fragment {
+    fn from(source: Vec<Timestamp>) -> Fragment {
+        Fragment::from(unsafe { transmute::<Vec<Timestamp>, Vec<u64>>(source) })
     }
 }
 
