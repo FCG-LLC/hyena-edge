@@ -51,6 +51,42 @@ pub(crate) mod tests {
         }};
     }
 
+    macro_rules! multiply_vec {
+        ($vec: expr, $count: expr) => {{
+            let count = $count;
+            let vec = $vec;
+
+            let mut v = Vec::from($vec);
+            for i in 1..count {
+                v.extend(&vec);
+            }
+
+            v
+        }};
+    }
+
+    macro_rules! merge_iter {
+        (into $ty: ty, $base: expr, $( $it: expr ),* $(,)*) => {{
+            let it = $base;
+
+            $(
+                let it = it.chain($it);
+            )*
+
+            it.collect::<$ty>()
+        }};
+
+        ($base: expr, $( $it: expr ),* $(,)*) => {{
+            let it = $base;
+
+            $(
+                let it = it.chain($it);
+            )*
+
+            it.collect()
+        }};
+    }
+
     macro_rules! count {
         ($cur: ident $(, $tail: ident)* $(,)*) => {
             1 + count!($($tail,)*)
