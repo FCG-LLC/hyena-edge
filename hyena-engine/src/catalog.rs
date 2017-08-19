@@ -1,5 +1,6 @@
 use error::*;
 use ty::{BlockType, ColumnId, Timestamp};
+use block::SparseIndex;
 use partition::{Partition, PartitionId};
 use storage::manager::{PartitionGroupManager, PartitionManager};
 use std::collections::hash_map::HashMap;
@@ -118,7 +119,15 @@ impl<'pg> PartitionGroup<'pg> {
             let emptycap = catalog.space_for_blocks(&colindices);
             let currentcap = curpart.space_for_blocks(&colindices);
 
-            (emptycap, currentcap)
+            (
+                emptycap,
+                // check if current partition exceeded its capacity or is simply uninitialized
+                if currentcap == 0 && curpart.is_empty() {
+                    emptycap
+                } else {
+                    currentcap
+                },
+            )
         };
 
         // check if we can fit the data within current partition
@@ -141,7 +150,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         let mut fragments = Vec::with_capacity(reqparts + 1);
 
-        let (mut fragments, ts_1, mut frag_1, mut ts_idx) = once(curfrags)
+        let (mut fragments, ts_1, mut frag_1, mut ts_idx, mut offsets) = once(curfrags)
             .filter(|c| *c != 0)
             .chain(repeat(emptycap).take(reqparts))
             .fold(
@@ -153,20 +162,40 @@ impl<'pg> PartitionGroup<'pg> {
                         .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag)))
                         .collect::<HashMap<_, _>>(),
                     vec![],
+                    vec![0],
                 ),
                 |store, mid| {
 
-                    let (mut fragments, ts_data, frag_data, mut ts_idx) = store;
+                    let (mut fragments, ts_data, frag_data, mut ts_idx, mut offsets) = store;
+
+                    // when dealing with sparse blocks we don't know beforehand which
+                    // partition a sparse entry will belong to
+                    // but as our splitting algorithm calculates the capacity with an assumption
+                    // that sparse blocks are in fact dense, the "overflow" of sparse data
+                    // shouldn't happen
 
                     let (ts_0, ts_1) = ts_data.split_at(mid);
                     let (mut frag_0, frag_1) = frag_data.iter().fold(
                         (HashMap::new(), HashMap::new()),
                         |acc, (col_id, frag)| {
                             let (mut hm_0, mut hm_1) = acc;
-                            let (frag_0, frag_1) = frag.split_at(mid);
 
-                            hm_0.insert(*col_id, frag_0);
-                            hm_1.insert(*col_id, frag_1);
+                            if frag.is_sparse() {
+                                // this uses unsafe conversion usize -> u32
+                                // in reality we shouldn't ever use mid > u32::MAX
+                                // it's still worth to consider adding some check
+                                let (frag_0, frag_1) = frag.split_at_idx(mid as SparseIndex)
+                                    .chain_err(|| "unable to split sparse fragment")
+                                    .unwrap();
+
+                                hm_0.insert(*col_id, frag_0);
+                                hm_1.insert(*col_id, frag_1);
+                            } else {
+                                let (frag_0, frag_1) = frag.split_at(mid);
+
+                                hm_0.insert(*col_id, frag_0);
+                                hm_1.insert(*col_id, frag_1);
+                            }
 
                             (hm_0, hm_1)
                         },
@@ -181,8 +210,9 @@ impl<'pg> PartitionGroup<'pg> {
                     );
                     frag_0.insert(0, FragmentRef::from(&ts_0[..]));
                     fragments.push(frag_0);
+                    offsets.push(mid);
 
-                    (fragments, ts_1, frag_1, ts_idx)
+                    (fragments, ts_1, frag_1, ts_idx, offsets)
                 },
             );
 
@@ -209,13 +239,14 @@ impl<'pg> PartitionGroup<'pg> {
 
         // write data
 
-        for (mut partition, fragment) in partitions
+        for ((mut partition, fragment), offset) in partitions
             .iter_mut()
             .skip(curidx - if current_is_full { 0 } else { 1 })
             .zip(fragments.iter())
+            .zip(offsets.iter())
         {
             partition
-                .append(&typemap, &fragment)
+                .append(&typemap, &fragment, *offset as SparseIndex)
                 .chain_err(|| "partition append failed")
                 .unwrap();
         }

@@ -1,7 +1,7 @@
 use error::*;
 use uuid::Uuid;
 
-use block::{BlockData, BufferHead};
+use block::{BlockData, BufferHead, SparseIndex};
 use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -64,30 +64,45 @@ impl<'part> Partition<'part> {
         Partition::deserialize(&meta, &root)
     }
 
+    pub fn len(&self) -> usize {
+        if !self.blocks.is_empty() {
+            if let Some(block) = self.blocks.get(&0) {
+                let b = acquire!(read block);
+                return b.len();
+            }
+        }
+
+        0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.blocks.is_empty() || self.len() != 0
+    }
+
     pub(crate) fn append<'frag>(
         &mut self,
         blockmap: &BlockTypeMap,
         frags: &BlockRefData<'frag>,
+        offset: SparseIndex,
     ) -> Result<usize> {
 
         self.ensure_blocks(&blockmap)
             .chain_err(|| "Unable to create block map")
             .unwrap();
-
-        let mut ops = frags
-            .iter()
-            .filter_map(|(ref blk_idx, ref frag)| {
-                if let Some(block) = self.blocks.get(blk_idx) {
-                    Some((block, frags.get(blk_idx).unwrap()))
-                } else {
-                    None
-                }
-            });
+        let mut ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
+            if let Some(block) = self.blocks.get(blk_idx) {
+                trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
+                Some((block, frags.get(blk_idx).unwrap()))
+            } else {
+                None
+            }
+        });
 
         for (ref mut block, ref data) in ops {
             let mut b = acquire!(write block);
+            let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
+                // dense block handler
 
-            let r = map_fragment!(mut map ref b, *data, blk, frg, _fidx, {
                 // destination bounds checking intentionally left out
                 let slen = frg.len();
 
@@ -97,7 +112,31 @@ impl<'part> Partition<'part> {
                 }
 
                 blk.set_written(slen).unwrap();
+            }, {
+                // sparse block handler
 
+                // destination bounds checking intentionally left out
+                let slen = frg.len();
+
+                let block_offset = if let Some(offset) = blk.as_index_slice().last() {
+                    *offset + 1
+                } else {
+                    0
+                };
+
+                {
+                    let (mut blkindex, mut blkslice) = blk.as_mut_indexed_slice_append();
+
+                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                    &mut blkindex[..slen].copy_from_slice(&fidx[..]);
+
+                    // adjust the offset
+                    &mut blkindex[..slen].par_iter_mut().for_each(|idx| {
+                        *idx = *idx - offset + block_offset;
+                    });
+                }
+
+                blk.set_written(slen).unwrap();
             });
 
             r.unwrap()
