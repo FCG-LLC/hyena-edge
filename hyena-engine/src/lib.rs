@@ -53,6 +53,7 @@ mod ty;
 mod partition;
 mod catalog;
 mod mutator;
+mod scanner;
 
 #[cfg(test)]
 mod tests {
