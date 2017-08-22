@@ -6,7 +6,7 @@ use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap, Timest
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use ty::block::memory::BlockType as MemoryBlockType;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use ty::block::mmap::BlockType as MmapBlockType;
 use rayon::prelude::*;
@@ -14,6 +14,7 @@ use params::PARTITION_METADATA;
 use std::sync::RwLock;
 use ty::fragment::FragmentRef;
 use mutator::BlockRefData;
+use scanner::{Scan, ScanFilterApply, ScanResult};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -145,6 +146,110 @@ impl<'part> Partition<'part> {
 
         // todo: fix this (should be slen)
         Ok(42)
+    }
+
+    pub(crate) fn scan(&self, scan: &Scan) -> Result<ScanResult> {
+        // only filters and projection for now
+        // full ts range
+
+        // filter
+
+        let rowids: HashSet<usize> = scan.filters
+            .par_iter()
+            .map(|(block_id, filters)| {
+                if let Some(block) = self.blocks.get(block_id) {
+                    let block = acquire!(read block);
+
+                    Some(map_block!(map block, blk, {
+                        blk.as_slice()
+                            .par_iter()
+                            .enumerate()
+                            .filter_map(|(rowid, val)| if filters.iter().all(|f| f.apply(val)) {
+                                Some(rowid)
+                            } else { None })
+                            .collect::<HashSet<usize>>()
+                    }, {
+                        let (idx, data) = blk.as_indexed_slice();
+                        idx
+                            .par_iter()
+                            .zip(data)
+                            .filter_map(|(rowid, val)| if filters.iter().all(|f| f.apply(val)) {
+                                Some(*rowid as usize)
+                            } else { None })
+                            .collect::<HashSet<usize>>()
+                    }))
+                } else {
+                    // if this is a sparse block, then it's a valid case
+                    // so we'll leave the decision whether scan failed or not here
+                    // to our caller (who has access to the catalog)
+
+                    Some(HashSet::new())
+                }
+            })
+            .reduce(
+                || None,
+                |a, b| if a.is_none() {
+                    b
+                } else if b.is_none() {
+                    a
+                } else {
+                    Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
+                },
+            )
+            .ok_or_else(|| "scan error")
+            .unwrap();
+
+        use ty::fragment::Fragment;
+
+        let all_columns = if scan.projection.is_some() {
+            None
+        } else {
+            Some(self.blocks.keys().cloned().collect::<Vec<_>>())
+        };
+
+        // materialize
+        let materialized = if scan.projection.is_some() {
+            scan.projection.as_ref().unwrap()
+        } else {
+            all_columns.as_ref().unwrap()
+        }.par_iter()
+            .map(|block_id| {
+                if let Some(block) = self.blocks.get(block_id) {
+                    let block = acquire!(read block);
+
+                    Ok((
+                        *block_id,
+                        Some(map_block!(map block, blk, {
+
+                        Fragment::from(blk.as_slice()
+                            .par_iter()
+                            .enumerate()
+                            .filter_map(|(rowid, val)| if rowids.contains(&rowid) {
+                                Some(*val)
+                            } else { None })
+                            .collect::<Vec<_>>())
+                    }, {
+                        let (idx, data) = blk.as_indexed_slice();
+                        Fragment::from(idx
+                            .par_iter()
+                            .zip(data)
+                            .filter_map(|(rowid, val)| if rowids.contains(&(*rowid as usize)) {
+                                Some(*val)
+                            } else { None })
+                            .collect::<Vec<_>>())
+                    })),
+                    ))
+                } else {
+                    // if this is a sparse block, then it's a valid case
+                    // so we'll leave the decision whether scan failed or not here
+                    // to our caller (who has access to the catalog)
+
+                    Ok((*block_id, None))
+                }
+            })
+            .collect::<Result<HashMap<_, _>>>();
+
+        materialized.map(|m| m.into())
     }
 
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
