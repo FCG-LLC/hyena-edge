@@ -12,6 +12,12 @@ clap = "2.24.2"
 flexi_logger = "0.6.8"
 log = "0.3.8"
 dotenv = "0.10.1"
+futures = "0.1"
+tokio-core = "0.1"
+bytes = "0.4"
+tokio-io = "0.1"
+tokio-proto = "0.1"
+tokio-service = "0.1"
 
 [dependencies.hyena-engine]
 optional = false
@@ -19,4 +25,11 @@ path = "hyena-engine"
 
 [dependencies.colored_logger]
 git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
+optional = false
+
+[dependencies.nanomsg]
+git = "ssh://git@github.com/FCG-LLC/nanomsg-rs.git"
+
+[dependencies.nanomsg-tokio]
+git = "ssh://git@github.com/FCG-LLC/nanomsg-tokio.git"
 optional = false
