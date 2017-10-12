@@ -2,7 +2,7 @@ use error::*;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
-
+use serde::{Serialize};
 
 #[macro_use]
 pub(crate) mod ty_impl;
@@ -45,7 +45,7 @@ impl From<BlockTypeMapTy> for BlockTypeMap {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Block<'block> {
     Memory(memory::Block<'block>),
     #[cfg(feature = "mmap")]

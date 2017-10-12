@@ -4,6 +4,10 @@ use futures::{future, Future, Stream};
 use tokio_core::reactor::Core;
 use nanomsg_tokio::Socket as NanoSocket;
 use nanomsg::Protocol;
+use bincode::{serialize, Infinite};
+
+use hyena_engine::api::{ApiRequest, run_request};
+use hyena_engine::catalog::Catalog;
 
 fn get_address(matches: &clap::ArgMatches) -> String {
     let transport = matches.value_of("transport").unwrap();
@@ -15,6 +19,16 @@ fn get_address(matches: &clap::ArgMatches) -> String {
         "ipc" => format!("{}://{}", transport, ipc_path),
         _     => format!("{}://{}:{}", transport, hostname, port)
     }
+}
+
+fn process_message(msg: Vec<u8>, catalog: &Catalog) -> Vec<u8> {
+    println!("Got: {:?}", msg);
+    let operation = ApiRequest::parse(msg);
+    println!("Operation: {:?}", operation);
+    let reply = run_request(operation, catalog);
+    println!("Returning: {:?}", reply);
+
+    serialize(&reply, Infinite).unwrap()
 }
 
 pub fn run(matches: &clap::ArgMatches) {
@@ -32,14 +46,11 @@ pub fn run(matches: &clap::ArgMatches) {
         .expect("Unable to bind nanomsg endpoint");
 
     let (writer, reader) = nano_socket.split();
+    let catalog = Catalog::open_or_create(matches.value_of("data_dir").unwrap());
 
-    let responses = reader.map(|mut msg| {
-        println!("Got: {:?}", msg);
-        msg.reverse();
-        msg
-    });
-
-    let server = responses.forward(writer).then(|_| future::ok::<(), ()>(()));
+    let server = reader.map(move |msg| {
+        process_message(msg, &catalog)
+    }).forward(writer).then(|_| future::ok::<(), ()>(()));
 
     handle.spawn(server);
 

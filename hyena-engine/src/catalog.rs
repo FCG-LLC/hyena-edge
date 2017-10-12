@@ -459,6 +459,13 @@ impl<'cat> Catalog<'cat> {
         Catalog::deserialize(&meta, &root)
     }
 
+    pub fn open_or_create<P: AsRef<Path> + Clone>(root: P) -> Catalog<'cat> {
+        match Catalog::with_data(root.clone()) {
+            Ok(catalog) => catalog,
+            _ => Catalog::new(root).unwrap()
+        }
+    }
+
     pub fn append(&self, data: &Append) -> Result<usize> {
         if data.is_empty() {
             bail!("Provided Append contains no data");
