@@ -1,11 +1,12 @@
 use bincode::{serialize, deserialize, Infinite};
 use catalog::{Catalog, Column, ColumnMap};
 use ty::{Block, BlockType};
+use ty::block::memory::BlockType as MemBlockType;
 // use storage::manager::{Manager, BlockCache};
 // use int_blocks::{Block, Int32SparseBlock, Int64DenseBlock, Int64SparseBlock, Scannable, Deletable, Movable, Upsertable};
 // use std::time::Instant;
 // use scan::{BlockScanConsumer};
-use serde::{Serialize, Serializer};
+use std::collections::hash_map::HashMap;
 
 #[derive(Serialize, Debug)]
 pub struct InsertMessage<'a> {
@@ -80,7 +81,7 @@ pub struct ScanRequest {
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct AddColumnRequest {
     pub column_name: String,
-    pub column_type: BlockType
+    pub column_type: MemBlockType
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -135,41 +136,54 @@ impl<'a> ApiMessage {
     //     compaction_request
     // }
 
-    // pub fn extract_add_column_message(&self) -> AddColumnRequest {
-    //     assert_eq!(self.op_type, ApiOperation::AddColumn);
+    pub fn extract_add_column_message(&self) -> AddColumnRequest {
+        deserialize(&self.payload[..]).unwrap()
+    }
 
-    //     let column_message = deserialize(&self.payload[..]).unwrap();
-    //     column_message
-    // }
-
-    pub fn to_operation(self) -> ApiRequest<'a> {
+    pub fn to_operation(self) -> ApiRequest {
         match self.op_type {
-            ListColumns => ApiRequest::ListColumns,
+            ApiOperation::ListColumns => ApiRequest::ListColumns,
             //Insert    => ApiRequest::Insert(self.extract_insert_message()),
-            //AddColumn => ApiRequest::AddColumn(self.extract_data_compaction_request()),
+            ApiOperation::AddColumn => ApiRequest::AddColumn(self.extract_add_column_message()),
             _         => ApiRequest::Other
         }
     }
 }
 
-#[derive(Debug)]
-pub enum ApiRequest<'a> {
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ApiRequest {
     ListColumns,
+    Insert, //(InsertMessage<'a>),
+    Scan,
+    RefreshCatalog,
     AddColumn(AddColumnRequest),
-    Insert(InsertMessage<'a>),
+    Flush,
+    DataCompaction,
     Other
 }
 
-impl <'a> ApiRequest<'a> {
-    pub fn parse(data: Vec<u8>) -> ApiRequest<'a> {
-        let message: ApiMessage = deserialize(&data[..]).unwrap();
-        message.to_operation()
+impl ApiRequest {
+    pub fn parse(data: Vec<u8>) -> ApiRequest {
+        let message: ApiRequest = deserialize(&data[..]).unwrap();
+        message
     }
 }
 
 #[derive(Debug, Serialize)]
+pub struct ReplyColumn {
+    typ: MemBlockType,
+    name: String
+}
+
+#[derive(Debug, Serialize)]
 pub enum ApiReply {
-    ListColumns(Vec<String>),
+    ListColumns(Vec<ReplyColumn>),
+    Insert,
+    Scan,
+    RefreshCatalog,
+    AddColumn,
+    Flush,
+    DataCompaction,
     Other
 }
 
@@ -187,13 +201,28 @@ pub enum ApiReply {
 
 impl ApiReply {
 
-    fn list_columns(catalog: &Catalog) -> ApiReply {
+    fn list_columns(catalog: & Catalog) -> ApiReply {
+        use std::ops::Deref;
+
         let cm : &ColumnMap = catalog.as_ref();
-        let mut names = vec!["dummy".to_owned()];
+        let mut names = vec![]; //vec!["dummy".to_owned()];
         for column in cm.values() {
-            names.push(format!("{}", column))
+            match *column.deref() {
+                BlockType::Memory(typ) => names.push(ReplyColumn{typ: typ, name: format!("{}", column)}),
+                _ => () // TODO
+            };
         }
         ApiReply::ListColumns(names)
+    }
+
+    fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> ApiReply {
+        let column = Column::new(BlockType::Memory(request.column_type), request.column_name.as_str());
+        let id = 0;
+        let mut map = HashMap::new();
+        map.insert(id, column);
+
+        catalog.ensure_columns(map).ok();
+        ApiReply::AddColumn
     }
 
     // fn serialize_columns<S: Serializer>(&self, columns: &Vec<String>, serializer: &S) -> Result<S::Ok, S::Error> {
@@ -218,9 +247,10 @@ impl<'message> ScanResultMessage<'message> {
 }
 
 
-pub fn run_request(req: ApiRequest, catalog: &Catalog) -> ApiReply {
+pub fn run_request(req: ApiRequest, catalog: &mut Catalog) -> ApiReply {
     match req {
         ApiRequest::ListColumns => ApiReply::list_columns(catalog),
+        ApiRequest::AddColumn(request) => ApiReply::add_column(request, catalog),
         _ => ApiReply::Other
     }
 }

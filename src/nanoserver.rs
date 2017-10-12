@@ -21,12 +21,12 @@ fn get_address(matches: &clap::ArgMatches) -> String {
     }
 }
 
-fn process_message(msg: Vec<u8>, catalog: &Catalog) -> Vec<u8> {
+fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
     println!("Got: {:?}", msg);
     let operation = ApiRequest::parse(msg);
     println!("Operation: {:?}", operation);
     let reply = run_request(operation, catalog);
-    println!("Returning: {:?}", reply);
+    println!("Returning: {:?}\n{:?}", reply, serialize(&reply, Infinite).unwrap());
 
     serialize(&reply, Infinite).unwrap()
 }
@@ -46,10 +46,10 @@ pub fn run(matches: &clap::ArgMatches) {
         .expect("Unable to bind nanomsg endpoint");
 
     let (writer, reader) = nano_socket.split();
-    let catalog = Catalog::open_or_create(matches.value_of("data_dir").unwrap());
+    let mut catalog = Catalog::open_or_create(matches.value_of("data_dir").unwrap());
 
     let server = reader.map(move |msg| {
-        process_message(msg, &catalog)
+        process_message(msg, &mut catalog)
     }).forward(writer).then(|_| future::ok::<(), ()>(()));
 
     handle.spawn(server);
