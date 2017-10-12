@@ -56,9 +56,10 @@ mod block;
 #[macro_use]
 mod ty;
 mod partition;
-mod catalog;
+pub mod catalog;
 mod mutator;
 mod scanner;
+pub mod api;
 
 #[cfg(test)]
 mod tests {

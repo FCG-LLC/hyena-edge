@@ -1,6 +1,6 @@
 use block::{DenseNumericBlock, SparseIndexedNumericBlock};
 use storage::Storage;
-
+use serde::{Serialize, Serializer};
 
 macro_rules! block_impl {
     ($ST: ty, $SI: ty) => {
@@ -10,7 +10,8 @@ macro_rules! block_impl {
         use std::collections::hash_map::HashMap;
         use std::sync::RwLock;
         use block::BlockData;
-
+        use serde::{Serialize, Serializer};
+        use std::result::Result as StdResult;
 
         pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
@@ -80,6 +81,18 @@ macro_rules! block_impl {
             #[inline]
             pub fn is_sparse(&self) -> bool {
                 BlockType::from(self).is_sparse()
+            }
+        }
+
+        impl<'block> Serialize for Block<'block> {
+            fn serialize<S>(&self, serializer: S) -> StdResult<S::Ok, S::Error>
+                where S: Serializer
+            {
+                use self::Block::*;
+
+                block_map_expr!(*self, blk, {
+                    blk.as_ref().serialize(serializer)
+                })
             }
         }
 

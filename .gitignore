@@ -1,3 +1,4 @@
 hyena-engine/Cargo.lock
+Cargo.lock
 target/
 **/*.rs.bk
