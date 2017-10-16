@@ -1,19 +1,13 @@
 use block::{DenseNumericBlock, SparseIndexedNumericBlock};
 use storage::Storage;
-use serde::{Serialize, Serializer};
 
 macro_rules! block_impl {
     ($ST: ty, $SI: ty) => {
         use ty::block::ty_impl::*;
-        use ty::block::{Block as TyBlock, BlockType as TyBlockType, BlockTypeMapTy,
-                        BlockTypeMap as TyBlockTypeMap};
-        use std::collections::hash_map::HashMap;
         use std::sync::RwLock;
         use block::BlockData;
         use serde::{Serialize, Serializer};
         use std::result::Result as StdResult;
-
-        pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
         #[derive(Debug)]
         pub enum Block<'block> {
@@ -225,79 +219,7 @@ macro_rules! block_impl {
             }
         }
 
-        // only for serialization/deserialization purposes
-
-        #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-        pub enum BlockType {
-            I8Dense,
-            I16Dense,
-            I32Dense,
-            I64Dense,
-            #[cfg(feature = "block_128")]
-            I128Dense,
-
-            // Dense, Unsigned
-            U8Dense,
-            U16Dense,
-            U32Dense,
-            U64Dense,
-            #[cfg(feature = "block_128")]
-            U128Dense,
-
-            // Sparse, Signed
-            I8Sparse,
-            I16Sparse,
-            I32Sparse,
-            I64Sparse,
-            #[cfg(feature = "block_128")]
-            I128Sparse,
-
-            // Sparse, Unsigned
-            U8Sparse,
-            U16Sparse,
-            U32Sparse,
-            U64Sparse,
-            #[cfg(feature = "block_128")]
-            U128Sparse,
-        }
-
-        impl BlockType {
-            #[inline]
-            pub fn size_of(&self) -> usize {
-                use std::mem::size_of;
-                use self::BlockType::*;
-
-                match *self {
-                    I8Dense | U8Dense | I8Sparse | U8Sparse => size_of::<u8>(),
-                    I16Dense | U16Dense | I16Sparse | U16Sparse => size_of::<u16>(),
-                    I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
-                    I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
-                    #[cfg(feature = "block_128")]
-                    I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
-                }
-            }
-
-            #[inline]
-            pub fn is_sparse(&self) -> bool {
-                use self::BlockType::*;
-
-                match *self {
-                    I8Dense | U8Dense |
-                    I16Dense | U16Dense |
-                    I32Dense | U32Dense |
-                    I64Dense | U64Dense => false,
-                    #[cfg(feature = "block_128")]
-                    I128Dense | U128Dense => false,
-
-                    I8Sparse | U8Sparse |
-                    I16Sparse | U16Sparse |
-                    I32Sparse | U32Sparse |
-                    I64Sparse | U64Sparse  => true,
-                    #[cfg(feature = "block_128")]
-                    I128Sparse | U128Sparse => true,
-                }
-            }
-        }
+        use block::BlockType;
 
         impl<'block, 'a> From<&'a Block<'block>> for BlockType {
             fn from(block: &Block) -> BlockType {
@@ -345,25 +267,6 @@ macro_rules! block_impl {
             }
         }
 
-        impl<'block> PartialEq<BlockType> for TyBlock<'block> {
-            fn eq(&self, rhs: &BlockType) -> bool {
-                let self_ty: TyBlockType = self.into();
-                let rhs_ty: TyBlockType = (*rhs).into();
-
-                self_ty == rhs_ty
-            }
-        }
-
-        impl From<BlockTypeMap> for TyBlockTypeMap {
-            fn from(block_hmap: BlockTypeMap) -> TyBlockTypeMap {
-                block_hmap.iter()
-                .map(|(block_id, block_type)| {
-                    (*block_id, (*block_type).into())
-                })
-                .collect::<BlockTypeMapTy>()
-                .into()
-            }
-        }
     };
 
     ($ST: ty) => {
