@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
 use serde::{Serialize};
+use block;
 
 #[macro_use]
 pub(crate) mod ty_impl;
@@ -73,9 +74,9 @@ macro_rules! block_map_expr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockType {
-    Memory(memory::BlockType),
+    Memory(block::BlockType),
     #[cfg(feature = "mmap")]
-    Memmap(mmap::BlockType),
+    Memmap(block::BlockType),
 }
 
 impl BlockType {

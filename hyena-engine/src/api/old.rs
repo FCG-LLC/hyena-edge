@@ -140,18 +140,18 @@ impl<'a> ApiMessage {
         deserialize(&self.payload[..]).unwrap()
     }
 
-    pub fn to_operation(self) -> ApiRequest {
+    pub fn to_operation(self) -> Request {
         match self.op_type {
-            ApiOperation::ListColumns => ApiRequest::ListColumns,
-            //Insert    => ApiRequest::Insert(self.extract_insert_message()),
-            ApiOperation::AddColumn => ApiRequest::AddColumn(self.extract_add_column_message()),
-            _         => ApiRequest::Other
+            ApiOperation::ListColumns => Request::ListColumns,
+            //Insert    => Request::Insert(self.extract_insert_message()),
+            ApiOperation::AddColumn => Request::AddColumn(self.extract_add_column_message()),
+            _         => Request::Other
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum ApiRequest {
+pub enum Request {
     ListColumns,
     Insert, //(InsertMessage<'a>),
     Scan,
@@ -162,9 +162,9 @@ pub enum ApiRequest {
     Other
 }
 
-impl ApiRequest {
-    pub fn parse(data: Vec<u8>) -> ApiRequest {
-        let message: ApiRequest = deserialize(&data[..]).unwrap();
+impl Request {
+    pub fn parse(data: Vec<u8>) -> Request {
+        let message: Request = deserialize(&data[..]).unwrap();
         message
     }
 }
@@ -247,10 +247,10 @@ impl<'message> ScanResultMessage<'message> {
 }
 
 
-pub fn run_request(req: ApiRequest, catalog: &mut Catalog) -> ApiReply {
+pub fn run_request(req: Request, catalog: &mut Catalog) -> ApiReply {
     match req {
-        ApiRequest::ListColumns => ApiReply::list_columns(catalog),
-        ApiRequest::AddColumn(request) => ApiReply::add_column(request, catalog),
+        Request::ListColumns => ApiReply::list_columns(catalog),
+        Request::AddColumn(request) => ApiReply::add_column(request, catalog),
         _ => ApiReply::Other
     }
 }

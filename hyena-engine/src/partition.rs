@@ -2,13 +2,12 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap, Timestamp};
+use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
-use ty::block::memory::BlockType as MemoryBlockType;
+use block::BlockType;
 use std::collections::HashMap;
 #[cfg(feature = "mmap")]
-use ty::block::mmap::BlockType as MmapBlockType;
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
@@ -275,7 +274,7 @@ impl<'part> Partition<'part> {
     // TODO: to be benched
     fn prepare_blocks<'i, P>(
         root: P,
-        type_map: &'i HashMap<BlockId, BlockType>,
+        type_map: &'i HashMap<BlockId, TyBlockType>,
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
@@ -283,14 +282,14 @@ impl<'part> Partition<'part> {
         type_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
-                BlockType::Memory(bty) => {
+                TyBlockType::Memory(bty) => {
                     use ty::block::memory::Block;
 
                     Block::create(bty)
                         .map(|block| (*block_id, locked!(rw block.into())))
                         .chain_err(|| "Unable to create in-memory block")
                 }
-                BlockType::Memmap(bty) => {
+                TyBlockType::Memmap(bty) => {
                     use ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
@@ -658,8 +657,8 @@ mod tests {
             .unwrap();
 
         let blocks = hashmap! {
-            0 => MemoryBlockType::U64Dense,
-            1 => MemoryBlockType::U32Dense,
+            0 => BlockType::U64Dense,
+            1 => BlockType::U32Dense,
         }.into();
 
         let frags = hashmap! {
@@ -670,7 +669,7 @@ mod tests {
         block_write!(&mut part, blocks, frags);
 
         let blocks = hashmap! {
-            2 => MemoryBlockType::U64Sparse,
+            2 => BlockType::U64Sparse,
         }.into();
 
         let frags = hashmap! {
@@ -680,9 +679,9 @@ mod tests {
         block_write!(&mut part, blocks, frags);
 
         let blocks = hashmap! {
-            0 => MemoryBlockType::U64Dense,
-            1 => MemoryBlockType::U32Dense,
-            2 => MemoryBlockType::U64Dense,
+            0 => BlockType::U64Dense,
+            1 => BlockType::U32Dense,
+            2 => BlockType::U64Dense,
         };
 
         assert_eq!(
@@ -901,17 +900,17 @@ mod tests {
 
         #[test]
         fn scan_ts() {
-            super::scan_ts(MemoryBlockType::U64Dense);
+            super::scan_ts(BlockType::U64Dense);
         }
 
         #[test]
         fn update_meta() {
-            super::update_meta(MemoryBlockType::U64Dense);
+            super::update_meta(BlockType::U64Dense);
         }
 
         #[test]
         fn ensure_blocks() {
-            block_write_test_impl!(MemoryBlockType);
+            block_write_test_impl!(BlockType);
         }
 
         mod serialize {
@@ -919,7 +918,7 @@ mod tests {
 
             #[test]
             fn blocks() {
-                super::super::serialize::blocks(block_test_impl!(MemoryBlockType));
+                super::super::serialize::blocks(block_test_impl!(BlockType));
             }
 
             #[test]
@@ -928,8 +927,8 @@ mod tests {
 
                 super::super::serialize::heads(
                     &root,
-                    block_test_impl!(MemoryBlockType),
-                    MemoryBlockType::U64Dense,
+                    block_test_impl!(BlockType),
+                    BlockType::U64Dense,
                     100,
                 );
             }
@@ -940,7 +939,7 @@ mod tests {
 
             #[test]
             fn blocks() {
-                super::super::deserialize::blocks(block_test_impl!(MemoryBlockType));
+                super::super::deserialize::blocks(block_test_impl!(BlockType));
             }
 
             #[test]
@@ -949,8 +948,8 @@ mod tests {
 
                 super::super::deserialize::heads(
                     &root,
-                    block_test_impl!(MemoryBlockType),
-                    MemoryBlockType::U64Dense,
+                    block_test_impl!(BlockType),
+                    BlockType::U64Dense,
                     100,
                 );
             }
@@ -964,17 +963,17 @@ mod tests {
 
         #[test]
         fn scan_ts() {
-            super::scan_ts(MmapBlockType::U64Dense);
+            super::scan_ts(BlockType::U64Dense);
         }
 
         #[test]
         fn update_meta() {
-            super::update_meta(MmapBlockType::U64Dense);
+            super::update_meta(BlockType::U64Dense);
         }
 
         #[test]
         fn ensure_blocks() {
-            block_write_test_impl!(MmapBlockType);
+            block_write_test_impl!(BlockType);
         }
 
         mod serialize {
@@ -982,7 +981,7 @@ mod tests {
 
             #[test]
             fn blocks() {
-                super::super::serialize::blocks(block_test_impl!(MmapBlockType));
+                super::super::serialize::blocks(block_test_impl!(BlockType));
             }
 
             #[test]
@@ -991,8 +990,8 @@ mod tests {
 
                 super::super::serialize::heads(
                     &root,
-                    block_test_impl!(MmapBlockType),
-                    MmapBlockType::U64Dense,
+                    block_test_impl!(BlockType),
+                    BlockType::U64Dense,
                     100,
                 );
             }
@@ -1003,7 +1002,7 @@ mod tests {
 
             #[test]
             fn blocks() {
-                super::super::deserialize::blocks(block_test_impl!(MmapBlockType));
+                super::super::deserialize::blocks(block_test_impl!(BlockType));
             }
 
             #[test]
@@ -1012,8 +1011,8 @@ mod tests {
 
                 super::super::deserialize::heads(
                     &root,
-                    block_test_impl!(MmapBlockType),
-                    MmapBlockType::U64Dense,
+                    block_test_impl!(BlockType),
+                    BlockType::U64Dense,
                     100,
                 );
             }

@@ -130,12 +130,6 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
     }
 }
 
-impl From<BlockType> for super::BlockType {
-    fn from(block_ty: BlockType) -> super::BlockType {
-        super::BlockType::Memmap(block_ty)
-    }
-}
-
 
 #[cfg(test)]
 mod tests {
