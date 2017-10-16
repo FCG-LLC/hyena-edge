@@ -22,11 +22,12 @@ fn get_address(matches: &clap::ArgMatches) -> String {
 }
 
 fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
-    println!("Got: {:?}", msg);
+    trace!("Got: {:?}", msg);
     let operation = Request::parse(msg);
-    println!("Operation: {:?}", operation);
+    debug!("Operation: {:?}", operation);
     let reply = run_request(operation, catalog);
-    println!("Returning: {:?}\n{:?}", reply, serialize(&reply, Infinite).unwrap());
+    debug!("Returning: {:?}", reply);
+    trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
 
     serialize(&reply, Infinite).unwrap()
 }
