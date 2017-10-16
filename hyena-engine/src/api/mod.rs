@@ -136,6 +136,7 @@ impl Reply {
         map.insert(id, column);
 
         catalog.ensure_columns(map).ok();
+        catalog.flush().unwrap();
         Reply::AddColumn
     }
 }

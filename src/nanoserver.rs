@@ -1,4 +1,5 @@
 use clap;
+use std::fs;
 use std::str;
 use futures::{future, Future, Stream};
 use tokio_core::reactor::Core;
@@ -47,7 +48,9 @@ pub fn run(matches: &clap::ArgMatches) {
         .expect("Unable to bind nanomsg endpoint");
 
     let (writer, reader) = nano_socket.split();
-    let mut catalog = Catalog::open_or_create(matches.value_of("data_dir").unwrap());
+    let dir = matches.value_of("data_dir").unwrap();
+    fs::create_dir_all(dir).expect("Could not create data_dir");
+    let mut catalog = Catalog::open_or_create(dir);
 
     let server = reader.map(move |msg| {
         process_message(msg, &mut catalog)
