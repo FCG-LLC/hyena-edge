@@ -479,7 +479,7 @@ impl<'cat> Catalog<'cat> {
         }
     }
 
-    fn flush(&self) -> Result<()> {
+    pub fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(CATALOG_METADATA);
 
