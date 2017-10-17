@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! flame {
     (@ $func: ident ()) => {{
         #[cfg(feature = "perf")]

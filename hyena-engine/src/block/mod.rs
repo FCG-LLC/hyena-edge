@@ -1,21 +1,11 @@
 use error::*;
-
-use rayon::prelude::*;
-
 use std::collections::hash_map::HashMap;
 use std::fmt::Debug;
-
-use storage::Storage;
-use ty::block::{BlockId,
-                Block as TyBlock,
-                BlockType as TyBlockType,
-                BlockTypeMapTy,
-                BlockTypeMap as TyBlockTypeMap};
+use ty::block::BlockId;
 
 mod numeric;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock,
-                               SparseNumericBlock};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock};
 
 // This will probably get merged into BlockData
 
@@ -141,7 +131,7 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     #[inline]
     fn set_written(&mut self, count: usize) -> Result<()> {
         let size = self.size();
-        let mut head = self.mut_head();
+        let head = self.mut_head();
 
         if count <= size {
             *head += count;
@@ -153,6 +143,7 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     }
 }
 
+#[allow(unused)]
 pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

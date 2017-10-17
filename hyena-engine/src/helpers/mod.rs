@@ -24,7 +24,7 @@ pub(crate) mod table;
 
 /// helper facilitating calling expressions that utilize `std::ops::Carrier`
 /// in functions with no `Result` return type
-
+#[allow(unused_macros)]
 macro_rules! carry {
     ($what: expr) => {
         (|| {

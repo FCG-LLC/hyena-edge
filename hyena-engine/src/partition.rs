@@ -2,11 +2,12 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
+use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 use block::BlockType;
+use std::collections::HashMap;
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
@@ -90,7 +91,7 @@ impl<'part> Partition<'part> {
         self.ensure_blocks(&blockmap)
             .chain_err(|| "Unable to create block map")
             .unwrap();
-        let mut ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
+        let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
             if let Some(block) = self.blocks.get(blk_idx) {
                 trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
                 Some((block, frags.get(blk_idx).unwrap()))
@@ -100,7 +101,7 @@ impl<'part> Partition<'part> {
         });
 
         for (ref mut block, ref data) in ops {
-            let mut b = acquire!(write block);
+            let b = acquire!(write block);
             let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                 // dense block handler
 
@@ -108,8 +109,8 @@ impl<'part> Partition<'part> {
                 let slen = frg.len();
 
                 {
-                    let mut blkslice = blk.as_mut_slice_append();
-                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                    let blkslice = blk.as_mut_slice_append();
+                    &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
                 blk.set_written(slen).unwrap();
@@ -126,7 +127,7 @@ impl<'part> Partition<'part> {
                 };
 
                 {
-                    let (mut blkindex, mut blkslice) = blk.as_mut_indexed_slice_append();
+                    let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
 
                     &mut blkslice[..slen].copy_from_slice(&frg[..]);
                     &mut blkindex[..slen].copy_from_slice(&fidx[..]);
@@ -299,6 +300,7 @@ impl<'part> Partition<'part> {
         materialized.map(|m| m.into())
     }
 
+    #[allow(unused)]
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
         let ts_block = self.blocks
             .get(&0)
@@ -333,7 +335,9 @@ impl<'part> Partition<'part> {
     pub(crate) fn get_ts(&self) -> (Timestamp, Timestamp) {
         (self.ts_min, self.ts_max)
     }
+
     #[must_use]
+    #[allow(unused)]
     pub(crate) fn set_ts<TS>(&mut self, ts_min: Option<TS>, ts_max: Option<TS>) -> Result<()>
     where
         Timestamp: From<TS>,
@@ -352,6 +356,7 @@ impl<'part> Partition<'part> {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn update_meta(&mut self) -> Result<()> {
         // TODO: handle ts_min changes -> partition path
 
@@ -390,10 +395,12 @@ impl<'part> Partition<'part> {
             .unwrap_or_default()
     }
 
+    #[allow(unused)]
     pub(crate) fn get_blocks(&self) -> &BlockMap<'part> {
         &self.blocks
     }
 
+    #[allow(unused)]
     pub(crate) fn mut_blocks(&mut self) -> &mut BlockMap<'part> {
         &mut self.blocks
     }

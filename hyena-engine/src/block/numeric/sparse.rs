@@ -1,15 +1,7 @@
 use error::*;
-
-use chrono::prelude::*;
-
-use rayon::prelude::*;
-
-use std::path::Path;
 use std::marker::PhantomData;
 use std::fmt::Debug;
-
 use storage::Storage;
-
 use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 

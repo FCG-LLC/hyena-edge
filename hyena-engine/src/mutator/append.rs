@@ -1,10 +1,5 @@
-use error::*;
-use ty::{ColumnId, Fragment, SourceId, TimestampFragment};
-use ty::timestamp::Timestamp;
-use std::iter::repeat;
-use std::collections::hash_map::{HashMap, Keys};
-use std::iter::FromIterator;
-use super::{BlockData, BlockRefData};
+use ty::{SourceId, TimestampFragment};
+use super::BlockData;
 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

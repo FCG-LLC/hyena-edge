@@ -7,7 +7,7 @@ pub(crate) mod ser {
     use serde::Serialize;
     use std::io::Write;
 
-
+    #[allow(unused)]
     pub(crate) fn serialize<T>(value: &T) -> Result<Vec<u8>>
     where
         T: ?Sized + Serialize,
@@ -30,7 +30,7 @@ pub(crate) mod de {
     use std::io::Read;
     use serde::Deserialize;
 
-
+    #[allow(unused)]
     pub(crate) fn deserialize<'de, T>(data: &'de [u8]) -> Result<T>
     where
         T: Deserialize<'de>,

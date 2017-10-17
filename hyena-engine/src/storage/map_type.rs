@@ -1,5 +1,3 @@
-use error::*;
-
 use std::ops::{Deref, DerefMut};
 use std::mem::{align_of, size_of};
 use std::marker::PhantomData;
@@ -8,7 +6,7 @@ use std::marker::PhantomData;
 #[inline]
 pub fn map_type<'map, 'owner, D, M: Deref<Target = [D]>, T>(
     map: &'map M,
-    block: PhantomData<&'owner T>,
+    _block: PhantomData<&'owner T>,
 ) -> &'owner [T] {
     let length = map_len::<D, M, T>(map);
 
@@ -18,7 +16,7 @@ pub fn map_type<'map, 'owner, D, M: Deref<Target = [D]>, T>(
 #[inline]
 pub fn map_type_mut<'map, 'owner, D, M: DerefMut<Target = [D]>, T>(
     map: &'map mut M,
-    block: PhantomData<&'owner T>,
+    _block: PhantomData<&'owner T>,
 ) -> &'owner mut [T] {
     let length = map_len::<D, M, T>(map);
 
