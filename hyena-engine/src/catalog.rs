@@ -1,6 +1,6 @@
 use error::*;
-use ty::{BlockType, ColumnId, Timestamp};
-use block::SparseIndex;
+use ty::{BlockType as TyBlockType, ColumnId, Timestamp};
+use block::{BlockType, SparseIndex};
 use partition::{Partition, PartitionId};
 use storage::manager::{PartitionGroupManager, PartitionManager};
 use std::collections::hash_map::HashMap;
@@ -395,12 +395,12 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Column {
-    ty: BlockType,
+    ty: TyBlockType,
     name: String,
 }
 
 impl Column {
-    pub fn new(ty: BlockType, name: &str) -> Column {
+    pub fn new(ty: TyBlockType, name: &str) -> Column {
         Column {
             ty,
             name: name.to_owned(),
@@ -409,7 +409,7 @@ impl Column {
 }
 
 impl Deref for Column {
-    type Target = BlockType;
+    type Target = TyBlockType;
 
     fn deref(&self) -> &Self::Target {
         &self.ty
@@ -474,11 +474,25 @@ impl<'cat> Catalog<'cat> {
             bail!("Catalog metadata already exists {:?}", meta);
         }
 
-        Ok(Catalog {
+        let mut catalog = Catalog {
             columns: Default::default(),
             groups: Default::default(),
             data_root: root,
-        })
+        };
+
+        catalog.ensure_default_columns()?;
+
+        Ok(catalog)
+    }
+
+    fn ensure_default_columns(&mut self) -> Result<()> {
+        let ts_column = Column::new(TyBlockType::Memory(BlockType::I64Dense), "timestamp");
+        let source_column = Column::new(TyBlockType::Memory(BlockType::I32Dense), "source_id"); // will be String some day
+        let mut map = HashMap::new();
+        map.insert(0, ts_column);
+        map.insert(1, source_column);
+
+        self.ensure_columns(map)
     }
 
     pub fn with_data<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
@@ -530,6 +544,31 @@ impl<'cat> Catalog<'cat> {
         self.columns.extend(type_map);
 
         Ok(())
+    }
+
+    // Adds the column to the catalog. It verifies that catalog does not already contain:
+    // a) column with the given id, or
+    // b) column with the given name.
+    // This function takes all-or-nothing approach: either all columns can are added, or none gets added.
+    pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
+        for (id, column) in column_map.iter() {
+            info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
+            if self.columns.contains_key(id) {
+                bail!(ErrorKind::ColumnIdAlreadyExists(*id));
+            }
+            if self.columns.values().any(|col| col.name == column.name) {
+                bail!(ErrorKind::ColumnNameAlreadyExists(column.name.clone()));
+            }
+        }
+
+        Ok(self.columns.extend(column_map))
+    }
+
+    pub fn next_id(&self) -> usize {
+        println!("{:?}", self.columns);
+        //self.columns.iter().last().map_or(100, |(id, _)| *id) + 1;
+        let default = 0;
+        *self.columns.keys().max().unwrap_or(&default) + 1
     }
 
     /// Calculate an empty partition's capacity for given column set
