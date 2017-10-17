@@ -1,15 +1,18 @@
 use bincode::{serialize, deserialize, Infinite};
-use catalog::{Catalog, Column, ColumnMap};
-use ty::{Block, BlockType as TyBlockType};
 use block::BlockType;
+use catalog::{Catalog, Column, ColumnMap};
+use error;
 use std::collections::hash_map::HashMap;
+use std::convert::From;
+use std::result::Result;
+use ty::{Block, BlockType as TyBlockType};
+use ty::fragment::Fragment;
 
-#[derive(Serialize, Debug)]
-pub struct InsertMessage<'a> {
+#[derive(Serialize, Deserialize, Debug)]
+pub struct InsertMessage {
     pub row_count : u32,
     pub col_count : u32,
-    pub col_types : Vec<(u32, TyBlockType)>,
-    pub blocks : Vec<Block<'a>> // This can be done right now only because blocks are so trivial
+    pub blocks : Vec<Fragment>
 }
 
 #[derive(Serialize, Debug)]
@@ -108,7 +111,7 @@ pub enum Reply {
     Insert,
     Scan,
     RefreshCatalog,
-    AddColumn,
+    AddColumn(Result<usize, Error>),
     Flush,
     DataCompaction,
     Other
@@ -131,13 +134,36 @@ impl Reply {
 
     fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> Reply {
         let column = Column::new(TyBlockType::Memory(request.column_type), request.column_name.as_str());
-        let id = 0;
+        let id = catalog.next_id();
+        info!("Adding column {}:{:?} with id {}", request.column_name, request.column_type, id);
         let mut map = HashMap::new();
         map.insert(id, column);
 
-        catalog.ensure_columns(map).ok();
-        catalog.flush().unwrap();
-        Reply::AddColumn
+        match catalog.add_columns(map) {
+            Ok(_) => {
+                catalog.flush().unwrap();
+                Reply::AddColumn(Ok(id))
+            },
+            Err(error) => Reply::AddColumn(Err(error.into()))
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum Error {
+    ColumnNameAlreadyExists(String),
+    ColumnIdAlreadyExists(usize),
+    Unknown(String)
+}
+
+impl From<error::Error> for Error {
+    fn from(err: error::Error) -> Error {
+        // Is there a way to do it better?
+        match *err.kind() {
+            error::ErrorKind::ColumnNameAlreadyExists(ref s) => Error::ColumnNameAlreadyExists(s.clone()),
+            error::ErrorKind::ColumnIdAlreadyExists(ref u)   => Error::ColumnIdAlreadyExists(*u),
+            _ => Error::Unknown(err.description().into())
+        }
     }
 }
 
