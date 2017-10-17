@@ -2,7 +2,6 @@ use error::*;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
-use serde::{Serialize};
 use block;
 
 #[macro_use]
@@ -109,6 +108,7 @@ impl<'block> Block<'block> {
     }
 
     #[inline]
+    #[allow(unused)]
     pub(crate) fn is_empty(&self) -> bool {
         use self::Block::*;
 

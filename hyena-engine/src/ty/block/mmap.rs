@@ -1,12 +1,11 @@
 use error::*;
 use super::BlockId;
-use storage::Storage;
 use storage::mmap::MemmapStorage;
 use block::SparseIndex;
 use std::path::Path;
-use fs::ensure_file;
+//use fs::ensure_file;
 use std::mem::size_of;
-use std::fs::remove_file;
+//use std::fs::remove_file;
 use params::BLOCK_SIZE;
 
 

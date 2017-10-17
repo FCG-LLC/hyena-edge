@@ -7,18 +7,14 @@ use std::collections::hash_map::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
-use std::fmt::{Debug, Display, Error as FmtError, Formatter};
+use std::fmt::{Display, Error as FmtError, Formatter};
 use std::default::Default;
-use std::hash::Hash;
 use std::ops::Deref;
 use std::result::Result as StdResult;
-use std::sync::{RwLock, RwLockWriteGuard};
-use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
 use ty::block::{BlockTypeMap, BlockTypeMapTy};
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator,
-                  ParallelIterator};
 
 
 pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
@@ -109,7 +105,7 @@ impl<'pg> PartitionGroup<'pg> {
         let fragcount = data.len();
 
         let (emptycap, currentcap) = {
-            let mut partitions = acquire!(read carry self.mutable_partitions);
+            let partitions = acquire!(read carry self.mutable_partitions);
             // current partition capacity
             let curpart = partitions
                 .back()
@@ -150,7 +146,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         let mut fragments = Vec::with_capacity(reqparts + 1);
 
-        let (mut fragments, ts_1, mut frag_1, mut ts_idx, mut offsets) = once(curfrags)
+        let (fragments, ts_1, mut frag_1, mut ts_idx, offsets) = once(curfrags)
             .filter(|c| *c != 0)
             .chain(repeat(emptycap).take(reqparts))
             .fold(
@@ -166,7 +162,7 @@ impl<'pg> PartitionGroup<'pg> {
                 ),
                 |store, mid| {
 
-                    let (mut fragments, ts_data, frag_data, mut ts_idx, mut offsets) = store;
+                    let (fragments, ts_data, frag_data, mut ts_idx, mut offsets) = store;
 
                     // when dealing with sparse blocks we don't know beforehand which
                     // partition a sparse entry will belong to
@@ -224,7 +220,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         // create partition pool
 
-        let mut partitions = acquire!(write carry self.mutable_partitions);
+        let partitions = acquire!(write carry self.mutable_partitions);
 
         let curidx = partitions.len();
 
@@ -239,7 +235,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         // write data
 
-        for ((mut partition, fragment), offset) in partitions
+        for ((partition, fragment), offset) in partitions
             .iter_mut()
             .skip(curidx - if current_is_full { 0 } else { 1 })
             .zip(fragments.iter())
@@ -402,6 +398,7 @@ pub(crate) struct PartitionMeta {
 }
 
 impl PartitionMeta {
+    #[allow(unused)]
     fn new<TS>(id: PartitionId, ts_min: TS, ts_max: TS) -> PartitionMeta
     where
         Timestamp: From<TS>,
@@ -511,6 +508,7 @@ impl<'cat> Catalog<'cat> {
             .unwrap_or_default()
     }
 
+    #[allow(unused)]
     fn create_partition<'part, TS>(
         &mut self,
         source_id: SourceId,
@@ -526,6 +524,7 @@ impl<'cat> Catalog<'cat> {
         pg.create_partition(ts)
     }
 
+    #[allow(unused)]
     pub(crate) fn ensure_group(
         &mut self,
         source_id: SourceId,

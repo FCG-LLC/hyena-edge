@@ -1,5 +1,4 @@
 use block::{DenseNumericBlock, SparseIndexedNumericBlock};
-use storage::Storage;
 
 macro_rules! block_impl {
     ($ST: ty, $SI: ty) => {
@@ -63,6 +62,7 @@ macro_rules! block_impl {
                 })
             }
 
+            #[allow(unused)]
             #[inline]
             pub(crate) fn is_empty(&self) -> bool {
                 use self::Block::*;

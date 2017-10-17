@@ -1,5 +1,4 @@
 use error::*;
-use storage::Storage;
 use storage::memory::PagedMemoryStorage;
 use block::SparseIndex;
 use std::mem::size_of;

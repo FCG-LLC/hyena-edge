@@ -1,4 +1,3 @@
-use error::*;
 use std::collections::HashMap;
 use ty::{ColumnId, Fragment, FragmentRef};
 

@@ -1,14 +1,7 @@
 use error::*;
-
-use rayon::prelude::*;
-
-use std::path::Path;
 use std::marker::PhantomData;
 use std::fmt::Debug;
-
 use storage::Storage;
-use ty::{Timestamp, ToTimestampMicros};
-
 use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -23,7 +16,7 @@ pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block + Storage<'blo
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
-    pub fn new(mut storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
+    pub fn new(storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
 
         Ok(DenseNumericBlock {
             storage,

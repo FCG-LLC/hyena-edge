@@ -1,7 +1,6 @@
 use error::*;
 use block::SparseIndex;
-use ty::{BlockTypeMap, Timestamp};
-use std::slice::from_raw_parts;
+use ty::Timestamp;
 use std::mem::transmute;
 
 
@@ -128,7 +127,7 @@ impl Fragment {
     pub fn is_sparse(&self) -> bool {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { false }, { true })
+        frag_apply!(*self, _blk, _idx, { false }, { true })
     }
 
     pub fn split_at_idx<'frag: 'fragref, 'fragref>(
@@ -138,14 +137,14 @@ impl Fragment {
         use self::Fragment::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+            Ok(frag_apply!(*self, _blk, blk_idx, { unreachable!() }, {
                 let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
                     idx
                 } else {
                     blk_idx.len()
                 };
 
-                let fragments = &blk[..].split_at(mid);
+                let fragments = &_blk[..].split_at(mid);
                 let indices = &blk_idx[..].split_at(mid);
                 (
                     (fragments.0, indices.0).into(),
@@ -160,13 +159,13 @@ impl Fragment {
     pub fn len(&self) -> usize {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+        frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
     pub fn is_empty(&self) -> bool {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
+        frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 }
 
@@ -199,7 +198,7 @@ impl<'fragref> FragmentRef<'fragref> {
     pub fn is_sparse(&self) -> bool {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { false }, { true })
+        frag_apply!(*self, _blk, _idx, { false }, { true })
     }
 
     pub fn split_at_idx<'frag>(
@@ -209,14 +208,14 @@ impl<'fragref> FragmentRef<'fragref> {
         use self::FragmentRef::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+            Ok(frag_apply!(*self, _blk, blk_idx, { unreachable!() }, {
                 let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
                     idx
                 } else {
                     blk_idx.len()
                 };
 
-                let fragments = &blk[..].split_at(mid);
+                let fragments = &_blk[..].split_at(mid);
                 let indices = &blk_idx[..].split_at(mid);
                 (
                     (fragments.0, indices.0).into(),
@@ -231,13 +230,13 @@ impl<'fragref> FragmentRef<'fragref> {
     pub fn len(&self) -> usize {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+        frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
     pub fn is_empty(&self) -> bool {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
+        frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 }
 
@@ -254,8 +253,6 @@ impl<'frag> From<&'frag Fragment> for FragmentRef<'frag> {
 
 impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
     fn from(source: &'frag TimestampFragment) -> FragmentRef<'frag> {
-        use self::Fragment::*;
-
         FragmentRef::from(unsafe {
             transmute::<&'frag [Timestamp], &'frag [u64]>(&source.0)
         })
@@ -264,8 +261,6 @@ impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
 
 impl<'frag> From<&'frag [Timestamp]> for FragmentRef<'frag> {
     fn from(source: &'frag [Timestamp]) -> FragmentRef<'frag> {
-        use self::Fragment::*;
-
         FragmentRef::from(unsafe {
             transmute::<&'frag [Timestamp], &'frag [u64]>(source)
         })
