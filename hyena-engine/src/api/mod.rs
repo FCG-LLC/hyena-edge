@@ -5,7 +5,7 @@ use error;
 use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
-use ty::{Block, BlockType as TyBlockType};
+use ty::{Block, BlockType as TyBlockType, ColumnId};
 use ty::fragment::Fragment;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -102,7 +102,14 @@ impl Request {
 #[derive(Debug, Serialize)]
 pub struct ReplyColumn {
     typ: BlockType,
+    id: ColumnId,
     name: String
+}
+
+impl ReplyColumn {
+    fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
+        ReplyColumn {typ: typ, id: id, name: name}
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -123,9 +130,9 @@ impl Reply {
 
         let cm : &ColumnMap = catalog.as_ref();
         let mut names = vec![]; //vec!["dummy".to_owned()];
-        for column in cm.values() {
+        for (id, column) in cm.iter() {
             match *column.deref() {
-                TyBlockType::Memory(typ) => names.push(ReplyColumn{typ: typ, name: format!("{}", column)}),
+                TyBlockType::Memory(typ) => names.push(ReplyColumn::new(typ, *id, format!("{}", column))),
                 _ => () // TODO
             };
         }
