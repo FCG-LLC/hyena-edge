@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
 use ty::block::{BlockTypeMap, BlockTypeMapTy};
-
+use ty::timestamp::MIN_TIMESTAMP;
 
 pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
 pub(crate) type PartitionGroupMap<'pg> = HashMap<SourceId, PartitionGroup<'pg>>;
@@ -76,6 +76,14 @@ impl<'pg> PartitionGroup<'pg> {
     fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(PARTITION_GROUP_METADATA);
+
+        for p in self.immutable_partitions.values() {
+            p.flush()?
+        }
+
+        for p in self.mutable_partitions.read().unwrap().iter() {
+            p.flush()?
+        }
 
         PartitionGroup::serialize(self, &meta)
     }
@@ -453,7 +461,7 @@ impl<'cat> Catalog<'cat> {
     }
 
     fn ensure_default_columns(&mut self) -> Result<()> {
-        let ts_column = Column::new(TyBlockType::Memory(BlockType::I64Dense), "timestamp");
+        let ts_column = Column::new(TyBlockType::Memory(BlockType::U64Dense), "timestamp");
         let source_column = Column::new(TyBlockType::Memory(BlockType::I32Dense), "source_id"); // will be String some day
         let mut map = HashMap::new();
         map.insert(0, ts_column);
@@ -473,7 +481,10 @@ impl<'cat> Catalog<'cat> {
     pub fn open_or_create<P: AsRef<Path> + Clone>(root: P) -> Catalog<'cat> {
         match Catalog::with_data(root.clone()) {
             Ok(catalog) => catalog,
-            _ => Catalog::new(root).unwrap()
+            Err(e) => {
+                debug!("Can't open data_dir: {:?}", e);
+                Catalog::new(root).unwrap()
+            }
         }
     }
 
@@ -493,6 +504,10 @@ impl<'cat> Catalog<'cat> {
     pub fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(CATALOG_METADATA);
+
+        for pg in self.groups.values() {
+            pg.flush()?
+        }
 
         Catalog::serialize(self, &meta)
     }
@@ -522,8 +537,6 @@ impl<'cat> Catalog<'cat> {
     }
 
     pub fn next_id(&self) -> usize {
-        println!("{:?}", self.columns);
-        //self.columns.iter().last().map_or(100, |(id, _)| *id) + 1;
         let default = 0;
         *self.columns.keys().max().unwrap_or(&default) + 1
     }
@@ -577,11 +590,26 @@ impl<'cat> Catalog<'cat> {
                 .chain_err(|| "Failed to create group manager")
                 .unwrap();
 
-            PartitionGroup::new(&root, source_id)
+            let mut pg = PartitionGroup::new(&root, source_id)
                 .chain_err(|| "Unable to create partition group")
-                .unwrap()
+                .unwrap();
+            Catalog::create_single_partition(&mut pg);
+            pg.flush().unwrap();
+            pg
         }))
     }
+
+    fn create_single_partition(pg: &mut PartitionGroup) {
+        let part = pg.create_partition(MIN_TIMESTAMP)
+            .chain_err(|| "Unable to create partition")
+            .unwrap();
+
+        let mut vp = VecDeque::new();
+        vp.push_front(part);
+
+        pg.mutable_partitions = locked!(rw vp);
+    }
+
 
     fn prepare_partition_groups<P, I>(root: P, ids: I) -> Result<PartitionGroupMap<'cat>>
     where

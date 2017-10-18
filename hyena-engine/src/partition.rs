@@ -304,7 +304,7 @@ impl<'part> Partition<'part> {
             .collect()
     }
 
-    fn flush(&self) -> Result<()> {
+    pub(crate) fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(PARTITION_METADATA);
 
