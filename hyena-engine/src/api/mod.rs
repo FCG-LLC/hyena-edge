@@ -2,17 +2,19 @@ use bincode::{serialize, deserialize, Infinite};
 use block::BlockType;
 use catalog::{Catalog, Column, ColumnMap};
 use error;
+use error::ResultExt;
+use mutator::BlockData;
+use mutator::append::Append;
 use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
-use ty::{Block, BlockType as TyBlockType, ColumnId};
-use ty::fragment::Fragment;
+use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
-    pub row_count : u32,
-    pub col_count : u32,
-    pub blocks : Vec<Fragment>
+    timestamps: Vec<u64>,
+    source: u32,
+    columns: Vec<BlockData>
 }
 
 #[derive(Serialize, Debug)]
@@ -83,7 +85,7 @@ pub enum Operation {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Request {
     ListColumns,
-    Insert, //(InsertMessage<'a>),
+    Insert(InsertMessage),
     Scan,
     RefreshCatalog,
     AddColumn(AddColumnRequest),
@@ -115,7 +117,7 @@ impl ReplyColumn {
 #[derive(Debug, Serialize)]
 pub enum Reply {
     ListColumns(Vec<ReplyColumn>),
-    Insert,
+    Insert(Result<usize, Error>),
     Scan,
     RefreshCatalog,
     AddColumn(Result<usize, Error>),
@@ -154,6 +156,30 @@ impl Reply {
             Err(error) => Reply::AddColumn(Err(error.into()))
         }
     }
+
+    fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply {
+        let timestamps: TimestampFragment = insert.timestamps.into();
+        let mut inserted = 0;
+        let source = insert.source;
+
+        catalog
+            .ensure_group(source)
+            .chain_err(|| format!("Could not create group for source {}", source))
+            .unwrap();
+
+        for block in insert.columns.iter() {
+            let append = Append {ts: timestamps.clone(), source_id: insert.source, data: block.clone()};
+            let result = catalog.append(&append);
+            match result {
+                Ok(number) => inserted += number,
+                Err(e) => return Reply::Insert(Err(Error::Unknown(e.description().into())))
+            }
+        }
+        catalog.flush()
+            .chain_err(|| "Cannot flush catalog after inserting")
+            .unwrap();
+        Reply::Insert(Ok(inserted))
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -190,6 +216,7 @@ pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
     match req {
         Request::ListColumns => Reply::list_columns(catalog),
         Request::AddColumn(request) => Reply::add_column(request, catalog),
+        Request::Insert(insert) => Reply::insert(insert, catalog),
         _ => Reply::Other
     }
 }

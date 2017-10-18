@@ -164,6 +164,7 @@ macro_rules! frag_apply {
 }
 
 impl Fragment {
+    #[allow(unused)]
     pub fn split_at<'frag: 'fragref, 'fragref>(
         &'frag self,
         mid: usize,
@@ -189,12 +190,14 @@ impl Fragment {
         )
     }
 
+    #[allow(unused)]
     pub fn is_sparse(&self) -> bool {
         use self::Fragment::*;
 
         frag_apply!(*self, _blk, _idx, { false }, { true })
     }
 
+    #[allow(unused)]
     pub fn split_at_idx<'frag: 'fragref, 'fragref>(
         &'frag self,
         idx: SparseIndex,
@@ -221,12 +224,14 @@ impl Fragment {
         }
     }
 
+    #[allow(unused)]
     pub fn len(&self) -> usize {
         use self::Fragment::*;
 
         frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         use self::Fragment::*;
 
@@ -356,12 +361,14 @@ impl<'fragref> FragmentRef<'fragref> {
         }
     }
 
+    #[allow(unused)]
     pub fn len(&self) -> usize {
         use self::FragmentRef::*;
 
         frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         use self::FragmentRef::*;
 
