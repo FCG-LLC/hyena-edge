@@ -40,7 +40,7 @@ pub struct ScanFilter {
     pub column : u32,
     pub op : ScanComparison,
     pub val : u64,
-    pub str_val : Vec<u8>
+    pub str_val : String
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -86,7 +86,7 @@ pub enum Operation {
 pub enum Request {
     ListColumns,
     Insert(InsertMessage),
-    Scan,
+    Scan(ScanRequest),
     RefreshCatalog,
     AddColumn(AddColumnRequest),
     Flush,
@@ -115,10 +115,10 @@ impl ReplyColumn {
 }
 
 #[derive(Debug, Serialize)]
-pub enum Reply {
+pub enum Reply<'reply> {
     ListColumns(Vec<ReplyColumn>),
     Insert(Result<usize, Error>),
-    Scan,
+    Scan(ScanResultMessage<'reply>),
     RefreshCatalog,
     AddColumn(Result<usize, Error>),
     Flush,
@@ -126,8 +126,8 @@ pub enum Reply {
     Other
 }
 
-impl Reply {
-    fn list_columns(catalog: & Catalog) -> Reply {
+impl <'reply> Reply<'reply> {
+    fn list_columns(catalog: & Catalog) -> Reply<'reply> {
         use std::ops::Deref;
 
         let cm : &ColumnMap = catalog.as_ref();
@@ -141,8 +141,8 @@ impl Reply {
         Reply::ListColumns(names)
     }
 
-    fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> Reply {
-        let column = Column::new(TyBlockType::Memory(request.column_type), request.column_name.as_str());
+    fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> Reply<'reply> {
+        let column = Column::new(TyBlockType::Memmap(request.column_type), request.column_name.as_str());
         let id = catalog.next_id();
         info!("Adding column {}:{:?} with id {}", request.column_name, request.column_type, id);
         let mut map = HashMap::new();
@@ -157,7 +157,7 @@ impl Reply {
         }
     }
 
-    fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply {
+    fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply<'reply> {
         let timestamps: TimestampFragment = insert.timestamps.into();
         let mut inserted = 0;
         let source = insert.source;
@@ -179,6 +179,10 @@ impl Reply {
             .chain_err(|| "Cannot flush catalog after inserting")
             .unwrap();
         Reply::Insert(Ok(inserted))
+    }
+
+    fn scan(_scan: ScanRequest, _catalog: &Catalog) -> Reply<'reply> {
+        Reply::Scan(ScanResultMessage::new())
     }
 }
 
@@ -212,11 +216,12 @@ impl<'message> ScanResultMessage<'message> {
 }
 
 
-pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
+pub fn run_request<'reply>(req: Request, catalog: &mut Catalog) -> Reply<'reply> {
     match req {
         Request::ListColumns => Reply::list_columns(catalog),
         Request::AddColumn(request) => Reply::add_column(request, catalog),
         Request::Insert(insert) => Reply::insert(insert, catalog),
+        Request::Scan(request) => Reply::scan(request, catalog),
         _ => Reply::Other
     }
 }
