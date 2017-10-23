@@ -5,10 +5,12 @@ use error;
 use error::ResultExt;
 use mutator::BlockData;
 use mutator::append::Append;
+use partition::Partition;
 use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
 use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
@@ -70,6 +72,19 @@ impl GenericResponse {
     }
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct PartitionInfo {
+    min_ts: u64,
+    max_ts: u64,
+    id: Uuid,
+    location: String
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct RefreshCatalogResponse {
+    pub columns: Vec<ReplyColumn>,
+    pub available_partitions: Vec<PartitionInfo>
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum Operation {
@@ -101,7 +116,7 @@ impl Request {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ReplyColumn {
     typ: BlockType,
     id: ColumnId,
@@ -119,7 +134,7 @@ pub enum Reply<'reply> {
     ListColumns(Vec<ReplyColumn>),
     Insert(Result<usize, Error>),
     Scan(ScanResultMessage<'reply>),
-    RefreshCatalog,
+    RefreshCatalog(RefreshCatalogResponse),
     AddColumn(Result<usize, Error>),
     Flush,
     DataCompaction,
@@ -178,11 +193,61 @@ impl <'reply> Reply<'reply> {
         catalog.flush()
             .chain_err(|| "Cannot flush catalog after inserting")
             .unwrap();
-        Reply::Insert(Ok(inserted))
-    }
+        Reply::Insert(Ok(inserted))}
 
     fn scan(_scan: ScanRequest, _catalog: &Catalog) -> Reply<'reply> {
+        // TODO: connect to scanning when it's integrated
         Reply::Scan(ScanResultMessage::new())
+    }
+
+    fn get_catalog(catalog: &Catalog) -> Reply<'reply> {
+        let columns = catalog.columns.iter()
+            .map(|(id, c)| {
+                 let t = match c.ty {
+                     TyBlockType::Memory(t) => t,
+                     TyBlockType::Memmap(t) => t
+                 };
+                 ReplyColumn {
+                     typ: t,
+                     id: *id,
+                     name: c.name.clone()
+                 }
+            })
+            .collect();
+        let mut immutable: Vec<PartitionInfo> = catalog.groups.values()
+            .flat_map(|g| {
+                let immutable: Vec<&Partition> = g.immutable_partitions.values().collect();
+                immutable
+            })
+            .map(|partition|
+                 PartitionInfo {
+                     min_ts: partition.ts_min.into(),
+                     max_ts: partition.ts_max.into(),
+                     id: partition.id,
+                     location: String::new(),
+                 }
+            )
+            .collect();
+        let mutable: Vec<PartitionInfo> = catalog.groups.values()
+            .flat_map(|g| {
+                let unlocked = g.mutable_partitions.read().unwrap();
+                let mutable: Vec<PartitionInfo> = unlocked.iter()
+                    .map(|partition|
+                         PartitionInfo {
+                             min_ts: partition.ts_min.into(),
+                             max_ts: partition.ts_max.into(),
+                             id: partition.id,
+                             location: String::new(),
+                         }
+                    ).collect();
+                mutable
+            }).collect();
+        immutable.extend(mutable);
+        let response = RefreshCatalogResponse {
+            columns: columns,
+            available_partitions: immutable
+        };
+        Reply::RefreshCatalog(response)
     }
 }
 
@@ -222,6 +287,7 @@ pub fn run_request<'reply>(req: Request, catalog: &mut Catalog) -> Reply<'reply>
         Request::AddColumn(request) => Reply::add_column(request, catalog),
         Request::Insert(insert) => Reply::insert(insert, catalog),
         Request::Scan(request) => Reply::scan(request, catalog),
+        Request::RefreshCatalog => Reply::get_catalog(catalog),
         _ => Reply::Other
     }
 }
