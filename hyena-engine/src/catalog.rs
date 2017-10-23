@@ -23,9 +23,9 @@ pub type ColumnMap = HashMap<ColumnId, Column>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
-    columns: ColumnMap,
+    pub(crate) columns: ColumnMap,
 
-    groups: PartitionGroupMap<'cat>,
+    pub(crate) groups: PartitionGroupMap<'cat>,
 
     #[serde(skip)]
     data_root: PathBuf,
@@ -38,10 +38,10 @@ pub(crate) struct PartitionGroup<'pg> {
     source_id: SourceId,
 
     #[serde(skip)]
-    immutable_partitions: PartitionMap<'pg>,
+    pub(crate) immutable_partitions: PartitionMap<'pg>,
 
     #[serde(skip)]
-    mutable_partitions: RwLock<VecDeque<Partition<'pg>>>,
+    pub(crate) mutable_partitions: RwLock<VecDeque<Partition<'pg>>>,
 
     #[serde(skip)]
     data_root: PathBuf,
@@ -370,8 +370,8 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Column {
-    ty: TyBlockType,
-    name: String,
+    pub(crate) ty: TyBlockType,
+    pub(crate) name: String,
 }
 
 impl Column {

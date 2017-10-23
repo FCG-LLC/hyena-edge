@@ -17,10 +17,10 @@ pub(crate) type PartitionId = Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Partition<'part> {
-    id: PartitionId,
+    pub(crate) id: PartitionId,
     // TODO: do we really need ts_* here?
-    ts_min: Timestamp,
-    ts_max: Timestamp,
+    pub(crate) ts_min: Timestamp,
+    pub(crate) ts_max: Timestamp,
 
     #[serde(skip)]
     blocks: BlockMap<'part>,
