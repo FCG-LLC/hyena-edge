@@ -24,8 +24,10 @@ fn get_address(matches: &clap::ArgMatches) -> String {
 
 fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
     trace!("Got: {:?}", msg);
+
     let operation = Request::parse(msg);
     debug!("Operation: {:?}", operation);
+
     let reply = run_request(operation, catalog);
     debug!("Returning: {:?}", reply);
     trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
