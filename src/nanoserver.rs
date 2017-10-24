@@ -60,3 +60,39 @@ pub fn run(matches: &clap::ArgMatches) {
 
     loop {core.turn(None);}
 }
+
+#[cfg(test)]
+mod tests {
+
+    mod get_address {
+        use nanoserver::get_address;
+        use cli::app;
+
+        #[test]
+        fn get_tcp_address() {
+            let args = vec!["bin_name", "-ttcp", "--hostname", "a.host.com", "--port", "1234"];
+            let m = app().get_matches_from_safe(args)
+                .unwrap_or_else( |e| { panic!("Can't parse arguments: {}", e) });
+            let address = get_address(&m);
+            assert_eq!("tcp://a.host.com:1234", address);
+        }
+
+        #[test]
+        fn get_ipc_address() {
+            let args = vec!["bin_name", "--transport", "ipc", "--ipc-path", "/some/path"];
+            let m = app().get_matches_from_safe(args)
+                .unwrap_or_else( |e| { panic!("Can't parse arguments: {}", e) });
+            let address = get_address(&m);
+            assert_eq!("ipc:///some/path", address);
+        }
+
+        #[test]
+        fn get_ws_address() {
+            let args = vec!["bin_name", "--transport", "ws", "--hostname", "a.host.com", "--port", "1234"];
+            let m = app().get_matches_from_safe(args)
+                .unwrap_or_else( |e| { panic!("Can't parse arguments: {}", e) });
+            let address = get_address(&m);
+            assert_eq!("ws://a.host.com:1234", address);
+        }
+    }
+}
