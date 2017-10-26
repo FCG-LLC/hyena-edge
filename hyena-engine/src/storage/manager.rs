@@ -112,7 +112,7 @@ mod tests {
 
         assert!(!root.exists());
 
-        let manager = RootManager::new(&root)
+        let _manager = RootManager::new(&root)
             .chain_err(|| "Failed to create manager")
             .unwrap();
 
@@ -128,7 +128,7 @@ mod tests {
     fn existing() {
         let root = tempdir!();
 
-        let manager = RootManager::new(&root)
+        let _manager = RootManager::new(&root)
             .chain_err(|| "Failed to create manager")
             .unwrap();
 
