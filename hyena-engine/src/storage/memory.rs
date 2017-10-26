@@ -129,6 +129,7 @@ mod tests {
             storage.as_ref()
         }
 
+        #[allow(non_snake_case)]
         fn as_T<T>() {
             deref_aligned::<T, _>(&create_block());
         }

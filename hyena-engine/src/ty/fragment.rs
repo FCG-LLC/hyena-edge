@@ -724,7 +724,7 @@ mod tests {
 
     mod timestamp {
         use super::*;
-        use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+        use helpers::random::timestamp::RandomTimestampGen;
 
         #[test]
         fn is_eq() {

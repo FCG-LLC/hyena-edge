@@ -36,8 +36,9 @@ extern crate prettytable;
 #[cfg(test)]
 extern crate term;
 
-// #[macro_use]
-// extern crate static_assertions;
+#[cfg(test)]
+#[macro_use]
+extern crate static_assertions;
 
 pub(crate) mod params;
 

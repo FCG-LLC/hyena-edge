@@ -23,10 +23,13 @@ impl Append {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+    use error::*;
+    use helpers::random::timestamp::RandomTimestampGen;
     use rand::{thread_rng, Rng};
     use block::SparseIndex;
-
+    use std::iter::repeat;
+    use ty::Fragment;
+    use ty::timestamp::Timestamp;
 
     #[test]
     fn serialize() {
@@ -49,7 +52,7 @@ mod tests {
             repeat(())
                 .take(100)
                 .enumerate()
-                .map(|(idx, _)| rng.gen())
+                .map(|(_idx, _)| rng.gen())
                 .collect::<Vec<u64>>(),
 
             repeat(())
@@ -62,7 +65,7 @@ mod tests {
         let ap = Append {
             ts: frag,
             source_id: 1,
-            data: hashmap! {
+            data: hashmap_mut! {
                 2 => u64frag,
                 8 => u64sfrag,
             },
