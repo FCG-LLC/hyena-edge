@@ -440,7 +440,7 @@ impl Deref for PartitionMeta {
 }
 
 impl<'cat> Catalog<'cat> {
-    fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+    pub(crate) fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         let root = root.as_ref().to_path_buf();
 
         let meta = root.join(CATALOG_METADATA);
