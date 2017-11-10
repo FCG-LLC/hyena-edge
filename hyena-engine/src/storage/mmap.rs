@@ -1,9 +1,7 @@
 use error::*;
 
 use fs::ensure_file;
-
-use memmap;
-use memmap::{MmapMut, Protection};
+use memmap::{MmapMut, MmapOptions};
 
 use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
@@ -17,9 +15,8 @@ pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
     let file = ensure_file(path, size)?;
 
     unsafe {
-        memmap::file(&file)
-            .protection(Protection::ReadWrite)
-            .map_mut()
+        MmapOptions::new()
+            .map_mut(&file)
             .chain_err(|| "memmap failed")
     }
 }
