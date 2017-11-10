@@ -23,7 +23,7 @@ optional = true
 version = "0.2.24"
 
 [dependencies.memmap]
-git = "https://github.com/danburkert/memmap-rs.git"
+version = "0.6.1"
 optional = true
 
 [dependencies.uuid]
