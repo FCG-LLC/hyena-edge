@@ -53,6 +53,7 @@ pub enum ScanFilterOp<T: Debug + Clone + PartialEq + PartialOrd> {
 }
 
 impl<T: Debug + Clone + PartialEq + PartialOrd> ScanFilterOp<T> {
+    #[inline]
     fn apply(&self, tested: &T) -> bool {
         use self::ScanFilterOp::*;
 
@@ -73,6 +74,12 @@ pub struct ScanResult {
 }
 
 impl ScanResult {
+
+    /// Merge two `ScanResult`s
+    ///
+    /// We are assuming that the contained columns are the same
+    /// because that should always be the case in our "supertable" model
+    ///
     pub(crate) fn merge(&mut self, mut other: ScanResult) -> Result<()> {
         for (k, v) in self.data.iter_mut() {
             let o = if let Some(o) = other.data.remove(k) {
@@ -104,6 +111,7 @@ impl From<HashMap<ColumnId, Option<Fragment>>> for ScanResult {
 }
 
 pub trait ScanFilterApply<T> {
+    #[inline]
     fn apply(&self, tested: &T) -> bool;
 }
 
@@ -122,6 +130,7 @@ macro_rules! scan_filter_impl {
         $(
 
         impl ScanFilterApply<$ty> for ScanFilter {
+            #[inline]
             fn apply(&self, tested: &$ty) -> bool {
                 if let ScanFilter::$variant(ref op) = *self {
                     op.apply(tested)
@@ -155,4 +164,78 @@ scan_filter_impl! {
     i16, I16,
     i32, I32,
     i64, I64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod merge {
+        use super::*;
+
+        fn prepare() -> (ScanResult, ScanResult, ScanResult) {
+            let a = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(seqfill!(vec u64, 5))),
+                1 => Some(Fragment::from(seqfill!(vec u32))),
+                3 => Some(Fragment::from(seqfill!(vec u16, 5))),
+                5 => Some(Fragment::from(seqfill!(vec u64, 5))),
+            });
+
+            let b = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(seqfill!(vec u64, 10, 5))),
+                1 => Some(Fragment::from(seqfill!(vec u32))),
+                3 => Some(Fragment::from(seqfill!(vec u16, 5, 15))),
+                5 => Some(Fragment::from(seqfill!(vec u64, 10, 20))),
+            });
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some({
+                    let mut frag = seqfill!(vec u64, 5);
+                    frag.extend(seqfill!(vec u64, 10, 5));
+                    Fragment::from(frag)
+                }),
+                1 => Some(Fragment::from(seqfill!(vec u32))),
+                3 => Some({
+                    let mut frag = seqfill!(vec u16, 5);
+                    frag.extend(seqfill!(vec u16, 5, 15));
+                    Fragment::from(frag)
+                }),
+                5 => Some({
+                    let mut frag = seqfill!(vec u64, 5);
+                    frag.extend(seqfill!(vec u64, 10, 20));
+                    Fragment::from(frag)
+                }),
+            });
+
+            (a, b, expected)
+        }
+
+        #[test]
+        fn some_a_some_b() {
+
+            let (mut merged, b, expected) = prepare();
+
+            merged.merge(b).chain_err(|| "merge failed").unwrap();
+
+            assert_eq!(merged, expected);
+        }
+
+        #[test]
+        fn some_a_none_b() {
+            let (mut merged, mut b, mut expected) = prepare();
+
+            // remove one fragment
+            b.data.remove(&3);
+
+            // replace expected
+            expected.data.remove(&3);
+            expected.data.insert(3, merged.data[&3].clone());
+
+            let (b, expected) = (b, expected);
+
+            merged.merge(b).chain_err(|| "merge failed").unwrap();
+
+            assert_eq!(merged, expected);
+        }
+    }
 }
