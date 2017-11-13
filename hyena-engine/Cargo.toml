@@ -17,6 +17,7 @@ rayon = "0.8.2"
 serde = "1.0.9"
 serde_derive = "1.0.9"
 static_assertions = "0.2.2"
+extprim = "1.4.0"
 
 [dependencies.libc]
 optional = true
@@ -40,7 +41,6 @@ rand = "0.3.15"
 tempdir = "0.3.5"
 
 [features]
-block_128 = []
 default = [
     "hole_punching",
     "mmap",

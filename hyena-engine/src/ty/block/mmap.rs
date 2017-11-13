@@ -7,7 +7,8 @@ use std::path::Path;
 use std::mem::size_of;
 //use std::fs::remove_file;
 use params::BLOCK_SIZE;
-
+use extprim::i128::i128;
+use extprim::u128::u128;
 
 block_impl!(MemmapStorage);
 
@@ -97,13 +98,11 @@ impl<'block> Block<'block> {
             BlockType::I16Dense => prepare_mmap_dense!(I16DenseBlock<'block, _>),
             BlockType::I32Dense => prepare_mmap_dense!(I32DenseBlock<'block, _>),
             BlockType::I64Dense => prepare_mmap_dense!(I64DenseBlock<'block, _>),
-            #[cfg(feature = "block_128")]
             BlockType::I128Dense => prepare_mmap_dense!(I128DenseBlock<'block, _>),
             BlockType::U8Dense => prepare_mmap_dense!(U8DenseBlock<'block, _>),
             BlockType::U16Dense => prepare_mmap_dense!(U16DenseBlock<'block, _>),
             BlockType::U32Dense => prepare_mmap_dense!(U32DenseBlock<'block, _>),
             BlockType::U64Dense => prepare_mmap_dense!(U64DenseBlock<'block, _>),
-            #[cfg(feature = "block_128")]
             BlockType::U128Dense => prepare_mmap_dense!(U128DenseBlock<'block, _>),
 
             // Sparse
@@ -111,13 +110,11 @@ impl<'block> Block<'block> {
             BlockType::I16Sparse => prepare_mmap_sparse!(I16SparseBlock<'block, _, _>, i16),
             BlockType::I32Sparse => prepare_mmap_sparse!(I32SparseBlock<'block, _, _>, i32),
             BlockType::I64Sparse => prepare_mmap_sparse!(I64SparseBlock<'block, _, _>, i64),
-            #[cfg(feature = "block_128")]
             BlockType::I128Sparse => prepare_mmap_sparse!(I128SparseBlock<'block, _, _>, i128),
             BlockType::U8Sparse => prepare_mmap_sparse!(U8SparseBlock<'block, _, _>, u8),
             BlockType::U16Sparse => prepare_mmap_sparse!(U16SparseBlock<'block, _, _>, u16),
             BlockType::U32Sparse => prepare_mmap_sparse!(U32SparseBlock<'block, _, _>, u32),
             BlockType::U64Sparse => prepare_mmap_sparse!(U64SparseBlock<'block, _, _>, u64),
-            #[cfg(feature = "block_128")]
             BlockType::U128Sparse => prepare_mmap_sparse!(U128SparseBlock<'block, _, _>, u128),
         })
     }
@@ -217,7 +214,6 @@ mod tests {
         prepare_sparse::<i64>(64);
     }
 
-    #[cfg(feature = "block_128")]
     #[test]
     fn prepare_sparse_i128() {
         prepare_sparse::<i128>(128);
@@ -243,7 +239,6 @@ mod tests {
         prepare_sparse::<u64>(640);
     }
 
-    #[cfg(feature = "block_128")]
     #[test]
     fn prepare_sparse_u128() {
         prepare_sparse::<u128>(1280);

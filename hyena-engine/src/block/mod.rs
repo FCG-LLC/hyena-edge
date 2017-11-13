@@ -2,6 +2,7 @@ use error::*;
 use std::collections::hash_map::HashMap;
 use std::fmt::Debug;
 use ty::block::BlockId;
+use extprim::u128::u128;
 
 mod numeric;
 
@@ -152,7 +153,6 @@ pub enum BlockType {
     I16Dense,
     I32Dense,
     I64Dense,
-    #[cfg(feature = "block_128")]
     I128Dense,
 
     // Dense, Unsigned
@@ -160,7 +160,6 @@ pub enum BlockType {
     U16Dense,
     U32Dense,
     U64Dense,
-    #[cfg(feature = "block_128")]
     U128Dense,
 
     // Sparse, Signed
@@ -168,7 +167,6 @@ pub enum BlockType {
     I16Sparse,
     I32Sparse,
     I64Sparse,
-    #[cfg(feature = "block_128")]
     I128Sparse,
 
     // Sparse, Unsigned
@@ -176,7 +174,6 @@ pub enum BlockType {
     U16Sparse,
     U32Sparse,
     U64Sparse,
-    #[cfg(feature = "block_128")]
     U128Sparse,
 }
 
@@ -191,7 +188,6 @@ impl BlockType {
             I16Dense | U16Dense | I16Sparse | U16Sparse => size_of::<u16>(),
             I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
             I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
-            #[cfg(feature = "block_128")]
             I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
         }
     }
@@ -205,14 +201,12 @@ impl BlockType {
             I16Dense | U16Dense |
             I32Dense | U32Dense |
             I64Dense | U64Dense => false,
-            #[cfg(feature = "block_128")]
             I128Dense | U128Dense => false,
 
             I8Sparse | U8Sparse |
             I16Sparse | U16Sparse |
             I32Sparse | U32Sparse |
             I64Sparse | U64Sparse  => true,
-            #[cfg(feature = "block_128")]
             I128Sparse | U128Sparse => true,
         }
     }

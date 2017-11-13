@@ -1,3 +1,4 @@
+
 macro_rules! block_apply {
     (mut expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) =>
     {{
@@ -73,7 +74,6 @@ macro_rules! block_apply {
                     I16Dense(ref mut $physblock) => $what,
                     I32Dense(ref mut $physblock) => $what,
                     I64Dense(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Dense(ref mut $physblock) => $what,
 
                     // Dense, Unsigned
@@ -81,7 +81,6 @@ macro_rules! block_apply {
                     U16Dense(ref mut $physblock) => $what,
                     U32Dense(ref mut $physblock) => $what,
                     U64Dense(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Dense(ref mut $physblock) => $what,
 
                     // Sparse, Signed
@@ -89,7 +88,6 @@ macro_rules! block_apply {
                     I16Sparse(ref mut $physblock) => $what,
                     I32Sparse(ref mut $physblock) => $what,
                     I64Sparse(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Sparse(ref mut $physblock) => $what,
 
                     // Sparse, Unsigned
@@ -97,7 +95,6 @@ macro_rules! block_apply {
                     U16Sparse(ref mut $physblock) => $what,
                     U32Sparse(ref mut $physblock) => $what,
                     U64Sparse(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Sparse(ref mut $physblock) => $what,
                 }
             }
@@ -110,7 +107,6 @@ macro_rules! block_apply {
                     I16Dense(ref mut $physblock) => $what,
                     I32Dense(ref mut $physblock) => $what,
                     I64Dense(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Dense(ref mut $physblock) => $what,
 
                     // Dense, Unsigned
@@ -118,7 +114,6 @@ macro_rules! block_apply {
                     U16Dense(ref mut $physblock) => $what,
                     U32Dense(ref mut $physblock) => $what,
                     U64Dense(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Dense(ref mut $physblock) => $what,
 
                     // Sparse, Signed
@@ -126,7 +121,6 @@ macro_rules! block_apply {
                     I16Sparse(ref mut $physblock) => $what,
                     I32Sparse(ref mut $physblock) => $what,
                     I64Sparse(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Sparse(ref mut $physblock) => $what,
 
                     // Sparse, Unsigned
@@ -134,7 +128,6 @@ macro_rules! block_apply {
                     U16Sparse(ref mut $physblock) => $what,
                     U32Sparse(ref mut $physblock) => $what,
                     U64Sparse(ref mut $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Sparse(ref mut $physblock) => $what,
                 }
             }
@@ -156,7 +149,6 @@ macro_rules! block_apply {
                     I16Dense(ref $physblock) => $what,
                     I32Dense(ref $physblock) => $what,
                     I64Dense(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Dense(ref $physblock) => $what,
 
                     // Dense, Unsigned
@@ -164,7 +156,6 @@ macro_rules! block_apply {
                     U16Dense(ref $physblock) => $what,
                     U32Dense(ref $physblock) => $what,
                     U64Dense(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Dense(ref $physblock) => $what,
 
                     // Sparse, Signed
@@ -172,7 +163,6 @@ macro_rules! block_apply {
                     I16Sparse(ref $physblock) => $what,
                     I32Sparse(ref $physblock) => $what,
                     I64Sparse(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Sparse(ref $physblock) => $what,
 
                     // Sparse, Unsigned
@@ -180,7 +170,6 @@ macro_rules! block_apply {
                     U16Sparse(ref $physblock) => $what,
                     U32Sparse(ref $physblock) => $what,
                     U64Sparse(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Sparse(ref $physblock) => $what,
                 }
             }
@@ -193,7 +182,6 @@ macro_rules! block_apply {
                     I16Dense(ref $physblock) => $what,
                     I32Dense(ref $physblock) => $what,
                     I64Dense(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Dense(ref $physblock) => $what,
 
                     // Dense, Unsigned
@@ -201,7 +189,6 @@ macro_rules! block_apply {
                     U16Dense(ref $physblock) => $what,
                     U32Dense(ref $physblock) => $what,
                     U64Dense(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Dense(ref $physblock) => $what,
 
                     // Sparse, Signed
@@ -209,7 +196,6 @@ macro_rules! block_apply {
                     I16Sparse(ref $physblock) => $what,
                     I32Sparse(ref $physblock) => $what,
                     I64Sparse(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     I128Sparse(ref $physblock) => $what,
 
                     // Sparse, Unsigned
@@ -217,7 +203,6 @@ macro_rules! block_apply {
                     U16Sparse(ref $physblock) => $what,
                     U32Sparse(ref $physblock) => $what,
                     U64Sparse(ref $physblock) => $what,
-                    #[cfg(feature = "block_128")]
                     U128Sparse(ref $physblock) => $what,
                 }
             }
@@ -400,8 +385,6 @@ macro_rules! map_fragment {
         [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
         $modifiers: tt) => {{
 
-        cfg_if! {
-            if #[cfg(feature = "block_128")] {
                 macro_rules! __cond {
                     (map) => {{
                         map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, $ty,
@@ -441,48 +424,6 @@ macro_rules! map_fragment {
                         )
                     }};
                 }
-            } else {
-                macro_rules! __cond {
-                    (map) => {{
-                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, $ty,
-                            $(
-                                $bvars, $use,
-
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense
-                                ]
-
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse
-                                ]
-                            )*
-                        )
-                    }};
-
-                    (mut) => {{
-                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                            $ty,
-                            $(
-                                $bvars, $use,
-
-
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense
-                                ]
-
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse
-                                ]
-                            )*
-                        )
-                    }};
-                }
-            }
-        }
 
         __cond!($modifiers)
     }};
