@@ -3,6 +3,8 @@ use block::SparseIndex;
 use ty::{BlockTypeMap, Timestamp};
 use std::slice::from_raw_parts;
 use std::mem::transmute;
+use std::marker::PhantomData;
+use ty::value::Value;
 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -269,6 +271,32 @@ impl Fragment {
             }
         )
     }
+
+    pub fn iter<'frag>(&'frag self) -> FragmentIter<'frag> {
+        use self::Fragment::*;
+
+        frag_apply!(*self, blk, idx, {
+            FragmentIter(Box::new(blk.iter()
+                .map(|v| Value::from(*v))
+                .enumerate()), PhantomData)
+        }, {
+            FragmentIter(Box::new(idx.iter()
+                .zip(blk)
+                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+            ), PhantomData)
+        })
+    }
+}
+
+pub struct FragmentIter<'frag>(Box<Iterator<Item = (usize, Value)> + 'frag>,
+PhantomData<&'frag Value>);
+
+impl<'frag> Iterator for FragmentIter<'frag> {
+    type Item = (usize, Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
 }
 
 impl<'fragref> FragmentRef<'fragref> {
@@ -526,6 +554,22 @@ mod tests {
 
                             assert_eq!(frag, expected);
                         }
+
+                        #[test]
+                        fn iter() {
+                            let buf = (1..100).into_iter().collect::<Vec<$B>>();
+
+                            let frag = Fragment::from(buf.clone());
+
+                            let v = frag.iter().collect::<Vec<_>>();
+
+                            let expected = buf.iter()
+                                .enumerate()
+                                .map(|(idx, val)| (idx, Value::from(*val)))
+                                .collect::<Vec<_>>();
+
+                            assert_eq!(expected, v);
+                        }
                     }
                 )*
             }
@@ -631,6 +675,35 @@ mod tests {
                             frag.sort_unstable();
 
                             assert_eq!(frag, expected);
+                        }
+
+                        #[test]
+                        fn iter() {
+                            let buf: Vec<$B> = vec![10, 4, 2, 18, 7, 35, 16, 9, 10, 0];
+                            let idx: Vec<u32> = vec![1, 3, 8, 12, 16, 18, 31, 82, 120, 160];
+
+                            let expected: Vec<(usize, $B)> = vec![
+                                (1, 10),
+                                (3, 4),
+                                (8, 2),
+                                (12, 18),
+                                (16, 7),
+                                (18, 35),
+                                (31, 16),
+                                (82, 9),
+                                (120, 10),
+                                (160, 0),
+                            ];
+
+                            let expected = expected.into_iter()
+                                .map(|(idx, val)| (idx, Value::from(val)))
+                                .collect::<Vec<_>>();
+
+                            let frag = Fragment::from((buf, idx));
+
+                            let v = frag.iter().collect::<Vec<_>>();
+
+                            assert_eq!(expected, v);
                         }
                     }
                 )*
