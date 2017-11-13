@@ -19,6 +19,8 @@ pub(crate) mod tempfile;
 #[macro_use]
 pub(crate) mod block;
 
+#[cfg(test)]
+pub(crate) mod table;
 
 /// helper facilitating calling expressions that utilize `std::ops::Carrier`
 /// in functions with no `Result` return type
