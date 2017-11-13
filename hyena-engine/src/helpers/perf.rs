@@ -82,3 +82,16 @@ macro_rules! flame {
         flame!(@ clear())
     };
 }
+
+macro_rules! t {
+    ($t: expr, $name: expr) => {
+        #[cfg(feature = "tperf")]
+        println!("{}: {:?} s", $name, $t.elapsed());
+    };
+
+    () => {{
+        use std::time::Instant;
+
+        Instant::now()
+    }};
+}

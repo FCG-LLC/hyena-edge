@@ -1,5 +1,5 @@
 #[macro_use]
-pub(crate) mod flame;
+pub(crate) mod perf;
 
 #[macro_use]
 pub(crate) mod lock;
