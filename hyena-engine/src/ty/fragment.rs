@@ -232,6 +232,25 @@ impl Fragment {
         frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
     }
 
+    pub(crate) fn sort_unstable(&mut self) {
+        use self::Fragment::*;
+
+        frag_apply!(mut *self, blk, idx, {
+            blk.sort()
+        }, {
+            let mut v = (*idx).iter().cloned()
+                .zip((*blk).iter().cloned())
+                .collect::<Vec<_>>();
+
+            v.sort_unstable_by_key(|&(idx, blk)| blk);
+
+            let (nidx, nblk): (Vec<_>, Vec<_>) = v.into_iter().unzip();
+
+            blk.copy_from_slice(nblk.as_slice());
+            idx.copy_from_slice(nidx.as_slice());
+        })
+    }
+
     pub fn merge(&mut self, other: &mut Fragment) -> Result<()> {
         use self::Fragment::*;
 
@@ -493,6 +512,20 @@ mod tests {
 
                             frag.split_at_idx(100).unwrap();
                         }
+
+                        #[test]
+                        fn sort() {
+                            let buf = random!(gen $B, 1000);
+
+                            let mut expected = buf.clone();
+                            expected.sort();
+                            let expected = Fragment::from(expected);
+
+                            let mut frag = Fragment::from(buf);
+                            frag.sort_unstable();
+
+                            assert_eq!(frag, expected);
+                        }
                     }
                 )*
             }
@@ -580,6 +613,24 @@ mod tests {
 
                             assert_variant!(left, FragmentRef::$T(_, vidx),
                                             *vidx.last().unwrap() < dense_count);
+                        }
+
+                        #[test]
+                        fn sort() {
+                            let buf: Vec<$B> = vec![10, 4, 2, 18, 7, 35, 16, 9, 10, 0];
+                            let idx: Vec<u32> = vec![1, 3, 8, 12, 16, 18, 31, 82, 120, 160];
+
+                            let expected: (Vec<$B>, Vec<u32>) = (
+                                vec![0, 2, 4, 7, 9, 10, 10, 16, 18, 35],
+                                vec![160, 8, 3, 16, 82, 1, 120, 31, 12, 18]
+                            );
+
+                            let expected = Fragment::from(expected);
+
+                            let mut frag = Fragment::from((buf, idx));
+                            frag.sort_unstable();
+
+                            assert_eq!(frag, expected);
                         }
                     }
                 )*
