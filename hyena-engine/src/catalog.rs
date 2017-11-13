@@ -762,7 +762,7 @@ mod tests {
                 let (td, part_ids) = {
 
                     let init = append_test_impl!(init columns.clone(), now);
-                    let mut cat = init.1;
+                    let cat = init.1;
 
                     $(
 

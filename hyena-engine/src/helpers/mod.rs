@@ -41,7 +41,13 @@ pub(crate) mod tests {
 
 
     macro_rules! hashmap {
-        ( $($key:expr => $value:expr),* $(,)* ) => {{
+        () => {{
+            use std::collections::hash_map::HashMap;
+
+            HashMap::new()
+        }};
+
+        ( $($key:expr => $value:expr),+ $(,)* ) => {{
             use std::collections::hash_map::HashMap;
 
             let mut hash = HashMap::new();
