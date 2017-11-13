@@ -102,6 +102,21 @@ macro_rules! frag_apply {
         }
     }};
 
+    (@ mut $self: expr, $block: ident, $idx: ident
+        dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
+        sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
+
+        match $self {
+            $(
+                $dense_variants(ref mut $block) => $dense,
+            )+
+
+            $(
+                $sparse_variants(ref mut $block, ref mut $idx) => $sparse,
+            )+
+        }
+    }};
+
     (@ $self: expr, $block: ident, $idx: ident
         dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
         sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
@@ -120,6 +135,15 @@ macro_rules! frag_apply {
     (merge $self: expr, $other: expr, $self_block: ident, $self_idx: ident,
         $other_block: ident, $other_idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ merge $self, $other, $self_block, $self_idx, $other_block, $other_idx
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse ]
+        )
+    };
+
+    (mut $self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
+        frag_apply!(@ mut $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
                             U8Dense, U16Dense, U32Dense, U64Dense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
@@ -211,8 +235,8 @@ impl Fragment {
     pub fn merge(&mut self, other: &mut Fragment) -> Result<()> {
         use self::Fragment::*;
 
-        frag_apply!(
-            merge * self,
+        frag_apply!(merge
+            *self,
             *other,
             sblk,
             sidx,
