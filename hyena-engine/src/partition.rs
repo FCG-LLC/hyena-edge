@@ -12,7 +12,8 @@ use ty::block::mmap::BlockType as MmapBlockType;
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
-use ty::fragment::FragmentRef;
+use std::iter::FromIterator;
+use ty::fragment::{Fragment, FragmentRef};
 use mutator::BlockRefData;
 use scanner::{Scan, ScanFilterApply, ScanResult};
 
@@ -161,22 +162,34 @@ impl<'part> Partition<'part> {
                     let block = acquire!(read block);
 
                     Some(map_block!(map block, blk, {
-                        blk.as_slice()
-                            .par_iter()
-                            .enumerate()
-                            .filter_map(|(rowid, val)| if filters.iter().all(|f| f.apply(val)) {
-                                Some(rowid)
-                            } else { None })
-                            .collect::<HashSet<usize>>()
+                        let mut ret = Vec::new();
+                        let mut rowid = 0;
+
+                        for val in blk.as_slice().iter() {
+                            if filters.iter().all(|f| f.apply(val)) {
+                                ret.push(rowid)
+                            }
+
+                            rowid += 1;
+                        }
+
+                        ret.into_iter().collect()
                     }, {
+                        let mut ret = Vec::new();
+
                         let (idx, data) = blk.as_indexed_slice();
-                        idx
-                            .par_iter()
-                            .zip(data)
-                            .filter_map(|(rowid, val)| if filters.iter().all(|f| f.apply(val)) {
-                                Some(*rowid as usize)
-                            } else { None })
-                            .collect::<HashSet<usize>>()
+                        let mut rowid = 0;
+
+                        for val in data.iter() {
+                            if filters.iter().all(|f| f.apply(val)) {
+                                // this is a safe cast u32 -> usize
+                                ret.push(idx[rowid] as usize)
+                            }
+
+                            rowid += 1;
+                        }
+
+                        ret.into_iter().collect()
                     }))
                 } else {
                     // if this is a sparse block, then it's a valid case
@@ -188,18 +201,26 @@ impl<'part> Partition<'part> {
             })
             .reduce(
                 || None,
-                |a, b| if a.is_none() {
-                    b
-                } else if b.is_none() {
-                    a
-                } else {
-                    Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
+                |a, b| {
+                    if a.is_none() {
+                        b
+                    } else if b.is_none() {
+                        a
+                    } else {
+                        Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
+                    }
                 },
             )
-            .ok_or_else(|| "scan error")
-            .unwrap();
+            .ok_or_else(|| "scan error")?;
 
-        use ty::fragment::Fragment;
+        // this is superfluous if we're dealing with dense blocks only
+        // as it doesn't matter if rowids are sorted then
+        // but it still should be cheaper than converting for each sparse block separately
+
+        let mut rowids = Vec::from_iter(rowids.into_iter());
+        rowids.sort_unstable();
+
+        let rowids = rowids;
 
         let all_columns = if scan.projection.is_some() {
             None
@@ -221,22 +242,49 @@ impl<'part> Partition<'part> {
                         *block_id,
                         Some(map_block!(map block, blk, {
 
-                        Fragment::from(blk.as_slice()
-                            .par_iter()
-                            .enumerate()
-                            .filter_map(|(rowid, val)| if rowids.contains(&rowid) {
-                                Some(*val)
-                            } else { None })
-                            .collect::<Vec<_>>())
+                        let bs = blk.as_slice();
+
+                        Fragment::from(if bs.is_empty() {
+                                Vec::new()
+                            } else {
+                                rowids.iter()
+                                    .map(|rowid| bs[*rowid])
+                                    .collect::<Vec<_>>()
+                            })
                     }, {
-                        let (idx, data) = blk.as_indexed_slice();
-                        Fragment::from(idx
-                            .par_iter()
-                            .zip(data)
-                            .filter_map(|(rowid, val)| if rowids.contains(&(*rowid as usize)) {
-                                Some(*val)
-                            } else { None })
-                            .collect::<Vec<_>>())
+                        let (index, data) = blk.as_indexed_slice();
+
+                        let mut result = Vec::new();
+                        let mut result_idx = Vec::new();
+                        let mut curidx = 0;
+                        let ilen = index.len();
+                        let mut i = &index[..];
+
+                        for rowid in &rowids[..] {
+
+                            for (rid, idx) in i.iter().scan(curidx, |c, &v| {
+                                let ret = (*c, v as usize);
+                                *c += 1;
+
+                                Some(ret)
+                            }) {
+                                if *rowid == idx {
+                                    result.push(data[rid]);
+                                    // todo: fix `as` casting
+                                    result_idx.push(rid as u32);
+                                    curidx = rid + 1;
+                                    break;
+                                }
+                            }
+
+                            i = &index[curidx..];
+
+                            if i.is_empty() {
+                                break;
+                            }
+                        }
+
+                        Fragment::from((result, result_idx))
                     })),
                     ))
                 } else {
@@ -384,7 +432,10 @@ impl<'part> Partition<'part> {
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
+//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
     {
+
         type_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
