@@ -99,7 +99,7 @@ mod tests {
                 let source = s.into_iter().cycle();
 
                 let len = {
-                    let mut data = block.as_mut_slice_append();
+                    let data = block.as_mut_slice_append();
                     let len = data.len();
                     let source = source.clone().take(len).map(|v| *v).collect::<Vec<_>>();
 
