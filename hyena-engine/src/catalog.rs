@@ -18,6 +18,7 @@ use mutator::BlockData;
 use scanner::{Scan, ScanFilter, ScanFilterOp, ScanResult};
 use ty::block::{BlockTypeMap, BlockTypeMapTy};
 use ty::timestamp::MIN_TIMESTAMP;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
 pub(crate) type PartitionGroupMap<'pg> = HashMap<SourceId, PartitionGroup<'pg>>;
@@ -1967,7 +1968,7 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap! {
+                let data = hashmap_mut! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
@@ -1977,18 +1978,18 @@ mod tests {
                 expected.insert(0, Fragment::from(v.clone()));
 
                 let td = append_test_impl!(
-                    hashmap! {
-                        0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                        1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                        2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                        3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    hashmap_mut! {
+                        0 => Column::new(TyBlockType::Memmap(BlockType::U64Dense), "ts"),
+                        1 => Column::new(TyBlockType::Memmap(BlockType::U32Dense), "source"),
+                        2 => Column::new(TyBlockType::Memmap(BlockType::U8Dense), "col1"),
+                        3 => Column::new(TyBlockType::Memmap(BlockType::U32Dense), "col2"),
                     },
                     now,
                     vec![expected],
                     [
                         v.into(),
                         record_count,
-                        hashmap! {
+                        hashmap_mut! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -2009,7 +2010,7 @@ mod tests {
             let (td, catalog) = scan_test_impl!(init);
 
             let scan = Scan::new(
-                hashmap! {
+                hashmap_mut! {
                     2 => vec![ScanFilterOp::Lt(100_u8).into()]
                 },
                 None,

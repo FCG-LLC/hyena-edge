@@ -7,13 +7,12 @@ use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 use block::BlockType;
-use std::collections::HashMap;
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
 use std::iter::FromIterator;
-use ty::fragment::{Fragment, FragmentRef};
+use ty::fragment::Fragment;
 use mutator::BlockRefData;
 use scanner::{Scan, ScanFilterApply, ScanResult};
 
@@ -257,7 +256,6 @@ impl<'part> Partition<'part> {
                         let mut result = Vec::new();
                         let mut result_idx = Vec::new();
                         let mut curidx = 0;
-                        let ilen = index.len();
                         let mut i = &index[..];
 
                         for rowid in &rowids[..] {

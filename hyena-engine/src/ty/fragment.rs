@@ -94,6 +94,7 @@ macro_rules! frag_apply {
             $(
                 $sparse_variants(ref mut $self_block, ref mut $self_idx) => {
                     if let $sparse_variants(ref mut $other_block, ref mut other_idx) = $other {
+                        #[allow(unreachable_code)]
                         Ok($sparse)
                     } else {
                         Err("incompatible source fragment variant in merge".into())
