@@ -738,7 +738,6 @@ mod tests {
     const TIMESTAMP_SIZE: usize = 8; // should be `size_of::<Timestamp>()`
     const MAX_RECORDS: usize = BLOCK_SIZE / TIMESTAMP_SIZE;
 
-
     fn create_random_partitions(pg: &mut PartitionGroup, im_count: usize, mut_count: usize) {
         let pts = RandomTimestampGen::pairs::<u64>(im_count + mut_count);
 

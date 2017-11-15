@@ -28,23 +28,6 @@ macro_rules! seqfill {
         seqfill!(vec $ty, 0, 0, 1)
     };
 
-    (iter $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
-        use error::*;
-
-        let start: $asty = $start as $asty;
-        let step: $asty = $step as $asty;
-        let count: usize = $count;
-
-        (0..count)
-            .into_iter()
-            .enumerate()
-            .map(move |(idx, _)| {
-                let v = start + (idx as $asty) * step;
-
-                v as $ty
-            })
-    }};
-
     (iter $ty: ty, $count: expr, $start: expr, $step: expr) => {{
         use num::NumCast;
 
