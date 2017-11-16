@@ -14,8 +14,7 @@ use std::result::Result as StdResult;
 use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
-use mutator::BlockData;
-use scanner::{Scan, ScanFilter, ScanFilterOp, ScanResult};
+use scanner::{Scan, ScanResult};
 use ty::block::{BlockTypeMap, BlockTypeMapTy};
 use ty::timestamp::MIN_TIMESTAMP;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -284,8 +283,8 @@ impl<'pg> PartitionGroup<'pg> {
                     a
                 } else {
                     let mut a = a.unwrap();
-                    let mut b = b.unwrap();
-                    a.merge(b);
+                    let b = b.unwrap();
+                    a.merge(b).unwrap();
                     Some(a)
                 },
             )
@@ -538,7 +537,7 @@ impl<'cat> Catalog<'cat> {
     pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
         let res = self.groups
             .par_iter()
-            .filter(|&(pgid, pg)| *pgid == 1)
+            .filter(|&(pgid, _)| *pgid == 1)
             .map(|(_, pg)| pg.scan(&scan))
             .collect::<Result<Vec<ScanResult>>>();
 
@@ -727,7 +726,6 @@ mod tests {
     use storage::manager::RootManager;
     use helpers::random::timestamp::RandomTimestampGen;
     use params::BLOCK_SIZE;
-    use std::mem::size_of;
 
     // until const fn stabilizes we have to use this hack
     // see https://github.com/rust-lang/rust/issues/24111
@@ -766,7 +764,6 @@ mod tests {
     #[macro_use]
     mod append {
         use super::*;
-        use params::BLOCK_SIZE;
         use ty::fragment::Fragment;
 
         macro_rules! append_test_impl {
@@ -1957,6 +1954,7 @@ mod tests {
     mod scan {
         use super::*;
         use ty::fragment::Fragment;
+        use scanner::ScanFilterOp;
 
         macro_rules! scan_test_impl {
             (init) => {{
@@ -2006,7 +2004,7 @@ mod tests {
 
         #[test]
         fn simple() {
-            let (td, catalog) = scan_test_impl!(init);
+            let (_, catalog) = scan_test_impl!(init);
 
             let scan = Scan::new(
                 hashmap_mut! {

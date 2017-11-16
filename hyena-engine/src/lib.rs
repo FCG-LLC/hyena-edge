@@ -31,7 +31,6 @@ extern crate rand;
 #[cfg(feature = "perf")]
 extern crate flame;
 #[cfg(test)]
-#[macro_use]
 extern crate prettytable;
 #[cfg(test)]
 extern crate term;

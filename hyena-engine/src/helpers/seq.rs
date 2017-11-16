@@ -29,8 +29,6 @@ macro_rules! seqfill {
     };
 
     (iter $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
-        use error::*;
-
         let start: $asty = $start as $asty;
         let step: $asty = $step as $asty;
         let count: usize = $count;

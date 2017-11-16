@@ -6,7 +6,6 @@ use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
-use block::BlockType;
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
 use params::PARTITION_METADATA;

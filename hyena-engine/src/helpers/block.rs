@@ -482,8 +482,6 @@ macro_rules! map_block {
     )
         => {{
         use ty::block::Block;
-        use error::*;
-
 
         match *$block {
             $(

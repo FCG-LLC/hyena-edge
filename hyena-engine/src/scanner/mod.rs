@@ -2,7 +2,6 @@ use error::*;
 use ty::ColumnId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use serde::{Deserialize, Serialize};
 use partition::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
@@ -91,7 +90,7 @@ impl ScanResult {
             if v.is_none() {
                 *v = o;
             } else if o.is_some() {
-                let mut self_data = v.as_mut().unwrap();
+                let self_data = v.as_mut().unwrap();
                 let mut other_data = o.unwrap();
 
                 self_data

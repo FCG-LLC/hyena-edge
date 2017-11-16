@@ -93,7 +93,7 @@ macro_rules! frag_apply {
 
             $(
                 $sparse_variants(ref mut $self_block, ref mut $self_idx) => {
-                    if let $sparse_variants(ref mut $other_block, ref mut other_idx) = $other {
+                    if let $sparse_variants(ref mut $other_block, ref mut _other_idx) = $other {
                         #[allow(unreachable_code)]
                         Ok($sparse)
                     } else {
@@ -239,6 +239,7 @@ impl Fragment {
         frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 
+    #[allow(unused)]
     pub(crate) fn sort_unstable(&mut self) {
         use self::Fragment::*;
 
@@ -249,7 +250,7 @@ impl Fragment {
                 .zip((*blk).iter().cloned())
                 .collect::<Vec<_>>();
 
-            v.sort_unstable_by_key(|&(idx, blk)| blk);
+            v.sort_unstable_by_key(|&(_, blk)| blk);
 
             let (nidx, nblk): (Vec<_>, Vec<_>) = v.into_iter().unzip();
 
@@ -258,18 +259,18 @@ impl Fragment {
         })
     }
 
-    pub fn merge(&mut self, other: &mut Fragment) -> Result<()> {
+    pub fn merge(&mut self, _other: &mut Fragment) -> Result<()> {
         use self::Fragment::*;
 
         frag_apply!(merge
             *self,
-            *other,
-            sblk,
-            sidx,
-            oblk,
-            oidx,
+            *_other,
+            _sblk,
+            _sidx,
+            _oblk,
+            _oidx,
             {
-                sblk.append(oblk);
+                _sblk.append(_oblk);
             },
             {
                 unimplemented!();
