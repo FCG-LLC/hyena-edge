@@ -1,6 +1,6 @@
 use uuid::Uuid as OrigUuid;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Hash, Eq, Default)]
 pub struct Uuid {
     hi: i64,
     lo: i64,

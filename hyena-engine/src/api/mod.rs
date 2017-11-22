@@ -6,10 +6,16 @@ use error::ResultExt;
 use mutator::BlockData;
 use mutator::append::Append;
 use partition::Partition;
+use scanner as S;
+use scanner::{Scan, ScanTsRange};
 use std::collections::hash_map::HashMap;
+use std::collections::HashSet;
 use std::convert::From;
+use std::fmt::Debug;
+use std::hash::Hash;
 use std::result::Result;
-use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
+use ty::{BlockType as TyBlockType, ColumnId, TimestampFragment};
+use ty::fragment::Fragment;
 use huuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -20,11 +26,27 @@ pub struct InsertMessage {
 }
 
 #[derive(Serialize, Debug)]
-pub struct ScanResultMessage<'message> {
-    pub row_count: u32,
-    pub col_count: u32,
-    pub col_types: Vec<(u32, TyBlockType)>,
-    pub blocks: Vec<Block<'message>>,
+pub struct DataTriple {
+    column_id: ColumnId,
+    column_type: BlockType,
+    data: Option<Fragment>
+}
+
+#[derive(Serialize, Debug)]
+pub struct ScanResultMessage {
+    data: Vec<DataTriple>
+}
+
+impl ScanResultMessage {
+    pub fn new() -> ScanResultMessage {
+        ScanResultMessage {
+            data: Vec::new(),
+        }
+    }
+
+    pub fn with(data: Vec<DataTriple>) -> ScanResultMessage {
+        ScanResultMessage { data: data }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -37,9 +59,24 @@ pub enum ScanComparison {
     NotEq,
 }
 
+impl ScanComparison {
+    fn to_scan_filter_op<T>(&self, val: T) -> S::ScanFilterOp<T>
+        where T: Debug + Clone + PartialEq + PartialOrd + Eq + Hash
+    {
+        match *self {
+            ScanComparison::Lt => S::ScanFilterOp::Lt(val),
+            ScanComparison::LtEq => S::ScanFilterOp::LtEq(val),
+            ScanComparison::Eq => S::ScanFilterOp::Eq(val),
+            ScanComparison::GtEq => S::ScanFilterOp::GtEq(val),
+            ScanComparison::Gt => S::ScanFilterOp::Gt(val),
+            ScanComparison::NotEq => S::ScanFilterOp::NotEq(val),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ScanFilter {
-    pub column: u32,
+    pub column: ColumnId,
     pub op: ScanComparison,
     pub val: u64,
     pub str_val: String,
@@ -50,7 +87,7 @@ pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
     pub partition_id: Uuid,
-    pub projection: Vec<u32>,
+    pub projection: Vec<ColumnId>,
     pub filters: Vec<ScanFilter>,
 }
 
@@ -122,10 +159,10 @@ impl ReplyColumn {
 }
 
 #[derive(Debug, Serialize)]
-pub enum Reply<'reply> {
+pub enum Reply {
     ListColumns(Vec<ReplyColumn>),
     Insert(Result<usize, Error>),
-    Scan(Result<ScanResultMessage<'reply>, Error>),
+    Scan(Result<ScanResultMessage, Error>),
     RefreshCatalog(RefreshCatalogResponse),
     AddColumn(Result<usize, Error>),
     Flush,
@@ -134,8 +171,8 @@ pub enum Reply<'reply> {
     Other,
 }
 
-impl<'reply> Reply<'reply> {
-    fn list_columns(catalog: &Catalog) -> Reply<'reply> {
+impl Reply {
+    fn list_columns(catalog: &Catalog) -> Reply {
         use std::ops::Deref;
 
         let cm: &ColumnMap = catalog.as_ref();
@@ -148,7 +185,7 @@ impl<'reply> Reply<'reply> {
         Reply::ListColumns(names)
     }
 
-    fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> Reply<'reply> {
+    fn add_column(request: AddColumnRequest, catalog: &mut Catalog) -> Reply {
         if request.column_name.is_empty() {
             return Reply::AddColumn(Err(Error::ColumnNameCannotBeEmpty));
         }
@@ -172,7 +209,7 @@ impl<'reply> Reply<'reply> {
         }
     }
 
-    fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply<'reply> {
+    fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply {
         let timestamps: TimestampFragment = insert.timestamps.into();
         let mut inserted = 0;
         let source = insert.source;
@@ -236,19 +273,62 @@ impl<'reply> Reply<'reply> {
         }
     }
 
-    fn scan(scan: ScanRequest, _catalog: &Catalog) -> Reply<'reply> {
-        if scan.min_ts > scan.max_ts {
+    fn scan(scan_request: ScanRequest, catalog: &Catalog) -> Reply {
+        if scan_request.min_ts > scan_request.max_ts {
             return Reply::Scan(Err(Error::InvalidScanRequest("min_ts > max_ts".into())));
         }
-        if scan.filters.len() == 0 {
+        if scan_request.projection.len() == 0 {
+            return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
+                .into())));
+        }
+        if scan_request.filters.len() == 0 {
             return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
         }
+        let scan = Reply::build_scan(scan_request);
+        let result = catalog.scan(&scan).unwrap();
 
-        // TODO: connect to scanning when it's integrated
-        Reply::Scan(Ok(ScanResultMessage::new()))
+        let cm: &ColumnMap = catalog.as_ref();
+
+        let srm = result.data.iter().map(|(column, fragment)| {
+            DataTriple {
+                column_id: *column,
+                column_type: match cm.get(column).unwrap().ty {
+                    TyBlockType::Memory(t) => t,
+                    TyBlockType::Memmap(t) => t,
+                },
+                data: fragment.clone()
+                    // TODO This should not be cloned.
+                    // The scan result should have lifetime tied to the catalog
+                    // and api::ScanResult should return return references.
+                    // Alternatively, it should be able to take over the
+                    // ownership of data fragments from ScanResult to
+                    // api::ScanResultMessage.
+            }
+        }).collect::<Vec<DataTriple>>();
+
+        Reply::Scan(Ok(ScanResultMessage::with(srm)))
     }
 
-    fn get_catalog(catalog: &Catalog) -> Reply<'reply> {
+    fn build_scan(scan_request: ScanRequest) -> Scan {
+        let scan_range = ScanTsRange::Bounded{
+            start: scan_request.min_ts,
+            end:   scan_request.max_ts
+        };
+        let mut partitions = HashSet::new();
+        partitions.insert(scan_request.partition_id.into());
+        let mut filters = HashMap::new();
+        for filter in scan_request.filters {
+            filters.insert(filter.column,
+                           vec![S::ScanFilter::U64(filter.op.to_scan_filter_op(filter.val))]);
+        }
+        Scan::new(filters,
+                  Some(scan_request.projection),
+                  None,
+                  Some(partitions),
+                  Some(scan_range))
+    }
+
+    fn get_catalog(catalog: &Catalog) -> Reply {
         let columns = catalog.columns
             .iter()
             .map(|(id, c)| {
@@ -312,18 +392,7 @@ impl From<error::Error> for Error {
     }
 }
 
-impl<'message> ScanResultMessage<'message> {
-    pub fn new() -> ScanResultMessage<'message> {
-        ScanResultMessage {
-            row_count: 0,
-            col_count: 0,
-            col_types: Vec::new(),
-            blocks: Vec::new(),
-        }
-    }
-}
-
-pub fn run_request<'reply>(req: Request, catalog: &mut Catalog) -> Reply<'reply> {
+pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
     match req {
         Request::ListColumns => Reply::list_columns(catalog),
         Request::AddColumn(request) => Reply::add_column(request, catalog),
@@ -727,7 +796,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_id: Uuid::new(1, 1),
+                    partition_id: Uuid::default(),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -742,28 +811,6 @@ mod tests {
                     Reply::Scan(Err(_)) => { /* OK, do nothing */ }
                     _ => panic!("Should have rejected the scan request"),
                 }
-
-                let request = ScanRequest {
-                    min_ts: 10,
-                    max_ts: 10,
-                    partition_id: Uuid::new(1, 1),
-                    projection: vec![1, 2, 3],
-                    filters: vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Eq,
-                                      val: 10,
-                                      str_val: "".into(),
-                                  }],
-                };
-
-                let reply = Reply::scan(request, &cat);
-                match reply {
-                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => {
-                        panic!("Should have rejected the scan request")
-                    }
-                    _ => { /* OK, do noting */ }
-                }
-
             }
 
             #[test]
@@ -776,9 +823,36 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: Uuid::new(1, 1),
+                    partition_id: Uuid::default(),
                     projection: vec![1, 2, 3],
                     filters: vec![],
+                };
+
+                let reply = Reply::scan(request, &cat);
+                match reply {
+                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
+                    _ => panic!("Should have rejected the scan request"),
+                }
+            }
+
+            #[test]
+            fn fails_if_projection_empty() {
+                let cat = Catalog {
+                    columns: Default::default(),
+                    groups: Default::default(),
+                    data_root: "".into(),
+                };
+                let request = ScanRequest {
+                    min_ts: 1,
+                    max_ts: 10,
+                    partition_id: Uuid::default(),
+                    projection: vec![],
+                    filters: vec![ScanFilter {
+                                      column: 1,
+                                      op: ScanComparison::Eq,
+                                      val: 10,
+                                      str_val: "".into(),
+                                  }],
                 };
 
                 let reply = Reply::scan(request, &cat);

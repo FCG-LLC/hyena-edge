@@ -579,8 +579,8 @@ impl<'part> Drop for Partition<'part> {
 mod tests {
     use super::*;
     use std::collections::hash_map::HashMap;
-    use ty::{Block, BlockId};
-    use ty::block::BlockType as TyBlockType;
+    use ty::BlockId;
+    use ty::block::{Block, BlockType as TyBlockType};
     use std::fmt::Debug;
     use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
     use block::BlockData;
