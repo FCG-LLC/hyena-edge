@@ -998,128 +998,16 @@ mod tests {
 
             #[bench]
             fn tiny(b: &mut Bencher) {
-                use blockp::BlockType as BlockTy;
+                use block::BlockType as BlockTy;
+                use ty::block::BlockType::Memmap;
 
                 let record_count = 1;
 
-                let columns = hashmap! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
-                };
-
-                let data = hashmap! {
-                    2 => random!(gen u8, record_count).into(),
-                    3 => random!(gen u32, record_count).into(),
-                };
-
-
-                let init = append_test_impl!(init columns);
-
-                let ts = RandomTimestampGen::iter_range_from(init.2)
-                    .take(record_count)
-                    .collect::<Vec<Timestamp>>()
-                    .into();
-
-                let append = Append {
-                    ts,
-                    source_id: 1,
-                    data,
-                };
-
-                let mut cat = init.1;
-
-                b.iter(|| cat.append(&append).expect("unable to append fragment"));
-            }
-
-            #[bench]
-            fn small(b: &mut Bencher) {
-                use ty::block::mmap::BlockType as BlockTy;
-
-                let record_count = 100;
-
-                let columns = hashmap! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
-                };
-
-                let data = hashmap! {
-                    2 => random!(gen u8, record_count).into(),
-                    3 => random!(gen u32, record_count).into(),
-                };
-
-                let init = append_test_impl!(init columns);
-
-                let ts = RandomTimestampGen::iter_range_from(init.2)
-                    .take(record_count)
-                    .collect::<Vec<Timestamp>>()
-                    .into();
-
-                let append = Append {
-                    ts,
-                    source_id: 1,
-                    data,
-                };
-
-                let mut cat = init.1;
-
-                b.iter(|| cat.append(&append).expect("unable to append fragment"));
-            }
-
-            #[bench]
-            fn lots_columns(b: &mut Bencher) {
-                use ty::block::mmap::BlockType as BlockTy;
-
-                let record_count = 100;
-                let column_count = 10000;
-
-                let mut columns = hashmap_mut! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                };
-
-                let mut data = hashmap_mut!{};
-
-                for idx in 2..column_count {
-                    columns.insert(
-                        idx,
-                        Column::new(BlockTy::U32Dense.into(), &format!("col{}", idx)),
-                    );
-                    data.insert(idx, random!(gen u32, record_count).into());
-                }
-
-                let init = append_test_impl!(init columns);
-
-                let ts = RandomTimestampGen::iter_range_from(init.2)
-                    .take(record_count)
-                    .collect::<Vec<Timestamp>>()
-                    .into();
-
-                let append = Append {
-                    ts,
-                    source_id: 1,
-                    data,
-                };
-
-                let mut cat = init.1;
-
-                b.iter(|| cat.append(&append).expect("unable to append fragment"));
-            }
-
-            #[bench]
-            fn big_data(b: &mut Bencher) {
-                use ty::block::mmap::BlockType as BlockTy;
-
-                let record_count = MAX_RECORDS;
-
                 let columns = hashmap_mut! {
-                    0 => Column::new(BlockTy::U64Dense.into(), "ts"),
-                    1 => Column::new(BlockTy::U32Dense.into(), "source"),
-                    2 => Column::new(BlockTy::U8Dense.into(), "col1"),
-                    3 => Column::new(BlockTy::U32Dense.into(), "col2"),
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                    2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
+                    3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
                 };
 
                 let data = hashmap_mut! {
@@ -1141,7 +1029,123 @@ mod tests {
                     data,
                 };
 
-                let mut cat = init.1;
+                let cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
+            fn small(b: &mut Bencher) {
+                use block::BlockType as BlockTy;
+                use ty::block::BlockType::Memmap;
+
+                let record_count = 100;
+
+                let columns = hashmap_mut! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                    2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
+                    3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
+                };
+
+                let data = hashmap_mut! {
+                    2 => random!(gen u8, record_count).into(),
+                    3 => random!(gen u32, record_count).into(),
+                };
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
+            fn lots_columns(b: &mut Bencher) {
+                use block::BlockType as BlockTy;
+                use ty::block::BlockType::Memmap;
+
+                let record_count = 100;
+                let column_count = 10000;
+
+                let mut columns = hashmap_mut! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                };
+
+                let mut data = hashmap!{};
+
+                for idx in 2..column_count {
+                    columns.insert(
+                        idx,
+                        Column::new(Memmap(BlockTy::U32Dense), &format!("col{}", idx)),
+                    );
+                    data.insert(idx, random!(gen u32, record_count).into());
+                }
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let cat = init.1;
+
+                b.iter(|| cat.append(&append).expect("unable to append fragment"));
+            }
+
+            #[bench]
+            fn big_data(b: &mut Bencher) {
+                use block::BlockType as BlockTy;
+                use ty::block::BlockType::Memmap;
+
+                let record_count = MAX_RECORDS;
+
+                let columns = hashmap_mut! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                    2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
+                    3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
+                };
+
+                let data = hashmap_mut! {
+                    2 => random!(gen u8, record_count).into(),
+                    3 => random!(gen u32, record_count).into(),
+                };
+
+
+                let init = append_test_impl!(init columns);
+
+                let ts = RandomTimestampGen::iter_range_from(init.2)
+                    .take(record_count)
+                    .collect::<Vec<Timestamp>>()
+                    .into();
+
+                let append = Append {
+                    ts,
+                    source_id: 1,
+                    data,
+                };
+
+                let cat = init.1;
 
                 b.iter(|| cat.append(&append).expect("unable to append fragment"));
             }
@@ -2028,10 +2032,10 @@ mod tests {
 
             #[bench]
             fn simple(b: &mut Bencher) {
-                let (td, catalog) = scan_test_impl!(init);
+                let (_, catalog) = scan_test_impl!(init);
 
                 let scan = Scan::new(
-                    hashmap! {
+                    hashmap_mut! {
                         2 => vec![ScanFilterOp::Lt(100_u8).into()]
                     },
                     None,

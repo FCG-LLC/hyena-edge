@@ -176,18 +176,22 @@ impl<'reply> Reply<'reply> {
         let mut inserted = 0;
         let source = insert.source;
 
-        if timestamps.len() == 0 {
+        if timestamps.is_empty() {
             return Reply::Insert(Err(Error::NoData("Timestamps cannot be empty".into())));
         }
-        if insert.columns.len() == 0 {
+        if insert.columns.is_empty() {
             return Reply::Insert(Err(Error::NoData("Cannot insert empty vector".into())));
         }
         for block in insert.columns.iter() {
             for (id, fragment) in block {
-                if fragment.len() != timestamps.len() {
-                    let err_msg = format!("Data length does not match timestamp length (column \
-                                           {})",
-                                          id);
+                if fragment.is_sparse() && fragment.len() > timestamps.len() {
+                    let err_msg = format!("Sparse block data length is greater than timestamp length (column {}, timestamps {}, data length {})",
+                                          id, timestamps.len(), fragment.len());
+                    return Reply::Insert(Err(Error::InconsistentData(err_msg)));
+                }
+                if !fragment.is_sparse() && fragment.len() != timestamps.len() {
+                    let err_msg = format!("Dense block data length does not match timestamp length (column {}, timestamps {}, data length {})",
+                                          id, timestamps.len(), fragment.len());
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
             }
@@ -219,10 +223,6 @@ impl<'reply> Reply<'reply> {
         if scan.min_ts > scan.max_ts {
             return Reply::Scan(Err(Error::InvalidScanRequest("min_ts > max_ts".into())));
         }
-        if scan.projection.len() == 0 {
-            return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
-                .into())));
-        }
         if scan.filters.len() == 0 {
             return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
         }
@@ -248,10 +248,7 @@ impl<'reply> Reply<'reply> {
             .collect();
         let mut partitions: Vec<PartitionInfo> = catalog.groups
             .values()
-            .flat_map(|g| {
-                let immutable: Vec<&Partition> = g.immutable_partitions.values().collect();
-                immutable
-            })
+            .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>() )
             .map(|partition| PartitionInfo::from(partition))
             .collect();
         let mutable: Vec<PartitionInfo> = catalog.groups
@@ -607,8 +604,8 @@ mod tests {
                     timestamps: vec![1, 2, 3, 4, 5, 6],
                     columns: vec![hashmap_mut!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
-                        2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205],
-                                                   vec![121, 221, 321, 421, 521])
+                        2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206, 207],
+                                                   vec![121, 221, 321, 421, 521, 621, 721])
                     }],
                 };
                 let reply = Reply::insert(insert, &mut catalog);
@@ -764,33 +761,6 @@ mod tests {
                     partition_id: 1,
                     projection: vec![1, 2, 3],
                     filters: vec![],
-                };
-
-                let reply = Reply::scan(request, &cat);
-                match reply {
-                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
-                    _ => panic!("Should have rejected the scan request"),
-                }
-            }
-
-            #[test]
-            fn fails_if_projection_empty() {
-                let cat = Catalog {
-                    columns: Default::default(),
-                    groups: Default::default(),
-                    data_root: "".into(),
-                };
-                let request = ScanRequest {
-                    min_ts: 1,
-                    max_ts: 10,
-                    partition_id: 1,
-                    projection: vec![],
-                    filters: vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Eq,
-                                      val: 10,
-                                      str_val: "".into(),
-                                  }],
                 };
 
                 let reply = Reply::scan(request, &cat);

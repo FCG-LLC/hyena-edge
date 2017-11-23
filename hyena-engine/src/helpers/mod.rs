@@ -44,17 +44,6 @@ pub(crate) mod tests {
 
             HashMap::new()
         }};
-
-        ( $($key:expr => $value:expr),+ $(,)* ) => {{
-            use std::collections::hash_map::HashMap;
-
-            let hash = HashMap::new();
-            $(
-                hash.insert($key, $value);
-            )*
-
-            hash
-        }};
     }
 
     macro_rules! hashmap_mut {
@@ -76,7 +65,7 @@ pub(crate) mod tests {
             let vec = $vec;
 
             let mut v = Vec::from($vec);
-            for _i in 1..count {
+            for _ in 1..count {
                 v.extend(&vec);
             }
 

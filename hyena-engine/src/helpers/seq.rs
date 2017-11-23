@@ -191,7 +191,6 @@ mod tests {
     #[cfg(all(feature = "nightly", test))]
     mod benches {
         use test::Bencher;
-        use super::*;
 
         #[bench]
         fn simple(b: &mut Bencher) {
