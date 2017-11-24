@@ -16,6 +16,7 @@ rayon = "0.8.2"
 serde = "1.0.9"
 serde_derive = "1.0.9"
 static_assertions = "0.2.2"
+byteorder = "1.1.0"
 
 [dependencies.flame]
 git = "https://github.com/TyOverby/flame.git"

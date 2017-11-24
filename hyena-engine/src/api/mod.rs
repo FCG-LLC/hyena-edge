@@ -1,4 +1,4 @@
-use bincode::deserialize;
+use bincode::{Error as BinError, deserialize};
 use block::BlockType;
 use catalog::{Catalog, Column, ColumnMap};
 use error;
@@ -61,10 +61,44 @@ pub struct AddColumnRequest {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
+struct UUID {
+    hi: i64,
+    lo: i64,
+}
+
+impl From<Uuid> for UUID {
+    fn from(uuid: Uuid) -> UUID {
+        use byteorder::{NativeEndian, ReadBytesExt};
+
+        let bytes = uuid.as_bytes();
+        let mut lower = &bytes[0..8];
+        let mut higher = &bytes[8..16];
+
+        UUID {
+            hi: higher.read_i64::<NativeEndian>().unwrap(),
+            lo: lower.read_i64::<NativeEndian>().unwrap()
+        }
+    }
+}
+
+impl From<UUID> for Uuid {
+    fn from(uuid:UUID) -> Uuid {
+        use byteorder::{NativeEndian, WriteBytesExt};
+        
+        let mut buf: Vec<u8> = vec![];
+
+        buf.write_i64::<NativeEndian>(uuid.lo).unwrap();
+        buf.write_i64::<NativeEndian>(uuid.hi).unwrap();
+
+        Uuid::from_bytes(buf.as_slice()).unwrap()
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct PartitionInfo {
     min_ts: u64,
     max_ts: u64,
-    id: Uuid,
+    id: UUID,
     location: String,
 }
 
@@ -73,7 +107,7 @@ impl<'a> PartitionInfo {
         PartitionInfo {
             min_ts: partition.ts_min.into(),
             max_ts: partition.ts_max.into(),
-            id: partition.id,
+            id: partition.id.into(),
             location: String::new(),
         }
     }
@@ -652,7 +686,6 @@ mod tests {
                     })
                     .unwrap();
 
-
                 let source = 100;
                 let insert = InsertMessage {
                     source: source,
@@ -771,6 +804,22 @@ mod tests {
             }
 
             // TODO add positive paths when the code is integrated
+        }
+    }
+
+    #[allow(non_snake_case)]
+    mod UUID {
+        use super::*;
+        use api::UUID;
+        use std;
+
+        #[test]
+        fn to_from() {
+            let uuid = Uuid::new_v4();
+            let u: UUID = std::convert::From::from(uuid);
+            let to_from: Uuid = std::convert::From::from(u);
+
+            assert_eq!(uuid, to_from);
         }
     }
 }

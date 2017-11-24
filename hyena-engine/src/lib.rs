@@ -21,6 +21,7 @@ extern crate uuid;
 extern crate serde_derive;
 extern crate serde;
 extern crate bincode;
+extern crate byteorder;
 
 #[cfg(test)]
 extern crate tempdir;
