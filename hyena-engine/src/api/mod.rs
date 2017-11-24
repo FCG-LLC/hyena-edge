@@ -164,6 +164,7 @@ pub enum Reply<'reply> {
     Flush,
     DataCompaction,
     SerializeError(String),
+    CatalogError(String),
     Other,
 }
 
@@ -231,9 +232,14 @@ impl<'reply> Reply<'reply> {
             }
         }
 
-        catalog.ensure_group(source)
-            .chain_err(|| format!("Could not create group for source {}", source))
-            .unwrap();
+        {
+            // Block for a mutable borrow
+            let groups_ensured = catalog.ensure_group(source)
+                .chain_err(|| format!("Could not create group for source {}", source));
+            if groups_ensured.is_err() {
+                return Reply::CatalogError(groups_ensured.unwrap_err().description().into());
+            }
+        }
 
         for block in insert.columns.iter() {
             let append = Append {
@@ -247,10 +253,13 @@ impl<'reply> Reply<'reply> {
                 Err(e) => return Reply::Insert(Err(Error::Unknown(e.description().into()))),
             }
         }
-        catalog.flush()
-            .chain_err(|| "Cannot flush catalog after inserting")
-            .unwrap();
-        Reply::Insert(Ok(inserted))
+        let flushed = catalog.flush()
+            .chain_err(|| "Cannot flush catalog after inserting");
+        if flushed.is_err() {
+            Reply::CatalogError(flushed.unwrap_err().description().into())
+        } else {
+            Reply::Insert(Ok(inserted))
+        }
     }
 
     fn scan(scan: ScanRequest, _catalog: &Catalog) -> Reply<'reply> {
