@@ -132,9 +132,8 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn parse(data: Vec<u8>) -> Request {
-        let message: Request = deserialize(&data[..]).unwrap();
-        message
+    pub fn parse(data: Vec<u8>) -> Result<Request, BinError>{
+        deserialize(&data[..])
     }
 }
 
@@ -164,6 +163,7 @@ pub enum Reply<'reply> {
     AddColumn(Result<usize, Error>),
     Flush,
     DataCompaction,
+    SerializeError(String),
     Other,
 }
 

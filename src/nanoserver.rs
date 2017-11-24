@@ -7,7 +7,7 @@ use nanomsg_tokio::Socket as NanoSocket;
 use nanomsg::Protocol;
 use bincode::{serialize, Infinite};
 
-use hyena_engine::api::{Request, run_request};
+use hyena_engine::api::{Request, Reply, run_request};
 use hyena_engine::catalog::Catalog;
 
 fn get_address(matches: &clap::ArgMatches) -> String {
@@ -28,7 +28,11 @@ fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
     let operation = Request::parse(msg);
     debug!("Operation: {:?}", operation);
 
-    let reply = run_request(operation, catalog);
+    let reply = if operation.is_err() {
+        Reply::SerializeError(format!("{:?}", operation.unwrap_err()))
+    } else {
+        run_request(operation.unwrap(), catalog)
+    };
     debug!("Returning: {:?}", reply);
     trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
 
