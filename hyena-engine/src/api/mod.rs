@@ -76,15 +76,15 @@ impl From<Uuid> for UUID {
 
         UUID {
             hi: higher.read_i64::<NativeEndian>().unwrap(),
-            lo: lower.read_i64::<NativeEndian>().unwrap()
+            lo: lower.read_i64::<NativeEndian>().unwrap(),
         }
     }
 }
 
 impl From<UUID> for Uuid {
-    fn from(uuid:UUID) -> Uuid {
+    fn from(uuid: UUID) -> Uuid {
         use byteorder::{NativeEndian, WriteBytesExt};
-        
+
         let mut buf: Vec<u8> = vec![];
 
         buf.write_i64::<NativeEndian>(uuid.lo).unwrap();
@@ -132,7 +132,7 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn parse(data: Vec<u8>) -> Result<Request, BinError>{
+    pub fn parse(data: Vec<u8>) -> Result<Request, BinError> {
         deserialize(&data[..])
     }
 }
@@ -164,7 +164,6 @@ pub enum Reply<'reply> {
     Flush,
     DataCompaction,
     SerializeError(String),
-    CatalogError(String),
     Other,
 }
 
@@ -220,13 +219,19 @@ impl<'reply> Reply<'reply> {
         for block in insert.columns.iter() {
             for (id, fragment) in block {
                 if fragment.is_sparse() && fragment.len() > timestamps.len() {
-                    let err_msg = format!("Sparse block data length is greater than timestamp length (column {}, timestamps {}, data length {})",
-                                          id, timestamps.len(), fragment.len());
+                    let err_msg = format!("Sparse block data length is greater than timestamp \
+                                           length (column {}, timestamps {}, data length {})",
+                                          id,
+                                          timestamps.len(),
+                                          fragment.len());
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
                 if !fragment.is_sparse() && fragment.len() != timestamps.len() {
-                    let err_msg = format!("Dense block data length does not match timestamp length (column {}, timestamps {}, data length {})",
-                                          id, timestamps.len(), fragment.len());
+                    let err_msg = format!("Dense block data length does not match timestamp \
+                                           length (column {}, timestamps {}, data length {})",
+                                          id,
+                                          timestamps.len(),
+                                          fragment.len());
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
             }
@@ -237,7 +242,9 @@ impl<'reply> Reply<'reply> {
             let groups_ensured = catalog.ensure_group(source)
                 .chain_err(|| format!("Could not create group for source {}", source));
             if groups_ensured.is_err() {
-                return Reply::CatalogError(groups_ensured.unwrap_err().description().into());
+                return Reply::Insert(Err(Error::CatalogError(groups_ensured.unwrap_err()
+                    .description()
+                    .into())));
             }
         }
 
@@ -256,7 +263,7 @@ impl<'reply> Reply<'reply> {
         let flushed = catalog.flush()
             .chain_err(|| "Cannot flush catalog after inserting");
         if flushed.is_err() {
-            Reply::CatalogError(flushed.unwrap_err().description().into())
+            Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().description().into())))
         } else {
             Reply::Insert(Ok(inserted))
         }
@@ -291,7 +298,7 @@ impl<'reply> Reply<'reply> {
             .collect();
         let mut partitions: Vec<PartitionInfo> = catalog.groups
             .values()
-            .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>() )
+            .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>())
             .map(|partition| PartitionInfo::from(partition))
             .collect();
         let mutable: Vec<PartitionInfo> = catalog.groups
@@ -321,6 +328,7 @@ pub enum Error {
     NoData(String),
     InconsistentData(String),
     InvalidScanRequest(String),
+    CatalogError(String),
     Unknown(String),
 }
 
@@ -740,6 +748,7 @@ mod tests {
 
         mod scan {
             use super::*;
+            use api::UUID;
 
             #[test]
             fn fails_if_mints_later_then_maxts() {
@@ -751,7 +760,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_id: 1,
+                    partition_id: UUID { hi: 1, lo: 1 },
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -770,7 +779,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 10,
-                    partition_id: 1,
+                    partition_id: UUID { hi: 1, lo: 1 },
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -800,7 +809,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: 1,
+                    partition_id: UUID { hi: 1, lo: 1 },
                     projection: vec![1, 2, 3],
                     filters: vec![],
                 };
