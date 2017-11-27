@@ -49,7 +49,7 @@ pub struct ScanFilter {
 pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
-    pub partition_id: u64,
+    pub partition_id: UUID,
     pub projection: Vec<u32>,
     pub filters: Vec<ScanFilter>,
 }
@@ -61,7 +61,7 @@ pub struct AddColumnRequest {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
-struct UUID {
+pub struct UUID {
     hi: i64,
     lo: i64,
 }
