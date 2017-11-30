@@ -815,8 +815,6 @@ mod tests {
                     $data: expr    // HashMap
                 ]),+ $(,)*) => {{
 
-                use block::BlockType as BlockTy;
-
                 let columns = $schema;
 
                 let now = $now;
@@ -2318,31 +2316,50 @@ mod tests {
             use self::TyBlockType::Memmap;
 
             macro_rules! scan_minimal_init {
-                () => {{
-                    let now = 1;
+                ($ts:expr, $length:expr,
+                    dense [ $( $dense_idx:expr => (
+                        $dense_ty:ident,
+                        $dense_name:expr,
+                        vec![$($dense_data:tt)*]) ),* $(,)*],
+                    sparse [ $( $sparse_idx:expr => (
+                        $sparse_ty:ident,
+                        $sparse_name:expr,
+                        vec![$($sparse_data:tt)*],
+                        vec![$($sparse_data_idx:tt)*]) ),* $(,)*]
+                    $(,)*
+                ) => {{
+                    use block::BlockType as BlockTy;
 
-                    let mut v = vec![Timestamp::from(0); 10];
+                    let now = $ts;
+
+                    let mut v = vec![Timestamp::from(0); $length];
                     seqfill!(Timestamp, &mut v[..], now);
 
-                    let data = hashmap! {
-                        1 => Fragment::from((vec![
-                            1_u8, 2, 3, 4,
-                        ], vec![
-                            1_u32, 3, 5, 8,
-                        ])),
-                        2 => Fragment::from((vec![
-                            10_u16, 20, 30, 7, 8,
-                        ], vec![
-                            0_u32, 1, 5, 8, 9,
-                        ])),
+                    // ts column is awlays present
+                    let mut schema = hashmap! {
+                        0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     };
 
+                    let mut data = hashmap! {};
+
+                    $(
+                        schema.insert($dense_idx,
+                            Column::new(Memmap(BlockTy::$dense_ty), $dense_name));
+
+                        data.insert($dense_idx,
+                            Fragment::from(vec![$($dense_data)*]));
+                    )*
+
+                    $(
+                        schema.insert($sparse_idx,
+                            Column::new(Memmap(BlockTy::$sparse_ty), $sparse_name));
+
+                        data.insert($sparse_idx,
+                            Fragment::from((vec![$($sparse_data)*], vec![$($sparse_data_idx)*])));
+                    )*
+
                     let td = append_test_impl!(
-                        hashmap! {
-                            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
-                            1 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
-                            2 => Column::new(Memmap(BlockTy::U16Sparse), "col2"),
-                        },
+                        schema,
                         now,
                         [
                             v.into(),
@@ -2356,6 +2373,17 @@ mod tests {
 
                     (td, cat, now)
                 }};
+
+                () => {
+                    scan_minimal_init!(1, 10,
+                        dense [],
+                        sparse [
+                            1 => (U8Sparse, "col1",
+                                vec![1_u8, 2, 3, 4,], vec![1_u32, 3, 5, 8,]),
+                            2 => (U16Sparse, "col2",
+                                vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
+                        ])
+                };
             }
 
             #[test]
