@@ -2,7 +2,8 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
+use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp,
+ColumnId, RowId};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
@@ -13,7 +14,7 @@ use std::sync::RwLock;
 use std::iter::FromIterator;
 use ty::fragment::Fragment;
 use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult};
+use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -142,7 +143,6 @@ impl<'part> Partition<'part> {
             r.unwrap()
         }
 
-
         // todo: fix this (should be slen)
         Ok(42)
     }
@@ -151,9 +151,35 @@ impl<'part> Partition<'part> {
         // only filters and projection for now
         // full ts range
 
-        // filter
+        let rowids = self.filter(&scan.filters)?;
 
-        let rowids: HashSet<usize> = scan.filters
+        // this is superfluous if we're dealing with dense blocks only
+        // as it doesn't matter if rowids are sorted then
+        // but it still should be cheaper than converting for each sparse block separately
+
+        let mut rowids = Vec::from_iter(rowids.into_iter());
+        rowids.sort_unstable();
+
+        let rowids = rowids;
+
+        let materialized = self.materialize(&scan.projection, &rowids);
+
+        materialized.map(|m| m.into())
+    }
+
+    /// Apply filters to given columns (blocks)
+    ///
+    /// # Arguments
+    ///
+    /// * `filters` - a `ScanFilters` object
+    ///
+    /// # Returns
+    ///
+    /// `HashSet` with matching `RowId`s
+
+    #[inline]
+    fn filter(&self, filters: &ScanFilters) -> Result<HashSet<usize>> {
+        filters
             .par_iter()
             .map(|(block_id, filters)| {
                 if let Some(block) = self.blocks.get(block_id) {
@@ -209,26 +235,32 @@ impl<'part> Partition<'part> {
                     }
                 },
             )
-            .ok_or_else(|| "scan error")?;
+            .ok_or_else(|| "scan error".into())
+    }
 
-        // this is superfluous if we're dealing with dense blocks only
-        // as it doesn't matter if rowids are sorted then
-        // but it still should be cheaper than converting for each sparse block separately
+    /// Materialize scan results with given projection
+    ///
+    /// # Arguments
+    ///
+    /// * `projection` - an optional `Vec` of `ColumnId` or None for all columns
+    /// * `rowids` - a slice of row indexes, needs to be sorted in ascending order!
+    ///
+    /// # Returns
+    ///
+    /// `HashMap` with results placed in `Fragment`s
 
-        let mut rowids = Vec::from_iter(rowids.into_iter());
-        rowids.sort_unstable();
+    #[inline]
+    fn materialize(&self, projection: &Option<Vec<ColumnId>>, rowids: &[RowId])
+        -> Result<HashMap<ColumnId, Option<Fragment>>> {
 
-        let rowids = rowids;
-
-        let all_columns = if scan.projection.is_some() {
+        let all_columns = if projection.is_some() {
             None
         } else {
             Some(self.blocks.keys().cloned().collect::<Vec<_>>())
         };
 
-        // materialize
-        let materialized = if scan.projection.is_some() {
-            scan.projection.as_ref().unwrap()
+        if projection.is_some() {
+            projection.as_ref().unwrap()
         } else {
             all_columns.as_ref().unwrap()
         }.par_iter()
@@ -257,8 +289,14 @@ impl<'part> Partition<'part> {
                         let mut curidx = 0;
                         let mut i = &index[..];
 
-                        for rowid in &rowids[..] {
+                        // map rowid (source block rowid) to target_rowid
+                        // (target block rowid), which is an index in the rowids vec
+                        // so essentially a rowid of the resulting rowset
 
+                        for (target_rowid, rowid) in rowids.iter().enumerate() {
+
+                            // 'crawl' the block, that is for every resulting rowid
+                            // try to find the closest matching sparse index
                             for (rid, idx) in i.iter().scan(curidx, |c, &v| {
                                 let ret = (*c, v as usize);
                                 *c += 1;
@@ -267,9 +305,12 @@ impl<'part> Partition<'part> {
                             }) {
                                 if *rowid == idx {
                                     result.push(data[rid]);
-                                    // todo: fix `as` casting
-                                    result_idx.push(rid as u32);
+                                    // todo: fix `as` casting / use TryFrom when stable
+                                    // it shouldn't fail because rowids.len() < 2^32
+                                    // but better be safe than sorry
+                                    result_idx.push(target_rowid as u32);
                                     curidx = rid + 1;
+
                                     break;
                                 }
                             }
@@ -292,9 +333,7 @@ impl<'part> Partition<'part> {
                     Ok((*block_id, None))
                 }
             })
-            .collect::<Result<HashMap<_, _>>>();
-
-        materialized.map(|m| m.into())
+            .collect()
     }
 
     #[allow(unused)]
@@ -333,13 +372,11 @@ impl<'part> Partition<'part> {
         (self.ts_min, self.ts_max)
     }
 
-    #[must_use]
     #[allow(unused)]
     pub(crate) fn set_ts<TS>(&mut self, ts_min: Option<TS>, ts_max: Option<TS>) -> Result<()>
     where
         Timestamp: From<TS>,
     {
-
         let cmin = ts_min.map(Timestamp::from).unwrap_or(self.ts_min);
         let cmax = ts_max.map(Timestamp::from).unwrap_or(self.ts_max);
 
@@ -547,7 +584,7 @@ mod tests {
 
     macro_rules! block_test_impl_mem {
         ($base: ident, $($variant: ident),* $(,)*) => {{
-            use ty::block::BlockType::Memory;
+            use self::TyBlockType::Memory;
             let mut idx = 0;
 
             hashmap! {
@@ -560,7 +597,7 @@ mod tests {
 
     macro_rules! block_test_impl_mmap {
         ($base: ident, $($variant: ident),* $(,)*) => {{
-            use ty::block::BlockType::Memmap;
+            use self::TyBlockType::Memmap;
             let mut idx = 0;
 
             hashmap! {
@@ -583,19 +620,17 @@ mod tests {
 
     macro_rules! block_map {
         (mem {$($key:expr => $value:expr),+}) => {{
-            use ty;
             hashmap! {
                 $(
-                    $key => ty::block::BlockType::Memory($value),
+                    $key => TyBlockType::Memory($value),
                  )+
             }
         }};
 
         (mmap {$($key:expr => $value:expr),+}) => {{
-            use ty;
             hashmap! {
                 $(
-                    $key => ty::block::BlockType::Memmap($value),
+                    $key => TyBlockType::Memmap($value),
                  )+
             }
         }}
@@ -772,6 +807,8 @@ mod tests {
         assert_eq!(part.ts_max, ts_max);
     }
 
+    // This macro performs a dense block write
+    // sparse blocks will silently do nothing
     macro_rules! block_write {
         ($part: expr, $blockmap: expr, $frags: expr) => {{
             let blockmap = $blockmap;
@@ -804,11 +841,123 @@ mod tests {
                             _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
                             _blk.set_written(slen).unwrap();
 
-                        }, {}).unwrap()
+                        }, {
+                            // sparse writes are intentionally not implemented
+                        }).unwrap()
                     },
                 );
             }
         }};
+    }
+
+    mod scan {
+        use super::*;
+
+        mod materialize {
+            use super::*;
+
+//         +--------+----+------+------+
+//         | rowidx | ts | col1 | col2 |
+//         +--------+----+------+------+
+//         |   0    | 1  |      | 10   |
+//         +--------+----+------+------+
+//         |   1    | 2  | 1    | 20   |
+//         +--------+----+------+------+
+//         |   2    | 3  |      |      |
+//         +--------+----+------+------+
+//         |   3    | 4  | 2    |      |
+//         +--------+----+------+------+
+//         |   4    | 5  |      |      |
+//         +--------+----+------+------+
+//         |   5    | 6  | 3    | 30   |
+//         +--------+----+------+------+
+//         |   6    | 7  |      |      |
+//         +--------+----+------+------+
+//         |   7    | 8  |      |      |
+//         +--------+----+------+------+
+//         |   8    | 9  | 4    | 7    |
+//         +--------+----+------+------+
+//         |   9    | 10 |      | 8    |
+//         +--------+----+------+------+
+
+            macro_rules! materialize_test_init {
+                () => {{
+                    use block::BlockType;
+                    use self::TyBlockType::Memory;
+                    use ty::fragment::FragmentRef;
+
+                    let root = tempdir!();
+
+                    let ts = 0;
+
+                    let mut part = Partition::new(&root, Partition::gen_id(), ts)
+                        .chain_err(|| "Failed to create partition")
+                        .unwrap();
+
+                    let blocks = hashmap! {
+                        0 => Memory(BlockType::U64Dense),
+                        1 => Memory(BlockType::U8Sparse),
+                        2 => Memory(BlockType::U16Sparse),
+                    }.into();
+
+                    let frags = hashmap! {
+                        0 => Fragment::from(vec![1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                        1 => Fragment::from((vec![
+                            1_u8, 2, 3, 4,
+                        ], vec![
+                            1_u32, 3, 5, 8,
+                        ])),
+                        2 => Fragment::from((vec![
+                            10_u16, 20, 30, 7, 8,
+                        ], vec![
+                            0_u32, 1, 5, 8, 9,
+                        ])),
+                    };
+
+                    let refs = frags.iter()
+                        .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
+                        .collect();
+
+                    part.append(&blocks, &refs, 0).expect("Partition append failed");
+
+                    (root, part, ts)
+                }};
+            }
+
+            #[test]
+            fn continuous() {
+                let (_root, part, _) = materialize_test_init!();
+
+                let rowids = vec![1_usize, 2, 3];
+
+                let result = part.materialize(&None, &rowids[..]).expect("Materialize failed");
+
+                let expected = hashmap! {
+                    0 => Some(Fragment::from(vec![2_u64, 3, 4])),
+                    1 => Some(Fragment::from((vec![1_u8, 2], vec![0_u32, 2]))),
+                    2 => Some(Fragment::from((vec![20_u16], vec![0_u32]))),
+                };
+
+                assert_eq!(expected, result);
+            }
+
+            #[test]
+            fn non_continuous() {
+                let (_root, part, _) = materialize_test_init!();
+
+                let rowids = vec![0_usize, 1, 3, 8];
+
+                let result = part.materialize(&None, &rowids[..]).expect("Materialize failed");
+
+                let expected = hashmap! {
+                    0 => Some(Fragment::from(vec![1_u64, 2, 4, 9])),
+                    1 => Some(Fragment::from((vec![1_u8, 2, 4], vec![1_u32, 2, 3]))),
+                    2 => Some(Fragment::from((vec![10_u16, 20, 7], vec![0_u32, 1, 3]))),
+                };
+
+                assert_eq!(expected, result);
+            }
+        }
     }
 
     #[test]
@@ -818,7 +967,7 @@ mod tests {
         use std::mem::size_of;
         use params::BLOCK_SIZE;
         use std::iter::FromIterator;
-        use ty::block::BlockType::Memory;
+        use self::TyBlockType::Memory;
 
         // reserve 20 records on timestamp
         let count = BLOCK_SIZE / size_of::<u64>() - 20;
@@ -856,7 +1005,7 @@ mod tests {
         let blocks = hashmap! {
             0 => Memory(BlockType::U64Dense),
             1 => Memory(BlockType::U32Dense),
-            2 => Memory(BlockType::U64Dense),
+            2 => Memory(BlockType::U64Sparse),
         };
 
         assert_eq!(
@@ -1063,7 +1212,7 @@ mod tests {
     mod memory {
         use super::*;
         use block::BlockType;
-        use ty::block::BlockType::Memory;
+        use self::TyBlockType::Memory;
 
         #[test]
         fn scan_ts() {
@@ -1093,7 +1242,7 @@ mod tests {
 
         mod serialize {
             use super::*;
-            use ty::block::BlockType::Memory;
+            use self::TyBlockType::Memory;
 
             #[test]
             fn blocks() {
@@ -1115,7 +1264,7 @@ mod tests {
 
         mod deserialize {
             use super::*;
-            use ty::block::BlockType::Memory;
+            use self::TyBlockType::Memory;
 
             #[test]
             fn blocks() {
@@ -1141,7 +1290,7 @@ mod tests {
     mod mmap {
         use super::*;
         use block::BlockType;
-        use ty::block::BlockType::Memory;
+        use self::TyBlockType::Memory;
 
         #[test]
         fn scan_ts() {
@@ -1171,7 +1320,7 @@ mod tests {
 
         mod serialize {
             use super::*;
-            use ty::block::BlockType::Memory;
+            use self::TyBlockType::Memory;
 
             #[test]
             fn blocks() {
@@ -1193,7 +1342,7 @@ mod tests {
 
         mod deserialize {
             use super::*;
-            use ty::block::BlockType::Memory;
+            use self::TyBlockType::Memory;
 
             #[test]
             fn blocks() {
