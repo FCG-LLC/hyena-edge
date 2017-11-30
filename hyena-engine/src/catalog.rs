@@ -2433,6 +2433,68 @@ mod tests {
                 assert_eq!(expected, result);
             }
         }
+
+        #[cfg(all(feature = "nightly", test))]
+        mod benches {
+            use test::Bencher;
+            use super::*;
+
+            macro_rules! scan_bench_impl {
+                (dense simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    $(
+                    #[bench]
+                    fn $name(b: &mut Bencher) {
+                        let (_, catalog, _) = scan_test_impl!(init);
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                $idx => vec![ScanFilterOp::Lt($value).into()]
+                            },
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                    }
+                    )+
+                };
+
+                (sparse simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    $(
+                    #[bench]
+                    fn $name(b: &mut Bencher) {
+                        let (_, catalog, _) = scan_test_impl!(init sparse);
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                $idx => vec![ScanFilterOp::Lt($value).into()]
+                            },
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                    }
+                    )+
+                };
+            }
+
+            scan_bench_impl!(dense simple
+                simple_u8, 2, 100_u8,
+                simple_u16, 3, 100_u16,
+                simple_u32, 4, 100_u32,
+                simple_u64, 5, 100_u64,);
+
+            scan_bench_impl!(sparse simple
+                simple_sparse_u8, 2, 100_u8,
+                simple_sparse_u16, 3, 100_u16,
+                simple_sparse_u32, 4, 100_u32,
+                simple_sparse_u64, 5, 100_u64,);
+        }
     }
 
     mod catalog {
