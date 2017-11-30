@@ -2374,13 +2374,75 @@ mod tests {
                     (td, cat, now)
                 }};
 
+//             +--------+----+---------+---------+
+//             | rowidx | ts | sparse1 | sparse2 |
+//             +--------+----+---------+---------+
+//             |   0    | 1  |         | 10      |
+//             +--------+----+---------+---------+
+//             |   1    | 2  | 1       | 20      |
+//             +--------+----+---------+---------+
+//             |   2    | 3  |         |         |
+//             +--------+----+---------+---------+
+//             |   3    | 4  | 2       |         |
+//             +--------+----+---------+---------+
+//             |   4    | 5  |         |         |
+//             +--------+----+---------+---------+
+//             |   5    | 6  | 3       | 30      |
+//             +--------+----+---------+---------+
+//             |   6    | 7  |         |         |
+//             +--------+----+---------+---------+
+//             |   7    | 8  |         |         |
+//             +--------+----+---------+---------+
+//             |   8    | 9  | 4       | 7       |
+//             +--------+----+---------+---------+
+//             |   9    | 10 |         | 8       |
+//             +--------+----+---------+---------+
                 () => {
                     scan_minimal_init!(1, 10,
                         dense [],
                         sparse [
-                            1 => (U8Sparse, "col1",
+                            1 => (U8Sparse, "sparse1",
                                 vec![1_u8, 2, 3, 4,], vec![1_u32, 3, 5, 8,]),
-                            2 => (U16Sparse, "col2",
+                            2 => (U16Sparse, "sparse2",
+                                vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
+                        ])
+                };
+
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 1  | 5      |         | 10     | 10      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 2  | 6      | 1       | 20     | 20      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   2    | 3  | 7      |         | 30     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   3    | 4  | 2      | 2       | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   4    | 5  | 3      |         | 50     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   5    | 6  | 4      | 3       | 50     | 30      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   6    | 7  | 1      |         | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   7    | 8  | 2      |         | 30     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   8    | 9  | 3      | 4       | 20     | 7       |
+//             +--------+----+--------+---------+--------+---------+
+//             |   9    | 10 | 4      |         | 10     | 8       |
+//             +--------+----+--------+---------+--------+---------+
+                (ops) => {
+                    scan_minimal_init!(1, 10,
+                        dense [
+                            1 => (U32Dense, "dense1",
+                                vec![5_u32, 6, 7, 2, 3, 4, 1, 2, 3, 4]),
+                            3 => (U16Dense, "dense2",
+                                vec![10_u16, 20, 30, 40, 50, 50, 40, 30, 20, 10]),
+                        ],
+                        sparse [
+                            2 => (U8Sparse, "sparse1",
+                                vec![1_u8, 2, 3, 4,], vec![1_u32, 3, 5, 8,]),
+                            4 => (U16Sparse, "sparse2",
                                 vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
                         ])
                 };
@@ -2459,6 +2521,116 @@ mod tests {
                 let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
                 assert_eq!(expected, result);
+            }
+
+            mod and_op {
+                use super::*;
+
+//             dense1 < 3 && dense2 > 30
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 4  | 2      | 2       | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 7  | 1      |         | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn two_dense_one_block() {
+                    let (td, catalog, now) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![4_u64, 7])),
+                        1 => Some(Fragment::from(vec![2_u32, 1])),
+                        2 => Some(Fragment::from((vec![2_u8], vec![0_u32]))),
+                        3 => Some(Fragment::from(vec![40_u16, 40])),
+                        4 => Some(Fragment::from((Vec::<u16>::new(), Vec::<u32>::new()))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            1 => vec![ScanFilter::U32(ScanFilterOp::Lt(3))],
+                            3 => vec![ScanFilter::U16(ScanFilterOp::Gt(30))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
+
+//             sparse1 < 4 && sparse2 > 15
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 2  | 6      | 1       | 20     | 20      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 6  | 4      | 3       | 50     | 30      |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn two_sparse_one_block() {
+                    let (td, catalog, now) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![2_u64, 6])),
+                        1 => Some(Fragment::from(vec![6_u32, 4])),
+                        2 => Some(Fragment::from((vec![1_u8, 3], vec![0_u32, 1]))),
+                        3 => Some(Fragment::from(vec![20_u16, 50])),
+                        4 => Some(Fragment::from((vec![20_u16, 30], vec![0_u32, 1]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            2 => vec![ScanFilter::U8(ScanFilterOp::Lt(4))],
+                            4 => vec![ScanFilter::U16(ScanFilterOp::Gt(15))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
+
+//             dense1 > 4 && sparse2 < 15
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 1  | 5      |         | 10     | 10      |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn sparse_dense_one_block() {
+                    let (td, catalog, now) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64])),
+                        1 => Some(Fragment::from(vec![5_u32])),
+                        2 => Some(Fragment::from((Vec::<u8>::new(), Vec::<u32>::new()))),
+                        3 => Some(Fragment::from(vec![10_u16])),
+                        4 => Some(Fragment::from((vec![10_u16], vec![0_u32]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            1 => vec![ScanFilter::U32(ScanFilterOp::Gt(4))],
+                            4 => vec![ScanFilter::U16(ScanFilterOp::Lt(15))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
             }
         }
 
