@@ -86,7 +86,6 @@ impl<'part> Partition<'part> {
         frags: &BlockRefData<'frag>,
         offset: SparseIndex,
     ) -> Result<usize> {
-
         self.ensure_blocks(&blockmap)
             .chain_err(|| "Unable to create block map")
             .unwrap();
@@ -99,8 +98,11 @@ impl<'part> Partition<'part> {
             }
         });
 
+        let mut written: usize = 0;
+
         for (ref mut block, ref data) in ops {
             let b = acquire!(write block);
+
             let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                 // dense block handler
 
@@ -112,10 +114,11 @@ impl<'part> Partition<'part> {
                     &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
-                blk.set_written(slen).unwrap();
+                blk.set_written(slen).chain_err(|| "set_written failed")?;
+
+                slen
             }, {
                 // sparse block handler
-
                 // destination bounds checking intentionally left out
                 let slen = frg.len();
 
@@ -137,14 +140,16 @@ impl<'part> Partition<'part> {
                     });
                 }
 
-                blk.set_written(slen).unwrap();
+                blk.set_written(slen).chain_err(|| "set_written failed")?;
+
+                slen
             });
 
-            r.unwrap()
+            written = written.saturating_add(r.chain_err(|| "map_fragment failed")?);
         }
 
         // todo: fix this (should be slen)
-        Ok(42)
+        Ok(written)
     }
 
     pub(crate) fn scan(&self, scan: &Scan) -> Result<ScanResult> {
@@ -412,7 +417,7 @@ impl<'part> Partition<'part> {
         Ok(())
     }
 
-    pub fn space_for_blocks(&self, indices: &[usize]) -> usize {
+    pub fn space_for_blocks(&self, indices: &[ColumnId]) -> usize {
         indices.iter()
             .filter_map(|block_id| {
                 if let Some(block) = self.blocks.get(block_id) {
