@@ -1,4 +1,3 @@
-use error::*;
 use std::fmt;
 use ty::timestamp::Timestamp;
 

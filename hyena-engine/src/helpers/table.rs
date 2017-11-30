@@ -2,8 +2,6 @@ use ty::{ColumnId, Value};
 use ty::fragment::{Fragment, FragmentIter};
 use scanner::ScanResult;
 use prettytable::Table;
-use prettytable::row::Row;
-use prettytable::cell::Cell;
 use prettytable::format::Alignment;
 use term::{Attr, color};
 use std::fmt::Display;
@@ -42,14 +40,14 @@ macro_rules! table {
             let mut keys = fm.get_columns();
             keys.sort_by_key(|&(k, _)| k);
 
-            let mut iters = keys.into_iter().map(|(k, fragiter)| {
+            let iters = keys.into_iter().map(|(_, fragiter)| {
                 fragiter.peekable()
             })
             .collect::<Vec<_>>();
 
             let tsiter = fm.get_index();
 
-            let mut riter = RowIter {
+            let riter = RowIter {
                 ts_iter: Box::new(tsiter.enumerate()),
                 col_iter: iters,
             };
@@ -95,9 +93,9 @@ impl<'frag> Iterator for RowIter<'frag> {
         let &mut Self { ref mut ts_iter, ref mut col_iter } = self;
 
         ts_iter
-            .map(|(rowid, ts)| {
+            .map(|(rowid, _)| {
                 col_iter.iter_mut()
-                    .map(|mut col| {
+                    .map(|col| {
                         if let Some(&(crowid, _)) = col.peek() {
                             if crowid == rowid {
                                 let (_, cval) = col.next().unwrap();
@@ -194,8 +192,6 @@ mod tests {
     use super::*;
     use ty::fragment::Fragment;
     use std::collections::HashMap;
-    use scanner::ScanResult;
-
 
     #[test]
     fn rowiter() {

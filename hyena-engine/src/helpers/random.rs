@@ -7,7 +7,6 @@ macro_rules! random {
 
     (gen $ty: ty, $count: expr) => {{
         use rand::{thread_rng, Rng};
-        use std::iter::repeat;
 
         let mut rng = thread_rng();
 
@@ -18,11 +17,10 @@ macro_rules! random {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn single_typed() {
-        let v = random!(u64);
+        let _ = random!(u64);
     }
 
     #[test]
@@ -43,9 +41,8 @@ mod tests {
 
 pub(crate) mod timestamp {
     use rand::{random, thread_rng, Rand, Rng};
-    use ty::timestamp::{Timestamp, ToTimestampMicros, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
+    use ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
     use chrono::prelude::*;
-    use chrono::naive::{MAX_DATE, MIN_DATE};
     use std::iter::repeat;
 
     // these should be moved associated when consts stabilize
@@ -131,6 +128,7 @@ pub(crate) mod timestamp {
             )
         }
 
+        #[allow(unused)]
         pub(crate) fn iter_range_from<T, TS>(from: TS) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
@@ -142,6 +140,7 @@ pub(crate) mod timestamp {
             }))
         }
 
+        #[allow(unused)]
         pub(crate) fn iter_rng<T, R>(rng: R) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
@@ -153,6 +152,7 @@ pub(crate) mod timestamp {
             )
         }
 
+        #[allow(unused)]
         pub(crate) fn iter_range_rng<T, TS, R>(rng: R, from: TS, to: TS) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
@@ -174,6 +174,7 @@ pub(crate) mod timestamp {
             Self::range_pairs::<T, u64>(TS_MIN, TS_MAX, count)
         }
 
+        #[allow(unused)]
         pub(crate) fn pairs_rng<T, R>(rng: R, count: usize) -> Vec<(T, T)>
         where
             T: From<Timestamp> + Ord + Clone,
@@ -238,22 +239,22 @@ pub(crate) mod timestamp {
 
         #[test]
         fn ts_timestamp() {
-            let ts = Timestamp::random::<Timestamp>();
+            let _ts = Timestamp::random::<Timestamp>();
         }
 
         #[test]
         fn ts_u64() {
-            let ts = Timestamp::random::<u64>();
+            let _ts = Timestamp::random::<u64>();
         }
 
         #[test]
         fn ts_datetime() {
-            let ts = Timestamp::random::<DateTime<Utc>>();
+            let _ts = Timestamp::random::<DateTime<Utc>>();
         }
 
         #[test]
         fn ts_naive_datetime() {
-            let ts = Timestamp::random::<NaiveDateTime>();
+            let _ts = Timestamp::random::<NaiveDateTime>();
         }
 
         #[test]

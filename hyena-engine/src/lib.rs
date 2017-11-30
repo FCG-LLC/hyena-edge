@@ -21,6 +21,7 @@ extern crate uuid;
 extern crate serde_derive;
 extern crate serde;
 extern crate bincode;
+extern crate byteorder;
 
 #[cfg(test)]
 extern crate tempdir;
@@ -31,11 +32,11 @@ extern crate rand;
 #[cfg(feature = "perf")]
 extern crate flame;
 #[cfg(test)]
-#[macro_use]
 extern crate prettytable;
 #[cfg(test)]
 extern crate term;
 
+#[cfg(test)]
 #[macro_use]
 extern crate static_assertions;
 
@@ -56,9 +57,11 @@ mod block;
 #[macro_use]
 mod ty;
 mod partition;
-mod catalog;
+pub mod catalog;
 mod mutator;
 mod scanner;
+pub mod api;
+mod huuid;
 
 #[cfg(test)]
 mod tests {

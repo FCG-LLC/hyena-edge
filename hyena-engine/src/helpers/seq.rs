@@ -1,4 +1,3 @@
-use error::*;
 
 macro_rules! seqfill {
     (vec $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
@@ -30,8 +29,6 @@ macro_rules! seqfill {
     };
 
     (iter $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
-        use error::*;
-
         let start: $asty = $start as $asty;
         let step: $asty = $step as $asty;
         let count: usize = $count;
@@ -48,7 +45,6 @@ macro_rules! seqfill {
 
     (iter $ty: ty, $count: expr, $start: expr, $step: expr) => {{
         use num::NumCast;
-        use error::*;
 
         let start = $start;
         let step = $step;
@@ -83,7 +79,6 @@ macro_rules! seqfill {
 
     ($ty: ty, $slice: expr, $start: expr, $step: expr) => {{
         use num::NumCast;
-        use error::*;
 
         let start = $start;
         let step = $step;
@@ -118,7 +113,6 @@ macro_rules! seqfill {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn simple() {
@@ -197,7 +191,6 @@ mod tests {
     #[cfg(all(feature = "nightly", test))]
     mod benches {
         use test::Bencher;
-        use super::*;
 
         #[bench]
         fn simple(b: &mut Bencher) {
@@ -213,8 +206,7 @@ mod tests {
     }
 
     mod ts {
-        use super::*;
-        use ty::timestamp::{Timestamp, MIN_TIMESTAMP};
+        use ty::timestamp::Timestamp;
 
         #[test]
         fn simple() {

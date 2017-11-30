@@ -24,7 +24,7 @@ pub(crate) mod table;
 
 /// helper facilitating calling expressions that utilize `std::ops::Carrier`
 /// in functions with no `Result` return type
-
+#[allow(unused_macros)]
 macro_rules! carry {
     ($what: expr) => {
         (|| {
@@ -37,8 +37,6 @@ macro_rules! carry {
 #[macro_use]
 #[cfg(test)]
 pub(crate) mod tests {
-    pub(crate) const DEFAULT_FILE_SIZE: usize = 1 << 20; // 1 MiB
-
 
     macro_rules! hashmap {
         () => {{
@@ -46,8 +44,10 @@ pub(crate) mod tests {
 
             HashMap::new()
         }};
+    }
 
-        ( $($key:expr => $value:expr),+ $(,)* ) => {{
+    macro_rules! hashmap_mut {
+        ( $($key:expr => $value:expr),* $(,)* ) => {{
             use std::collections::hash_map::HashMap;
 
             let mut hash = HashMap::new();
@@ -65,7 +65,7 @@ pub(crate) mod tests {
             let vec = $vec;
 
             let mut v = Vec::from($vec);
-            for i in 1..count {
+            for _ in 1..count {
                 v.extend(&vec);
             }
 
@@ -93,14 +93,6 @@ pub(crate) mod tests {
 
             it.collect()
         }};
-    }
-
-    macro_rules! count {
-        ($cur: ident $(, $tail: ident)* $(,)*) => {
-            1 + count!($($tail,)*)
-        };
-
-        () => { 0 };
     }
 
     macro_rules! assert_file_size {

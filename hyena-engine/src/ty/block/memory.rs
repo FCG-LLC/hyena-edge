@@ -1,10 +1,8 @@
 use error::*;
-use storage::Storage;
 use storage::memory::PagedMemoryStorage;
 use block::SparseIndex;
 use std::mem::size_of;
 use params::BLOCK_SIZE;
-use super::BlockId;
 
 
 block_impl!(PagedMemoryStorage);
@@ -93,12 +91,6 @@ impl<'block> Block<'block> {
 impl<'block> From<Block<'block>> for super::Block<'block> {
     fn from(block: Block<'block>) -> super::Block {
         super::Block::Memory(block)
-    }
-}
-
-impl From<BlockType> for super::BlockType {
-    fn from(block_ty: BlockType) -> super::BlockType {
-        super::BlockType::Memory(block_ty)
     }
 }
 

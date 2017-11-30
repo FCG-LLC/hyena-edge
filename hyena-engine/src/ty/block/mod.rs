@@ -2,7 +2,7 @@ use error::*;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
-
+use block;
 
 #[macro_use]
 pub(crate) mod ty_impl;
@@ -45,7 +45,7 @@ impl From<BlockTypeMapTy> for BlockTypeMap {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum Block<'block> {
     Memory(memory::Block<'block>),
     #[cfg(feature = "mmap")]
@@ -73,9 +73,9 @@ macro_rules! block_map_expr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockType {
-    Memory(memory::BlockType),
+    Memory(block::BlockType),
     #[cfg(feature = "mmap")]
-    Memmap(mmap::BlockType),
+    Memmap(block::BlockType),
 }
 
 impl BlockType {
@@ -108,6 +108,7 @@ impl<'block> Block<'block> {
     }
 
     #[inline]
+    #[allow(unused)]
     pub(crate) fn is_empty(&self) -> bool {
         use self::Block::*;
 

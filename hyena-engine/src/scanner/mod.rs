@@ -2,7 +2,6 @@ use error::*;
 use ty::ColumnId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use serde::{Deserialize, Serialize};
 use partition::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
@@ -91,7 +90,7 @@ impl ScanResult {
             if v.is_none() {
                 *v = o;
             } else if o.is_some() {
-                let mut self_data = v.as_mut().unwrap();
+                let self_data = v.as_mut().unwrap();
                 let mut other_data = o.unwrap();
 
                 self_data
@@ -174,21 +173,21 @@ mod tests {
         use super::*;
 
         fn prepare() -> (ScanResult, ScanResult, ScanResult) {
-            let a = ScanResult::from(hashmap! {
+            let a = ScanResult::from(hashmap_mut! {
                 0 => Some(Fragment::from(seqfill!(vec u64, 5))),
                 1 => Some(Fragment::from(seqfill!(vec u32))),
                 3 => Some(Fragment::from(seqfill!(vec u16, 5))),
                 5 => Some(Fragment::from(seqfill!(vec u64, 5))),
             });
 
-            let b = ScanResult::from(hashmap! {
+            let b = ScanResult::from(hashmap_mut! {
                 0 => Some(Fragment::from(seqfill!(vec u64, 10, 5))),
                 1 => Some(Fragment::from(seqfill!(vec u32))),
                 3 => Some(Fragment::from(seqfill!(vec u16, 5, 15))),
                 5 => Some(Fragment::from(seqfill!(vec u64, 10, 20))),
             });
 
-            let expected = ScanResult::from(hashmap! {
+            let expected = ScanResult::from(hashmap_mut! {
                 0 => Some({
                     let mut frag = seqfill!(vec u64, 5);
                     frag.extend(seqfill!(vec u64, 10, 5));

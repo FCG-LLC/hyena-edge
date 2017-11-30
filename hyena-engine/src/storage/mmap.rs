@@ -1,9 +1,7 @@
 use error::*;
 
 use fs::ensure_file;
-
-use memmap;
-use memmap::{MmapMut, Protection};
+use memmap::{MmapMut, MmapOptions};
 
 use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
@@ -17,9 +15,8 @@ pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
     let file = ensure_file(path, size)?;
 
     unsafe {
-        memmap::file(&file)
-            .protection(Protection::ReadWrite)
-            .map_mut()
+        MmapOptions::new()
+            .map_mut(&file)
             .chain_err(|| "memmap failed")
     }
 }
@@ -77,7 +74,7 @@ mod tests {
     fn it_maps_new_file() {
         let (_dir, file) = tempfile!(prefix TEMPDIR_PREFIX);
 
-        let storage = MemmapStorage::new(&file, FILE_SIZE)
+        let _storage = MemmapStorage::new(&file, FILE_SIZE)
             .chain_err(|| "unable to create MemmapStorage")
             .unwrap();
 
@@ -120,7 +117,7 @@ mod tests {
 
         assert_file_size!(file, FILE_SIZE);
 
-        let mut buf: [u8; TEST_BYTES_LEN] = ensure_read!(file, [0; TEST_BYTES_LEN], FILE_SIZE);
+        let buf: [u8; TEST_BYTES_LEN] = ensure_read!(file, [0; TEST_BYTES_LEN], FILE_SIZE);
 
         assert_eq!(&TEST_BYTES[..], &buf[..]);
     }
@@ -142,7 +139,7 @@ mod tests {
 
         assert_file_size!(file, FILE_SIZE);
 
-        let mut buf: [u8; TEST_BYTES_LEN * 2] =
+        let buf: [u8; TEST_BYTES_LEN * 2] =
             ensure_read!(file, [0; TEST_BYTES_LEN * 2], FILE_SIZE);
 
         assert_eq!(&TEST_BYTES[..], &buf[..TEST_BYTES_LEN]);

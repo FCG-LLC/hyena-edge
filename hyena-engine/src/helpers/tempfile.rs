@@ -293,7 +293,7 @@ mod tests {
         use super::*;
         use super::super::tempdir_tools::TempDirExt;
         use std::fs::{create_dir, remove_dir, remove_file, File};
-        use std::io::{Read, Write};
+        use std::io::Write;
 
         fn exists<T: TempDirExt>(td: T, cleanup: bool) {
             assert!(td.exists(""));
@@ -309,7 +309,7 @@ mod tests {
             let p = td.as_ref().join("testfile");
 
             {
-                let f = File::create(&p)
+                let _f = File::create(&p)
                     .chain_err(|| "unable to create file")
                     .unwrap();
             }
@@ -364,7 +364,7 @@ mod tests {
                     .unwrap();
             }
 
-            let rdata = td.read_vec(&p)
+            let _rdata = td.read_vec(&p)
                 .chain_err(|| "unable to read test data")
                 .unwrap();
 

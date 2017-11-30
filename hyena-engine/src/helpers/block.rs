@@ -1,5 +1,3 @@
-use error::*;
-
 macro_rules! block_apply {
     (mut expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) =>
     {{
@@ -484,8 +482,6 @@ macro_rules! map_block {
     )
         => {{
         use ty::block::Block;
-        use error::*;
-
 
         match *$block {
             $(

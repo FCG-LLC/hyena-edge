@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! flame {
     (@ $func: ident ()) => {{
         #[cfg(feature = "perf")]
@@ -83,15 +84,16 @@ macro_rules! flame {
     };
 }
 
-macro_rules! t {
-    ($t: expr, $name: expr) => {
-        #[cfg(feature = "tperf")]
-        println!("{}: {:?} s", $name, $t.elapsed());
-    };
+#[allow(unused_macros)]
+macro_rules! t {		
+    ($t: expr, $name: expr) => {		
+        #[cfg(feature = "tperf")]		
+        println!("{}: {:?} s", $name, $t.elapsed());		
+    };		
 
-    () => {{
-        use std::time::Instant;
+    () => {{		
+        use std::time::Instant;		
 
-        Instant::now()
-    }};
+        Instant::now()		
+    }};		
 }

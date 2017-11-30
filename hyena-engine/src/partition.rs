@@ -2,18 +2,16 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap, Timestamp};
+use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
-use ty::block::memory::BlockType as MemoryBlockType;
 use std::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
-use ty::block::mmap::BlockType as MmapBlockType;
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
 use std::iter::FromIterator;
-use ty::fragment::{Fragment, FragmentRef};
+use ty::fragment::Fragment;
 use mutator::BlockRefData;
 use scanner::{Scan, ScanFilterApply, ScanResult};
 
@@ -22,10 +20,10 @@ pub(crate) type PartitionId = Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Partition<'part> {
-    id: PartitionId,
+    pub(crate) id: PartitionId,
     // TODO: do we really need ts_* here?
-    ts_min: Timestamp,
-    ts_max: Timestamp,
+    pub(crate) ts_min: Timestamp,
+    pub(crate) ts_max: Timestamp,
 
     #[serde(skip)]
     blocks: BlockMap<'part>,
@@ -91,7 +89,7 @@ impl<'part> Partition<'part> {
         self.ensure_blocks(&blockmap)
             .chain_err(|| "Unable to create block map")
             .unwrap();
-        let mut ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
+        let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
             if let Some(block) = self.blocks.get(blk_idx) {
                 trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
                 Some((block, frags.get(blk_idx).unwrap()))
@@ -101,7 +99,7 @@ impl<'part> Partition<'part> {
         });
 
         for (ref mut block, ref data) in ops {
-            let mut b = acquire!(write block);
+            let b = acquire!(write block);
             let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                 // dense block handler
 
@@ -109,8 +107,8 @@ impl<'part> Partition<'part> {
                 let slen = frg.len();
 
                 {
-                    let mut blkslice = blk.as_mut_slice_append();
-                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                    let blkslice = blk.as_mut_slice_append();
+                    &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
                 blk.set_written(slen).unwrap();
@@ -127,7 +125,7 @@ impl<'part> Partition<'part> {
                 };
 
                 {
-                    let (mut blkindex, mut blkslice) = blk.as_mut_indexed_slice_append();
+                    let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
 
                     &mut blkslice[..slen].copy_from_slice(&frg[..]);
                     &mut blkindex[..slen].copy_from_slice(&fidx[..]);
@@ -257,7 +255,6 @@ impl<'part> Partition<'part> {
                         let mut result = Vec::new();
                         let mut result_idx = Vec::new();
                         let mut curidx = 0;
-                        let ilen = index.len();
                         let mut i = &index[..];
 
                         for rowid in &rowids[..] {
@@ -300,6 +297,7 @@ impl<'part> Partition<'part> {
         materialized.map(|m| m.into())
     }
 
+    #[allow(unused)]
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
         let ts_block = self.blocks
             .get(&0)
@@ -334,7 +332,9 @@ impl<'part> Partition<'part> {
     pub(crate) fn get_ts(&self) -> (Timestamp, Timestamp) {
         (self.ts_min, self.ts_max)
     }
+
     #[must_use]
+    #[allow(unused)]
     pub(crate) fn set_ts<TS>(&mut self, ts_min: Option<TS>, ts_max: Option<TS>) -> Result<()>
     where
         Timestamp: From<TS>,
@@ -353,6 +353,7 @@ impl<'part> Partition<'part> {
         }
     }
 
+    #[allow(unused)]
     pub(crate) fn update_meta(&mut self) -> Result<()> {
         // TODO: handle ts_min changes -> partition path
 
@@ -391,10 +392,12 @@ impl<'part> Partition<'part> {
             .unwrap_or_default()
     }
 
+    #[allow(unused)]
     pub(crate) fn get_blocks(&self) -> &BlockMap<'part> {
         &self.blocks
     }
 
+    #[allow(unused)]
     pub(crate) fn mut_blocks(&mut self) -> &mut BlockMap<'part> {
         &mut self.blocks
     }
@@ -428,7 +431,7 @@ impl<'part> Partition<'part> {
     // TODO: to be benched
     fn prepare_blocks<'i, P>(
         root: P,
-        type_map: &'i HashMap<BlockId, BlockType>,
+        type_map: &'i HashMap<BlockId, TyBlockType>,
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
@@ -439,14 +442,14 @@ impl<'part> Partition<'part> {
         type_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
-                BlockType::Memory(bty) => {
+                TyBlockType::Memory(bty) => {
                     use ty::block::memory::Block;
 
                     Block::create(bty)
                         .map(|block| (*block_id, locked!(rw block.into())))
                         .chain_err(|| "Unable to create in-memory block")
                 }
-                BlockType::Memmap(bty) => {
+                TyBlockType::Memmap(bty) => {
                     use ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
@@ -457,7 +460,7 @@ impl<'part> Partition<'part> {
             .collect()
     }
 
-    fn flush(&self) -> Result<()> {
+    pub(crate) fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(PARTITION_METADATA);
 
@@ -534,141 +537,166 @@ impl<'part> Drop for Partition<'part> {
 mod tests {
     use super::*;
     use std::collections::hash_map::HashMap;
-    use ty::BlockId;
+    use ty::{Block, BlockId};
+    use ty::block::BlockType as TyBlockType;
     use std::fmt::Debug;
     use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
     use block::BlockData;
     use ty::fragment::Fragment;
 
 
-    macro_rules! block_test_impl {
+    macro_rules! block_test_impl_mem {
         ($base: ident, $($variant: ident),* $(,)*) => {{
+            use ty::block::BlockType::Memory;
             let mut idx = 0;
 
-            hashmap! {
+            hashmap_mut! {
                 $(
-                    {idx += 1; idx} => $base::$variant,
+                    {idx += 1; idx} => Memory($base::$variant),
                 )*
             }
         }};
+    }
 
-        ($base: ident) => {
-            map_block_type_variants!(block_test_impl, $base)
+    macro_rules! block_test_impl_mmap {
+        ($base: ident, $($variant: ident),* $(,)*) => {{
+            use ty::block::BlockType::Memmap;
+            let mut idx = 0;
+
+            hashmap_mut! {
+                $(
+                    {idx += 1; idx} => Memmap($base::$variant),
+                )*
+            }
+        }};
+    }
+
+    macro_rules! block_test_impl {
+        (mem $base: ident) => {
+            map_block_type_variants!(block_test_impl_mem, $base)
+        };
+
+        (mmap $base: ident) => {
+            map_block_type_variants!(block_test_impl_mmap, $base)
         };
     }
 
-    macro_rules! block_write_test_impl {
-        ($block_ty: ident) => {{
-            use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
-            use block::BlockData;
-
-            let count = 100;
-
-            let root = tempdir!();
-
-            let ts = RandomTimestampGen::random::<u64>();
-
-            let mut part = Partition::new(&root, Partition::gen_id(), ts)
-                .chain_err(|| "Failed to create partition")
-                .unwrap();
-
-            let blockmap = hashmap! {
-                0 => $block_ty::U64Dense,
-                1 => $block_ty::U32Dense,
-            }.into();
-
-            part.ensure_blocks(&blockmap)
-                .chain_err(|| "Unable to create block map")
-                .unwrap();
-
-            // write some data
-
-            let frags = vec![
-                Fragment::from(random!(gen u64, count)),
-                Fragment::from(random!(gen u32, count)),
-            ];
-
-            {
-
-                let mut ops = vec![
-                    (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
-                    (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
-                ];
-
-                ops.as_mut_slice().par_iter_mut().for_each(
-                    |&mut (ref mut block, ref data)| {
-                        let mut b = acquire!(write block);
-
-                        map_fragment!(mut map owned b, *data, blk, frg, _fidx, {
-                            // destination bounds checking intentionally left out
-                            let slen = frg.len();
-
-                            blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
-                            blk.set_written(count).unwrap();
-
-                        }, {}).unwrap()
-                    },
-                );
-            }
-
-            // verify the data is there
-
-            {
-                let ops = vec![
-                    (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
-                    (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
-                ];
-
-                block_write_test_impl!(read ops);
-            }
-
-            let blockmap = hashmap! {
-                0 => $block_ty::U64Dense,
-                1 => $block_ty::U32Dense,
-                2 => $block_ty::U64Dense,
-                3 => $block_ty::U32Dense,
-            }.into();
-
-            part.ensure_blocks(&blockmap)
-                .chain_err(|| "Unable to create block map")
-                .unwrap();
-
-            // verify the data is still there
-
-            {
-                let ops = vec![
-                    (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
-                    (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
-                ];
-
-                block_write_test_impl!(read ops);
+    macro_rules! block_map {
+        (mem {$($key:expr => $value:expr),+}) => {{
+            use ty;
+            hashmap_mut! {
+                $(
+                    $key => ty::block::BlockType::Memory($value),
+                 )+
             }
         }};
 
+        (mmap {$($key:expr => $value:expr),+}) => {{
+            use ty;
+            hashmap_mut! {
+                $(
+                    $key => ty::block::BlockType::Memmap($value),
+                 )+
+            }
+        }}
+    }
+
+    macro_rules! block_write_test_impl {
         (read $ops: expr) => {
                 $ops.as_slice().par_iter().for_each(
                     |&(ref block, ref data)| {
                         let b = acquire!(read block);
 
-                        map_fragment!(map owned b, *data, blk, frg, _fidx, {
+                        map_fragment!(map owned b, *data, _blk, _frg, _fidx, {
                             // destination bounds checking intentionally left out
-                            assert_eq!(blk.len(), frg.len());
-                            assert_eq!(blk.as_slice(), frg.as_slice());
+                            assert_eq!(_blk.len(), _frg.len());
+                            assert_eq!(_blk.as_slice(), _frg.as_slice());
                         }, {}).unwrap()
                     },
                 );
         };
     }
 
-    fn ts_init<'part, P, T>(
+    fn block_write_test_impl(short_map: &BlockTypeMap, long_map: &BlockTypeMap) {
+        use rayon::iter::IntoParallelRefMutIterator;
+        use block::BlockData;
+
+        let count = 100;
+
+        let root = tempdir!();
+
+        let ts = RandomTimestampGen::random::<u64>();
+
+        let mut part = Partition::new(&root, Partition::gen_id(), ts)
+            .chain_err(|| "Failed to create partition")
+            .unwrap();
+
+        part.ensure_blocks(short_map)
+            .chain_err(|| "Unable to create block map")
+            .unwrap();
+
+        // write some data
+
+        let frags = vec![
+            Fragment::from(random!(gen u64, count)),
+            Fragment::from(random!(gen u32, count)),
+        ];
+
+        {
+            let mut ops = vec![
+                (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
+                (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
+            ];
+
+            ops.as_mut_slice().par_iter_mut().for_each(
+                |&mut (ref mut block, ref data)| {
+                    let b = acquire!(write block);
+
+                    map_fragment!(mut map owned b, *data, _blk, _frg, _fidx, {
+                        // destination bounds checking intentionally left out
+                        let slen = _frg.len();
+
+                        _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
+                        _blk.set_written(count).unwrap();
+
+                    }, {}).unwrap()
+                },
+                );
+        }
+
+        // verify the data is there
+
+        {
+            let ops = vec![
+                (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
+                (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
+            ];
+
+            block_write_test_impl!(read ops);
+        }
+
+        part.ensure_blocks(long_map)
+            .chain_err(|| "Unable to create block map")
+            .unwrap();
+
+        // verify the data is still there
+
+        {
+            let ops = vec![
+                (part.blocks.get(&0).unwrap(), frags.get(0).unwrap()),
+                (part.blocks.get(&1).unwrap(), frags.get(1).unwrap()),
+            ];
+
+            block_write_test_impl!(read ops);
+        }
+    }
+
+    fn ts_init<'part, P>(
         root: P,
-        ts_ty: T,
+        ts_ty: TyBlockType,
         count: usize,
     ) -> (Partition<'part>, Timestamp, Timestamp)
     where
-        T: Debug + Clone,
-        BlockType: From<T>,
-        BlockTypeMap: From<HashMap<BlockId, T>>,
         P: AsRef<Path>,
     {
         let ts = RandomTimestampGen::iter().take(count).collect::<Vec<_>>();
@@ -687,7 +715,7 @@ mod tests {
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
-        part.ensure_blocks(&(hashmap! { 0 => ts_ty }).into())
+        part.ensure_blocks(&(hashmap_mut! { 0 => ts_ty }).into())
             .chain_err(|| "Failed to create blocks")
             .unwrap();
 
@@ -716,12 +744,7 @@ mod tests {
         (part, (*ts_min).into(), (*ts_max).into())
     }
 
-    fn scan_ts<T>(ts_ty: T)
-    where
-        T: Debug + Clone + Copy,
-        BlockType: From<T>,
-        BlockTypeMap: From<HashMap<BlockId, T>>,
-    {
+    fn scan_ts(ts_ty: TyBlockType) {
 
         let root = tempdir!();
 
@@ -735,12 +758,7 @@ mod tests {
         assert_eq!(ret_ts_max, ts_max);
     }
 
-    fn update_meta<T>(ts_ty: T)
-    where
-        T: Debug + Clone + Copy,
-        BlockType: From<T>,
-        BlockTypeMap: From<HashMap<BlockId, T>>,
-    {
+    fn update_meta(ts_ty: TyBlockType) {
 
         let root = tempdir!();
 
@@ -757,7 +775,7 @@ mod tests {
     macro_rules! block_write {
         ($part: expr, $blockmap: expr, $frags: expr) => {{
             let blockmap = $blockmap;
-            let mut part = $part;
+            let part = $part;
             let frags = $frags;
 
             part.ensure_blocks(&blockmap)
@@ -766,7 +784,7 @@ mod tests {
 
             {
                 let mut ops = frags.iter()
-                    .filter_map(|(ref blk_idx, ref frag)| {
+                    .filter_map(|(ref blk_idx, ref _frag)| {
                         if let Some(block) = part.blocks.get(blk_idx) {
                             Some((block, frags.get(blk_idx).unwrap()))
                         } else {
@@ -777,14 +795,14 @@ mod tests {
 
                 ops.as_mut_slice().par_iter_mut().for_each(
                     |&mut (ref mut block, ref data)| {
-                        let mut b = acquire!(write block);
+                        let b = acquire!(write block);
 
-                        map_fragment!(mut map owned b, *data, blk, frg, _fidx, {
+                        map_fragment!(mut map owned b, *data, _blk, _frg, _fidx, {
                             // destination bounds checking intentionally left out
-                            let slen = frg.len();
+                            let slen = _frg.len();
 
-                            blk.as_mut_slice_append()[..slen].copy_from_slice(&frg[..]);
-                            blk.set_written(slen).unwrap();
+                            _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
+                            _blk.set_written(slen).unwrap();
 
                         }, {}).unwrap()
                     },
@@ -795,12 +813,12 @@ mod tests {
 
     #[test]
     fn space_for_blocks() {
-        use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator};
-        use block::BlockData;
+        use rayon::iter::IntoParallelRefMutIterator;
+        use block::{BlockType, BlockData};
         use std::mem::size_of;
         use params::BLOCK_SIZE;
         use std::iter::FromIterator;
-
+        use ty::block::BlockType::Memory;
 
         // reserve 20 records on timestamp
         let count = BLOCK_SIZE / size_of::<u64>() - 20;
@@ -813,32 +831,32 @@ mod tests {
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
-        let blocks = hashmap! {
-            0 => MemoryBlockType::U64Dense,
-            1 => MemoryBlockType::U32Dense,
+        let blocks = hashmap_mut! {
+            0 => Memory(BlockType::U64Dense),
+            1 => Memory(BlockType::U32Dense),
         }.into();
 
-        let frags = hashmap! {
+        let frags = hashmap_mut! {
             0 => Fragment::from(random!(gen u64, count)),
             1 => Fragment::from(random!(gen u32, count)),
         };
 
         block_write!(&mut part, blocks, frags);
 
-        let blocks = hashmap! {
-            2 => MemoryBlockType::U64Sparse,
+        let blocks = hashmap_mut! {
+            2 => Memory(BlockType::U64Sparse),
         }.into();
 
-        let frags = hashmap! {
+        let frags = hashmap_mut! {
             2 => Fragment::from((random!(gen u64, count), random!(gen u32, count))),
         };
 
         block_write!(&mut part, blocks, frags);
 
-        let blocks = hashmap! {
-            0 => MemoryBlockType::U64Dense,
-            1 => MemoryBlockType::U32Dense,
-            2 => MemoryBlockType::U64Dense,
+        let blocks = hashmap_mut! {
+            0 => Memory(BlockType::U64Dense),
+            1 => Memory(BlockType::U32Dense),
+            2 => Memory(BlockType::U64Dense),
         };
 
         assert_eq!(
@@ -896,7 +914,6 @@ mod tests {
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
-            BlockType: From<T>,
             BlockTypeMap: From<HashMap<BlockId, T>>,
         {
             let root = tempdir!();
@@ -920,17 +937,13 @@ mod tests {
             }
         }
 
-        pub(super) fn heads<'part, 'block, P, T>(
+        pub(super) fn heads<'part, 'block, P>(
             root: P,
-            type_map: HashMap<BlockId, T>,
-            ts_ty: T,
+            type_map: HashMap<BlockId, TyBlockType>,
+            ts_ty: TyBlockType,
             count: usize,
         ) where
             'part: 'block,
-            T: Debug + Clone + Copy,
-            Block<'block>: PartialEq<T>,
-            BlockType: From<T>,
-            BlockTypeMap: From<HashMap<BlockId, T>>,
             P: AsRef<Path>,
         {
             let (mut part, _, _) = ts_init(&root, ts_ty, count);
@@ -977,7 +990,6 @@ mod tests {
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
-            BlockType: From<T>,
             BlockTypeMap: From<HashMap<BlockId, T>>,
         {
             let root = tempdir!();
@@ -1003,17 +1015,13 @@ mod tests {
             }
         }
 
-        pub(super) fn heads<'part, 'block, P, T>(
+        pub(super) fn heads<'part, 'block, P>(
             root: P,
-            type_map: HashMap<BlockId, T>,
-            ts_ty: T,
+            type_map: HashMap<BlockId, TyBlockType>,
+            ts_ty: TyBlockType,
             count: usize,
         ) where
             'part: 'block,
-            T: Debug + Clone + Copy,
-            Block<'block>: PartialEq<T>,
-            BlockType: From<T>,
-            BlockTypeMap: From<HashMap<BlockId, T>>,
             P: AsRef<Path>,
         {
             super::serialize::heads(&root, type_map.clone(), ts_ty, count);
@@ -1022,7 +1030,7 @@ mod tests {
                 .chain_err(|| "Failed to read partition data")
                 .unwrap();
 
-            for (blockid, block) in &part.blocks {
+            for (_blockid, block) in &part.blocks {
                 block_apply!(map physical block, blk, pb, {
                     assert_eq!(pb.len(), count);
                 });
@@ -1054,28 +1062,42 @@ mod tests {
 
     mod memory {
         use super::*;
+        use block::BlockType;
+        use ty::block::BlockType::Memory;
 
         #[test]
         fn scan_ts() {
-            super::scan_ts(MemoryBlockType::U64Dense);
+            super::scan_ts(Memory(BlockType::U64Dense));
         }
 
         #[test]
         fn update_meta() {
-            super::update_meta(MemoryBlockType::U64Dense);
+            super::update_meta(Memory(BlockType::U64Dense));
         }
 
         #[test]
         fn ensure_blocks() {
-            block_write_test_impl!(MemoryBlockType);
+            let short_map = block_map!(mem {
+                0usize => BlockType::U64Dense,
+                1usize => BlockType::U32Dense
+            }).into();
+            let long_map = block_map!(mem {
+                0 => BlockType::U64Dense,
+                1 => BlockType::U32Dense,
+                2 => BlockType::U64Dense,
+                3 => BlockType::U32Dense
+            }).into();
+
+            block_write_test_impl(&short_map, &long_map);
         }
 
         mod serialize {
             use super::*;
+            use ty::block::BlockType::Memory;
 
             #[test]
             fn blocks() {
-                super::super::serialize::blocks(block_test_impl!(MemoryBlockType));
+                super::super::serialize::blocks(block_test_impl!(mem BlockType));
             }
 
             #[test]
@@ -1084,8 +1106,8 @@ mod tests {
 
                 super::super::serialize::heads(
                     &root,
-                    block_test_impl!(MemoryBlockType),
-                    MemoryBlockType::U64Dense,
+                    block_test_impl!(mem BlockType),
+                    Memory(BlockType::U64Dense),
                     100,
                 );
             }
@@ -1093,10 +1115,11 @@ mod tests {
 
         mod deserialize {
             use super::*;
+            use ty::block::BlockType::Memory;
 
             #[test]
             fn blocks() {
-                super::super::deserialize::blocks(block_test_impl!(MemoryBlockType));
+                super::super::deserialize::blocks(block_test_impl!(mem BlockType));
             }
 
             #[test]
@@ -1105,8 +1128,8 @@ mod tests {
 
                 super::super::deserialize::heads(
                     &root,
-                    block_test_impl!(MemoryBlockType),
-                    MemoryBlockType::U64Dense,
+                    block_test_impl!(mem BlockType),
+                    Memory(BlockType::U64Dense),
                     100,
                 );
             }
@@ -1117,28 +1140,42 @@ mod tests {
     #[cfg(feature = "mmap")]
     mod mmap {
         use super::*;
+        use block::BlockType;
+        use ty::block::BlockType::Memory;
 
         #[test]
         fn scan_ts() {
-            super::scan_ts(MmapBlockType::U64Dense);
+            super::scan_ts(Memory(BlockType::U64Dense));
         }
 
         #[test]
         fn update_meta() {
-            super::update_meta(MmapBlockType::U64Dense);
+            super::update_meta(Memory(BlockType::U64Dense));
         }
 
         #[test]
         fn ensure_blocks() {
-            block_write_test_impl!(MmapBlockType);
+            let short_map = block_map!(mmap {
+                0 => BlockType::U64Dense,
+                1 => BlockType::U32Dense
+            }).into();
+            let long_map = block_map!(mmap {
+                0 => BlockType::U64Dense,
+                1 => BlockType::U32Dense,
+                2 => BlockType::U64Dense,
+                3 => BlockType::U32Dense
+            }).into();
+
+            block_write_test_impl(&short_map, &long_map);
         }
 
         mod serialize {
             use super::*;
+            use ty::block::BlockType::Memory;
 
             #[test]
             fn blocks() {
-                super::super::serialize::blocks(block_test_impl!(MmapBlockType));
+                super::super::serialize::blocks(block_test_impl!(mmap BlockType));
             }
 
             #[test]
@@ -1147,8 +1184,8 @@ mod tests {
 
                 super::super::serialize::heads(
                     &root,
-                    block_test_impl!(MmapBlockType),
-                    MmapBlockType::U64Dense,
+                    block_test_impl!(mmap BlockType),
+                    Memory(BlockType::U64Dense),
                     100,
                 );
             }
@@ -1156,10 +1193,11 @@ mod tests {
 
         mod deserialize {
             use super::*;
+            use ty::block::BlockType::Memory;
 
             #[test]
             fn blocks() {
-                super::super::deserialize::blocks(block_test_impl!(MmapBlockType));
+                super::super::deserialize::blocks(block_test_impl!(mmap BlockType));
             }
 
             #[test]
@@ -1168,8 +1206,8 @@ mod tests {
 
                 super::super::deserialize::heads(
                     &root,
-                    block_test_impl!(MmapBlockType),
-                    MmapBlockType::U64Dense,
+                    block_test_impl!(mmap BlockType),
+                    Memory(BlockType::U64Dense),
                     100,
                 );
             }

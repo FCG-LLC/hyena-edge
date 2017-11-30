@@ -1,17 +1,11 @@
 use error::*;
-
-use rayon::prelude::*;
-
-use std::path::Path;
-use std::marker::PhantomData;
+use std::collections::hash_map::HashMap;
 use std::fmt::Debug;
-
-use storage::Storage;
+use ty::block::BlockId;
 
 mod numeric;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock,
-                               SparseNumericBlock};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock};
 
 // This will probably get merged into BlockData
 
@@ -137,7 +131,7 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     #[inline]
     fn set_written(&mut self, count: usize) -> Result<()> {
         let size = self.size();
-        let mut head = self.mut_head();
+        let head = self.mut_head();
 
         if count <= size {
             *head += count;
@@ -145,6 +139,81 @@ pub trait BlockData<'block, T: 'block, I: 'block>
         } else {
             // TODO: migrate to proper ErrorKind
             Err("by_count exceeds current head".into())
+        }
+    }
+}
+
+#[allow(unused)]
+pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BlockType {
+    I8Dense,
+    I16Dense,
+    I32Dense,
+    I64Dense,
+    #[cfg(feature = "block_128")]
+    I128Dense,
+
+    // Dense, Unsigned
+    U8Dense,
+    U16Dense,
+    U32Dense,
+    U64Dense,
+    #[cfg(feature = "block_128")]
+    U128Dense,
+
+    // Sparse, Signed
+    I8Sparse,
+    I16Sparse,
+    I32Sparse,
+    I64Sparse,
+    #[cfg(feature = "block_128")]
+    I128Sparse,
+
+    // Sparse, Unsigned
+    U8Sparse,
+    U16Sparse,
+    U32Sparse,
+    U64Sparse,
+    #[cfg(feature = "block_128")]
+    U128Sparse,
+}
+
+impl BlockType {
+    #[inline]
+    pub fn size_of(&self) -> usize {
+        use std::mem::size_of;
+        use self::BlockType::*;
+
+        match *self {
+            I8Dense | U8Dense | I8Sparse | U8Sparse => size_of::<u8>(),
+            I16Dense | U16Dense | I16Sparse | U16Sparse => size_of::<u16>(),
+            I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
+            I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
+            #[cfg(feature = "block_128")]
+            I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
+        }
+    }
+
+    #[inline]
+    pub fn is_sparse(&self) -> bool {
+        use self::BlockType::*;
+
+        match *self {
+            I8Dense | U8Dense |
+            I16Dense | U16Dense |
+            I32Dense | U32Dense |
+            I64Dense | U64Dense => false,
+            #[cfg(feature = "block_128")]
+            I128Dense | U128Dense => false,
+
+            I8Sparse | U8Sparse |
+            I16Sparse | U16Sparse |
+            I32Sparse | U32Sparse |
+            I64Sparse | U64Sparse  => true,
+            #[cfg(feature = "block_128")]
+            I128Sparse | U128Sparse => true,
         }
     }
 }

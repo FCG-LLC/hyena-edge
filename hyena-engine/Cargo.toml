@@ -10,12 +10,13 @@ version = "0.1.0"
 bincode = "0.8.0"
 cfg-if = "0.1.2"
 chrono = "0.4.0"
-error-chain = "0.10.0"
+error-chain = "0.11.0"
 log = "0.3.8"
 rayon = "0.8.2"
 serde = "1.0.9"
 serde_derive = "1.0.9"
 static_assertions = "0.2.2"
+byteorder = "1.1.0"
 
 [dependencies.flame]
 git = "https://github.com/TyOverby/flame.git"
@@ -25,7 +26,7 @@ optional = true
 version = "0.2.24"
 
 [dependencies.memmap]
-git = "https://github.com/danburkert/memmap-rs.git"
+version = "0.6.1"
 optional = true
 
 [dependencies.uuid]

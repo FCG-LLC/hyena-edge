@@ -1,7 +1,6 @@
 use error::*;
 use block::SparseIndex;
-use ty::{BlockTypeMap, Timestamp};
-use std::slice::from_raw_parts;
+use ty::Timestamp;
 use std::mem::transmute;
 use std::marker::PhantomData;
 use ty::value::Value;
@@ -94,7 +93,8 @@ macro_rules! frag_apply {
 
             $(
                 $sparse_variants(ref mut $self_block, ref mut $self_idx) => {
-                    if let $sparse_variants(ref mut $other_block, ref mut other_idx) = $other {
+                    if let $sparse_variants(ref mut $other_block, ref mut _other_idx) = $other {
+                        #[allow(unreachable_code)]
                         Ok($sparse)
                     } else {
                         Err("incompatible source fragment variant in merge".into())
@@ -165,6 +165,7 @@ macro_rules! frag_apply {
 }
 
 impl Fragment {
+    #[allow(unused)]
     pub fn split_at<'frag: 'fragref, 'fragref>(
         &'frag self,
         mid: usize,
@@ -190,12 +191,14 @@ impl Fragment {
         )
     }
 
+    #[allow(unused)]
     pub fn is_sparse(&self) -> bool {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { false }, { true })
+        frag_apply!(*self, _blk, _idx, { false }, { true })
     }
 
+    #[allow(unused)]
     pub fn split_at_idx<'frag: 'fragref, 'fragref>(
         &'frag self,
         idx: SparseIndex,
@@ -203,14 +206,14 @@ impl Fragment {
         use self::Fragment::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+            Ok(frag_apply!(*self, _blk, blk_idx, { unreachable!() }, {
                 let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
                     idx
                 } else {
                     blk_idx.len()
                 };
 
-                let fragments = &blk[..].split_at(mid);
+                let fragments = &_blk[..].split_at(mid);
                 let indices = &blk_idx[..].split_at(mid);
                 (
                     (fragments.0, indices.0).into(),
@@ -222,18 +225,21 @@ impl Fragment {
         }
     }
 
+    #[allow(unused)]
     pub fn len(&self) -> usize {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+        frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         use self::Fragment::*;
 
-        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
+        frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 
+    #[allow(unused)]
     pub(crate) fn sort_unstable(&mut self) {
         use self::Fragment::*;
 
@@ -244,7 +250,7 @@ impl Fragment {
                 .zip((*blk).iter().cloned())
                 .collect::<Vec<_>>();
 
-            v.sort_unstable_by_key(|&(idx, blk)| blk);
+            v.sort_unstable_by_key(|&(_, blk)| blk);
 
             let (nidx, nblk): (Vec<_>, Vec<_>) = v.into_iter().unzip();
 
@@ -253,18 +259,18 @@ impl Fragment {
         })
     }
 
-    pub fn merge(&mut self, other: &mut Fragment) -> Result<()> {
+    pub fn merge(&mut self, _other: &mut Fragment) -> Result<()> {
         use self::Fragment::*;
 
         frag_apply!(merge
             *self,
-            *other,
-            sblk,
-            sidx,
-            oblk,
-            oidx,
+            *_other,
+            _sblk,
+            _sidx,
+            _oblk,
+            _oidx,
             {
-                sblk.append(oblk);
+                _sblk.append(_oblk);
             },
             {
                 unimplemented!();
@@ -328,7 +334,7 @@ impl<'fragref> FragmentRef<'fragref> {
     pub fn is_sparse(&self) -> bool {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { false }, { true })
+        frag_apply!(*self, _blk, _idx, { false }, { true })
     }
 
     pub fn split_at_idx<'frag>(
@@ -338,14 +344,14 @@ impl<'fragref> FragmentRef<'fragref> {
         use self::FragmentRef::*;
 
         if self.is_sparse() {
-            Ok(frag_apply!(*self, blk, blk_idx, { unreachable!() }, {
+            Ok(frag_apply!(*self, _blk, blk_idx, { unreachable!() }, {
                 let mid = if let Some(idx) = blk_idx.iter().position(|val| *val >= idx) {
                     idx
                 } else {
                     blk_idx.len()
                 };
 
-                let fragments = &blk[..].split_at(mid);
+                let fragments = &_blk[..].split_at(mid);
                 let indices = &blk_idx[..].split_at(mid);
                 (
                     (fragments.0, indices.0).into(),
@@ -357,16 +363,18 @@ impl<'fragref> FragmentRef<'fragref> {
         }
     }
 
+    #[allow(unused)]
     pub fn len(&self) -> usize {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { blk.len() }, { blk.len() })
+        frag_apply!(*self, blk, _idx, { blk.len() }, { blk.len() })
     }
 
+    #[allow(unused)]
     pub fn is_empty(&self) -> bool {
         use self::FragmentRef::*;
 
-        frag_apply!(*self, blk, idx, { blk.is_empty() }, { blk.is_empty() })
+        frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 }
 
@@ -383,8 +391,6 @@ impl<'frag> From<&'frag Fragment> for FragmentRef<'frag> {
 
 impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
     fn from(source: &'frag TimestampFragment) -> FragmentRef<'frag> {
-        use self::Fragment::*;
-
         FragmentRef::from(unsafe {
             transmute::<&'frag [Timestamp], &'frag [u64]>(&source.0)
         })
@@ -393,8 +399,6 @@ impl<'frag> From<&'frag TimestampFragment> for FragmentRef<'frag> {
 
 impl<'frag> From<&'frag [Timestamp]> for FragmentRef<'frag> {
     fn from(source: &'frag [Timestamp]) -> FragmentRef<'frag> {
-        use self::Fragment::*;
-
         FragmentRef::from(unsafe {
             transmute::<&'frag [Timestamp], &'frag [u64]>(source)
         })
@@ -722,7 +726,7 @@ mod tests {
 
     mod timestamp {
         use super::*;
-        use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+        use helpers::random::timestamp::RandomTimestampGen;
 
         #[test]
         fn is_eq() {

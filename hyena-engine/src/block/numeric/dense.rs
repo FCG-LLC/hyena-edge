@@ -1,14 +1,7 @@
 use error::*;
-
-use rayon::prelude::*;
-
-use std::path::Path;
 use std::marker::PhantomData;
 use std::fmt::Debug;
-
 use storage::Storage;
-use ty::{Timestamp, ToTimestampMicros};
-
 use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -23,7 +16,7 @@ pub struct DenseNumericBlock<'block, T: 'block + Debug, S: 'block + Storage<'blo
 }
 
 impl<'block, T: 'block + Debug, S: 'block + Storage<'block, T>> DenseNumericBlock<'block, T, S> {
-    pub fn new(mut storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
+    pub fn new(storage: S) -> Result<DenseNumericBlock<'block, T, S>> {
 
         Ok(DenseNumericBlock {
             storage,
@@ -86,10 +79,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem::size_of;
-
     use params::tests::BLOCK_SIZE;
-
 
     #[cfg(feature = "block_128")]
     #[macro_use]
@@ -134,7 +124,8 @@ mod tests {
         use std::fmt::Debug;
         use std::ops::Not;
         use chrono::prelude::*;
-
+        use ty::Timestamp;
+        use ty::timestamp::ToTimestampMicros;
 
         pub(super) fn block_ts<'block, S: 'block + Storage<'block, Timestamp>>(storage: S) {
             let mut block = DenseNumericBlock::new(storage)
@@ -145,7 +136,7 @@ mod tests {
             let d2 = (Utc::now().to_timestamp_micros() + 5_000_000).into();
 
             {
-                let mut data = block.as_mut_slice_append();
+                let data = block.as_mut_slice_append();
 
                 data[0] = d1;
                 data[1] = d2;
@@ -174,7 +165,7 @@ mod tests {
             let source = s.into_iter().cycle();
 
             let len = {
-                let mut data = block.as_mut_slice_append();
+                let data = block.as_mut_slice_append();
                 let len = data.len();
                 let source = source.clone().take(len).map(|v| *v).collect::<Vec<_>>();
 
@@ -206,7 +197,7 @@ mod tests {
             let source = s.into_iter().cycle();
 
             let len = {
-                let mut data = block.as_mut_slice_append();
+                let data = block.as_mut_slice_append();
                 let len = data.len();
                 let source = source.clone().take(len).map(|v| *v).collect::<Vec<_>>();
 

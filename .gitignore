@@ -1,3 +1,8 @@
 hyena-engine/Cargo.lock
+Cargo.lock
 target/
 **/*.rs.bk
+Session.vim
+**/rusty-tags.vi
+.undodir
+*~

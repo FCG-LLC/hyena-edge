@@ -1,12 +1,11 @@
 use error::*;
 use super::BlockId;
-use storage::Storage;
 use storage::mmap::MemmapStorage;
 use block::SparseIndex;
 use std::path::Path;
-use fs::ensure_file;
+//use fs::ensure_file;
 use std::mem::size_of;
-use std::fs::remove_file;
+//use std::fs::remove_file;
 use params::BLOCK_SIZE;
 
 
@@ -127,12 +126,6 @@ impl<'block> Block<'block> {
 impl<'block> From<Block<'block>> for super::Block<'block> {
     fn from(block: Block<'block>) -> super::Block {
         super::Block::Memmap(block)
-    }
-}
-
-impl From<BlockType> for super::BlockType {
-    fn from(block_ty: BlockType) -> super::BlockType {
-        super::BlockType::Memmap(block_ty)
     }
 }
 

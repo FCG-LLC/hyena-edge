@@ -1,7 +1,5 @@
 use error::*;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::cell::RefCell;
 use ty::Timestamp;
 use fs::ensure_dir;
 use chrono::prelude::*;
@@ -13,6 +11,7 @@ pub(crate) struct RootManager {
 }
 
 impl RootManager {
+    #[allow(unused)]
     pub(crate) fn new<P: AsRef<Path>>(data_root: P) -> Result<RootManager> {
         let data = ensure_dir(data_root)
             .chain_err(|| "Failed to manage root directory")?;
@@ -113,7 +112,7 @@ mod tests {
 
         assert!(!root.exists());
 
-        let manager = RootManager::new(&root)
+        let _manager = RootManager::new(&root)
             .chain_err(|| "Failed to create manager")
             .unwrap();
 
@@ -129,7 +128,7 @@ mod tests {
     fn existing() {
         let root = tempdir!();
 
-        let manager = RootManager::new(&root)
+        let _manager = RootManager::new(&root)
             .chain_err(|| "Failed to create manager")
             .unwrap();
 

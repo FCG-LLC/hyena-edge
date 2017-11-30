@@ -1,10 +1,5 @@
-use error::*;
-use ty::{ColumnId, Fragment, SourceId, TimestampFragment};
-use ty::timestamp::Timestamp;
-use std::iter::repeat;
-use std::collections::hash_map::{HashMap, Keys};
-use std::iter::FromIterator;
-use super::{BlockData, BlockRefData};
+use ty::{SourceId, TimestampFragment};
+use super::BlockData;
 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,10 +23,13 @@ impl Append {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+    use error::*;
+    use helpers::random::timestamp::RandomTimestampGen;
     use rand::{thread_rng, Rng};
     use block::SparseIndex;
-
+    use std::iter::repeat;
+    use ty::Fragment;
+    use ty::timestamp::Timestamp;
 
     #[test]
     fn serialize() {
@@ -54,7 +52,7 @@ mod tests {
             repeat(())
                 .take(100)
                 .enumerate()
-                .map(|(idx, _)| rng.gen())
+                .map(|(_idx, _)| rng.gen())
                 .collect::<Vec<u64>>(),
 
             repeat(())
@@ -67,7 +65,7 @@ mod tests {
         let ap = Append {
             ts: frag,
             source_id: 1,
-            data: hashmap! {
+            data: hashmap_mut! {
                 2 => u64frag,
                 8 => u64sfrag,
             },
