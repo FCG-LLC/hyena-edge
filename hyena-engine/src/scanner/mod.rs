@@ -8,6 +8,8 @@ use ty::fragment::Fragment;
 use extprim::i128::i128;
 use extprim::u128::u128;
 
+pub type ScanFilters = HashMap<ColumnId, Vec<ScanFilter>>;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
     pub(crate) ts_range: Option<ScanTsRange>,

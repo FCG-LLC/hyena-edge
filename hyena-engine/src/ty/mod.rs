@@ -13,4 +13,5 @@ pub use self::fragment::{Fragment, FragmentRef, TimestampFragment};
 pub use self::value::Value;
 
 pub type ColumnId = usize;
+pub type RowId = usize;
 pub use params::SourceId;
