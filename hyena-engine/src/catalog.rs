@@ -810,6 +810,40 @@ mod tests {
 
             ($schema: expr,
                 $now: expr,
+                $([
+                    $ts: expr,
+                    $data: expr    // HashMap
+                ]),+ $(,)*) => {{
+
+                use block::BlockType as BlockTy;
+
+                let columns = $schema;
+
+                let now = $now;
+
+                let init = append_test_impl!(init columns.clone(), now);
+                let cat = init.1;
+
+                $(
+
+                let data = $data;
+
+                let append = Append {
+                    ts: $ts,
+                    source_id: 1,
+                    data,
+                };
+
+
+                cat.append(&append).expect("unable to append fragment");
+
+                )+
+
+                init.0
+            }};
+
+            ($schema: expr,
+                $now: expr,
                 $expected_partitions: expr, // Vec<>
                 $([
                     $ts: expr,
@@ -2274,18 +2308,69 @@ mod tests {
                 simple_sparse_u64, 5, 100_u64,);
         }
 
-        #[cfg(all(feature = "nightly", test))]
-        mod benches {
-            use test::Bencher;
+        /// The tests that use manually crafted blocks
+        ///
+        /// The 'light' suite
+        mod minimal {
             use super::*;
+            use ty::fragment::Fragment;
+            use scanner::ScanFilter;
+            use self::TyBlockType::Memmap;
 
-            #[bench]
-            fn simple(b: &mut Bencher) {
-                let (_, catalog) = scan_test_impl!(init);
+            macro_rules! scan_minimal_init {
+                () => {{
+                    let now = 1;
+
+                    let mut v = vec![Timestamp::from(0); 10];
+                    seqfill!(Timestamp, &mut v[..], now);
+
+                    let data = hashmap! {
+                        1 => Fragment::from((vec![
+                            1_u8, 2, 3, 4,
+                        ], vec![
+                            1_u32, 3, 5, 8,
+                        ])),
+                        2 => Fragment::from((vec![
+                            10_u16, 20, 30, 7, 8,
+                        ], vec![
+                            0_u32, 1, 5, 8, 9,
+                        ])),
+                    };
+
+                    let td = append_test_impl!(
+                        hashmap! {
+                            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                            1 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
+                            2 => Column::new(Memmap(BlockTy::U16Sparse), "col2"),
+                        },
+                        now,
+                        [
+                            v.into(),
+                            data
+                        ]
+                    );
+
+                    let cat = Catalog::with_data(&td)
+                        .chain_err(|| "unable to open catalog")
+                        .unwrap();
+
+                    (td, cat, now)
+                }};
+            }
+
+            #[test]
+            fn scan_dense() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                    1 => Some(Fragment::from((vec![1_u8], vec![1_u32]))),
+                    2 => Some(Fragment::from((vec![10_u16, 20], vec![0_u32, 1_u32]))),
+                });
 
                 let scan = Scan::new(
                     hashmap! {
-                        2 => vec![ScanFilterOp::Lt(100_u8).into()]
+                        0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
                     },
                     None,
                     None,
@@ -2293,7 +2378,59 @@ mod tests {
                     None,
                 );
 
-                b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
+            }
+
+            #[test]
+            fn scan_sparse1() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![9_u64])),
+                    1 => Some(Fragment::from((vec![4_u8], vec![0_u32]))),
+                    2 => Some(Fragment::from((vec![7_u16], vec![0_u32]))),
+                });
+
+                let scan = Scan::new(
+                    hashmap! {
+                        1 => vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]
+                    },
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
+            }
+
+            #[test]
+            fn scan_sparse2() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![2_u64, 5, 10])),
+                    1 => Some(Fragment::from((vec![1_u8], vec![0_u32]))),
+                    2 => Some(Fragment::from((vec![20_u16, 8], vec![0_u32, 2]))),
+                });
+
+                let scan = Scan::new(
+                    hashmap! {
+                        0 => vec![ScanFilter::U64(ScanFilterOp::In(hashset![2, 5, 10]))]
+                    },
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
             }
         }
     }
