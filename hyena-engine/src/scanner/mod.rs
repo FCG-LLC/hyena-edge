@@ -2,6 +2,7 @@ use error::*;
 use ty::ColumnId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::hash::Hash;
 use partition::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
@@ -45,17 +46,18 @@ pub enum ScanTsRange {
     To { end: u64 },                  // exclusive
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ScanFilterOp<T: Debug + Clone + PartialEq + PartialOrd> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ScanFilterOp<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> {
     Lt(T),
     LtEq(T),
     Eq(T),
     GtEq(T),
     Gt(T),
     NotEq(T),
+    In(HashSet<T>),
 }
 
-impl<T: Debug + Clone + PartialEq + PartialOrd> ScanFilterOp<T> {
+impl<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> ScanFilterOp<T> {
     #[inline]
     fn apply(&self, tested: &T) -> bool {
         use self::ScanFilterOp::*;
@@ -67,6 +69,7 @@ impl<T: Debug + Clone + PartialEq + PartialOrd> ScanFilterOp<T> {
             GtEq(ref v) => tested >= v,
             Gt(ref v) => tested > v,
             NotEq(ref v) => tested != v,
+            In(ref v) => v.contains(&tested),
         }
     }
 }
@@ -121,7 +124,7 @@ pub trait ScanFilterApply<T> {
 macro_rules! scan_filter_impl {
 
     ($( $ty: ty, $variant: ident ),+ $(,)*) => {
-        #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         pub enum ScanFilter {
             $(
 
