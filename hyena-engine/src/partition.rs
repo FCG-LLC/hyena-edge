@@ -550,7 +550,7 @@ mod tests {
             use ty::block::BlockType::Memory;
             let mut idx = 0;
 
-            hashmap_mut! {
+            hashmap! {
                 $(
                     {idx += 1; idx} => Memory($base::$variant),
                 )*
@@ -563,7 +563,7 @@ mod tests {
             use ty::block::BlockType::Memmap;
             let mut idx = 0;
 
-            hashmap_mut! {
+            hashmap! {
                 $(
                     {idx += 1; idx} => Memmap($base::$variant),
                 )*
@@ -584,7 +584,7 @@ mod tests {
     macro_rules! block_map {
         (mem {$($key:expr => $value:expr),+}) => {{
             use ty;
-            hashmap_mut! {
+            hashmap! {
                 $(
                     $key => ty::block::BlockType::Memory($value),
                  )+
@@ -593,7 +593,7 @@ mod tests {
 
         (mmap {$($key:expr => $value:expr),+}) => {{
             use ty;
-            hashmap_mut! {
+            hashmap! {
                 $(
                     $key => ty::block::BlockType::Memmap($value),
                  )+
@@ -715,7 +715,7 @@ mod tests {
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
-        part.ensure_blocks(&(hashmap_mut! { 0 => ts_ty }).into())
+        part.ensure_blocks(&(hashmap! { 0 => ts_ty }).into())
             .chain_err(|| "Failed to create blocks")
             .unwrap();
 
@@ -831,29 +831,29 @@ mod tests {
             .chain_err(|| "Failed to create partition")
             .unwrap();
 
-        let blocks = hashmap_mut! {
+        let blocks = hashmap! {
             0 => Memory(BlockType::U64Dense),
             1 => Memory(BlockType::U32Dense),
         }.into();
 
-        let frags = hashmap_mut! {
+        let frags = hashmap! {
             0 => Fragment::from(random!(gen u64, count)),
             1 => Fragment::from(random!(gen u32, count)),
         };
 
         block_write!(&mut part, blocks, frags);
 
-        let blocks = hashmap_mut! {
+        let blocks = hashmap! {
             2 => Memory(BlockType::U64Sparse),
         }.into();
 
-        let frags = hashmap_mut! {
+        let frags = hashmap! {
             2 => Fragment::from((random!(gen u64, count), random!(gen u32, count))),
         };
 
         block_write!(&mut part, blocks, frags);
 
-        let blocks = hashmap_mut! {
+        let blocks = hashmap! {
             0 => Memory(BlockType::U64Dense),
             1 => Memory(BlockType::U32Dense),
             2 => Memory(BlockType::U64Dense),

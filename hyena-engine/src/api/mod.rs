@@ -349,7 +349,7 @@ mod tests {
 
             #[test]
             fn returns_mem_and_mmap_columns() {
-                let columns = hashmap_mut! {
+                let columns = hashmap! {
                     0 => Column {ty: Memory(BlockType::U32Dense), name: "test_column1".into()},
                     1 => Column {ty: Memmap(BlockType::I64Sparse), name: "test_column2".into()},
                 };
@@ -463,7 +463,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1],
-                    columns: vec![hashmap_mut!{0 => Fragment::I8Dense(vec![1])}],
+                    columns: vec![hashmap!{0 => Fragment::I8Dense(vec![1])}],
                 };
                 let mut catalog = Catalog::new(tempdir!(persistent))
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
@@ -486,7 +486,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -494,7 +494,7 @@ mod tests {
                 };
                 let mut catalog = Catalog::new(tempdir!(persistent))
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap_mut!{
+                catalog.add_columns(hashmap!{
                     1000 => Column{ty: Memory(I8Dense),  name: "dense".into()},
                     2000 => Column{ty: Memory(U8Sparse), name: "sparse".into()},
                     })
@@ -567,7 +567,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         0 => Fragment::I8Dense(vec![1,2,3])
                     }],
                 };
@@ -580,7 +580,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -588,7 +588,7 @@ mod tests {
                 };
                 let mut catalog = Catalog::new(tempdir!(persistent))
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap_mut!{
+                catalog.add_columns(hashmap!{
                     1000 => Column{ty: Memory(I8Dense),  name: "dense".into()},
                     2000 => Column{ty: Memory(U8Sparse), name: "sparse".into()},
                     })
@@ -604,7 +604,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])
@@ -620,7 +620,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206, 207],
                                                    vec![121, 221, 321, 421, 521, 621, 721])
@@ -664,7 +664,7 @@ mod tests {
             fn returns_mem_and_mmap_columns() {
                 let mut catalog = Catalog::new(tempdir!(persistent))
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
-                catalog.add_columns(hashmap_mut!{
+                catalog.add_columns(hashmap!{
                     1000 => Column{ty: Memory(I8Dense),  name: "dense".into()},
                     2000 => Column{ty: Memory(U8Sparse), name: "sparse".into()},
                     })
@@ -674,7 +674,7 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap_mut!{
+                    columns: vec![hashmap!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
                         2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
                                                    vec![121, 221, 321, 421, 521, 621])

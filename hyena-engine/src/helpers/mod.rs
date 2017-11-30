@@ -44,15 +44,36 @@ pub(crate) mod tests {
 
             HashMap::new()
         }};
-    }
 
-    macro_rules! hashmap_mut {
-        ( $($key:expr => $value:expr),* $(,)* ) => {{
+        ( $($key:expr => $value:expr),+ $(,)* ) => {{
             use std::collections::hash_map::HashMap;
 
-            let mut hash = HashMap::new();
+            let capacity = count!($($value),+);
+
+            let mut hash = HashMap::with_capacity(capacity);
             $(
                 hash.insert($key, $value);
+            )*
+
+            hash
+        }};
+    }
+
+    macro_rules! hashset {
+        () => {{
+            use std::collections::hash_set::HashSet;
+
+            HashSet::new()
+        }};
+
+        ( $($value:expr),+ $(,)* ) => {{
+            use std::collections::hash_set::HashSet;
+
+            let capacity = count!($($value),+);
+
+            let mut hash = HashSet::with_capacity(capacity);
+            $(
+                hash.insert($value);
             )*
 
             hash
@@ -95,6 +116,14 @@ pub(crate) mod tests {
         }};
     }
 
+    macro_rules! count {
+        ($cur: tt $(, $tail: tt)* $(,)*) => {
+            1 + count!($($tail,)*)
+        };
+
+        () => { 0 };
+    }
+
     macro_rules! assert_file_size {
         ($file: expr, $size: expr) => {{
             let metadata = $file.metadata()
@@ -103,10 +132,6 @@ pub(crate) mod tests {
 
             assert_eq!(metadata.len(), $size as u64);
         }};
-
-        ($file: expr) => {
-            assert_file_size!($file, $DEFAULT_FILE_SIZE);
-        };
     }
 
     macro_rules! assert_variant {
@@ -141,10 +166,6 @@ pub(crate) mod tests {
                 .unwrap();
             buf
         }};
-
-        ($file: expr, $buf: expr) => {
-            ensure_read!($file, $buf, DEFAULT_FILE_SIZE)
-        };
     }
 
     macro_rules! ensure_write {
@@ -161,9 +182,5 @@ pub(crate) mod tests {
                 .chain_err(|| "unable to write test data")
                 .unwrap();
         }};
-
-        ($file: expr, $w: expr) => {
-            ensure_write!($file, $w, DEFAULT_FILE_SIZE);
-        };
     }
 }
