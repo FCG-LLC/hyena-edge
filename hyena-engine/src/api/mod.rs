@@ -10,7 +10,7 @@ use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
 use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
-use uuid::Uuid;
+use huuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
@@ -49,7 +49,7 @@ pub struct ScanFilter {
 pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
-    pub partition_id: UUID,
+    pub partition_id: Uuid,
     pub projection: Vec<u32>,
     pub filters: Vec<ScanFilter>,
 }
@@ -60,45 +60,12 @@ pub struct AddColumnRequest {
     pub column_type: BlockType,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct UUID {
-    hi: i64,
-    lo: i64,
-}
-
-impl From<Uuid> for UUID {
-    fn from(uuid: Uuid) -> UUID {
-        use byteorder::{NativeEndian, ReadBytesExt};
-
-        let bytes = uuid.as_bytes();
-        let mut lower = &bytes[0..8];
-        let mut higher = &bytes[8..16];
-
-        UUID {
-            hi: higher.read_i64::<NativeEndian>().unwrap(),
-            lo: lower.read_i64::<NativeEndian>().unwrap(),
-        }
-    }
-}
-
-impl From<UUID> for Uuid {
-    fn from(uuid: UUID) -> Uuid {
-        use byteorder::{NativeEndian, WriteBytesExt};
-
-        let mut buf: Vec<u8> = vec![];
-
-        buf.write_i64::<NativeEndian>(uuid.lo).unwrap();
-        buf.write_i64::<NativeEndian>(uuid.hi).unwrap();
-
-        Uuid::from_bytes(buf.as_slice()).unwrap()
-    }
-}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct PartitionInfo {
     min_ts: u64,
     max_ts: u64,
-    id: UUID,
+    id: Uuid,
     location: String,
 }
 
@@ -748,7 +715,7 @@ mod tests {
 
         mod scan {
             use super::*;
-            use api::UUID;
+            use huuid::Uuid;
 
             #[test]
             fn fails_if_mints_later_then_maxts() {
@@ -760,7 +727,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_id: UUID { hi: 1, lo: 1 },
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -779,7 +746,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 10,
-                    partition_id: UUID { hi: 1, lo: 1 },
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -809,7 +776,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: UUID { hi: 1, lo: 1 },
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![],
                 };
@@ -822,22 +789,6 @@ mod tests {
             }
 
             // TODO add positive paths when the code is integrated
-        }
-    }
-
-    #[allow(non_snake_case)]
-    mod UUID {
-        use super::*;
-        use api::UUID;
-        use std;
-
-        #[test]
-        fn to_from() {
-            let uuid = Uuid::new_v4();
-            let u: UUID = std::convert::From::from(uuid);
-            let to_from: Uuid = std::convert::From::from(u);
-
-            assert_eq!(uuid, to_from);
         }
     }
 }

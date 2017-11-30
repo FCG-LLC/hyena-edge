@@ -61,6 +61,7 @@ pub mod catalog;
 mod mutator;
 mod scanner;
 pub mod api;
+mod huuid;
 
 #[cfg(test)]
 mod tests {
