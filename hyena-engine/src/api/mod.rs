@@ -75,10 +75,37 @@ impl ScanComparison {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum FilterVal {
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+}
+
+impl FilterVal {
+    fn to_scan_filter(&self, op: &ScanComparison) -> S::ScanFilter {
+        match *self {
+            FilterVal::U8(val) => S::ScanFilter::U8(op.to_scan_filter_op(val)),
+            FilterVal::U16(val) => S::ScanFilter::U16(op.to_scan_filter_op(val)),
+            FilterVal::U32(val) => S::ScanFilter::U32(op.to_scan_filter_op(val)),
+            FilterVal::U64(val) => S::ScanFilter::U64(op.to_scan_filter_op(val)),
+            FilterVal::I8(val) => S::ScanFilter::I8(op.to_scan_filter_op(val)),
+            FilterVal::I16(val) => S::ScanFilter::I16(op.to_scan_filter_op(val)),
+            FilterVal::I32(val) => S::ScanFilter::I32(op.to_scan_filter_op(val)),
+            FilterVal::I64(val) => S::ScanFilter::I64(op.to_scan_filter_op(val)),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ScanFilter {
     pub column: ColumnId,
     pub op: ScanComparison,
-    pub val: u64,
+    pub typed_val: FilterVal,
     pub str_val: String,
 }
 
@@ -319,7 +346,7 @@ impl Reply {
         let mut filters = HashMap::new();
         for filter in scan_request.filters {
             filters.insert(filter.column,
-                           vec![S::ScanFilter::U64(filter.op.to_scan_filter_op(filter.val))]);
+                           vec![filter.typed_val.to_scan_filter(&filter.op)]);
         }
         Scan::new(filters,
                   Some(scan_request.projection),
@@ -801,7 +828,7 @@ mod tests {
                     filters: vec![ScanFilter {
                                       column: 1,
                                       op: ScanComparison::Eq,
-                                      val: 10,
+                                      typed_val: FilterVal::I8(10),
                                       str_val: "".into(),
                                   }],
                 };
@@ -830,8 +857,8 @@ mod tests {
 
                 let reply = Reply::scan(request, &cat);
                 match reply {
-                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
-                    _ => panic!("Should have rejected the scan request"),
+                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => (), /* OK, do nothing */
+                    _ => panic!("Should have rejected the scan request")
                 }
             }
 
@@ -850,7 +877,7 @@ mod tests {
                     filters: vec![ScanFilter {
                                       column: 1,
                                       op: ScanComparison::Eq,
-                                      val: 10,
+                                      typed_val: FilterVal::U32(10),
                                       str_val: "".into(),
                                   }],
                 };
