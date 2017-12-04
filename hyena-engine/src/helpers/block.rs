@@ -223,7 +223,6 @@ macro_rules! block_apply {
     }};
 }
 
-
 /// Unwrap Block and Fragment, verifying that the underlying types are the same
 ///
 /// After both types are unwrapped given block is executed within the unwrapped context
@@ -241,7 +240,281 @@ macro_rules! block_apply {
 ///
 /// Result<`$what`, `error::Error`>
 
+macro_rules! map_block {
+
+    // `public`, map mutable block
+    // will call `@cfg map physical` private API with every available Block variant
+
+    (mut map
+        $block: expr,
+        $bid: ident,
+        $dense: block,
+        $sparse: block) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "mmap")] {
+                macro_rules! __cond_mmap_mut {
+                    () => {{
+                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        [
+                            [ Block::Memory, use ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                        ],
+                        mut)
+                    }};
+                }
+            } else {
+                macro_rules! __cond_mmap_mut {
+                    () => {{
+                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
+                        mut)
+                    }};
+                }
+            }
+        }
+
+        __cond_mmap_mut!()
+    }};
+
+    // `public`, map immutable block
+    // will call `@cfg map physical` private API with every available Block variant
+
+    (map
+        $block: expr,
+        $bid: ident,
+        $dense: block,
+        $sparse: block) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "mmap")] {
+                macro_rules! __cond_mmap {
+                    () => {{
+                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        [
+                            [ Block::Memory, use ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                        ],
+                        map)
+                    }};
+                }
+            } else {
+                macro_rules! __cond_mmap {
+                    () => {{
+                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
+                        map)
+                    }};
+                }
+            }
+        }
+
+        __cond_mmap!()
+    }};
+
+    // `private`, map mutable/immutable block, determined by `$modifiers`
+    // will call `@ map physical` private API with every available Block variant
+    // and BlockType / Fragment variants combination
+
+    (@cfg map
+        $block: expr,
+        $bid: ident,
+        $dense: block,
+        $sparse: block,
+        [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
+        $modifiers: tt) => {{
+
+        cfg_if! {
+            if #[cfg(feature = "block_128")] {
+                macro_rules! __cond {
+                    (map) => {{
+                        map_block!(@ map $block, $bid, $dense, $sparse,
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+
+                    (mut) => {{
+                        map_block!(@ mut map $block, $bid, $dense, $sparse,
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+                }
+            } else {
+                macro_rules! __cond {
+                    (map) => {{
+                        map_block!(@ map $block, $bid, $dense, $sparse,
+                            $(
+                                $bvars, $use,
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+
+                    (mut) => {{
+                        map_block!(@ mut map $block, $bid, $dense, $sparse,
+                            $(
+                                $bvars, $use,
+
+
+                                dense [
+                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                                ]
+
+                                sparse [
+                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                                ]
+                            )*
+                        )
+                    }};
+                }
+            }
+        }
+
+        __cond!($modifiers)
+    }};
+
+    // `private`, map mutable block given Block variants and types combination
+
+    (@ mut map
+        $block: expr,
+        $bid: ident,
+        $dense: block,
+        $sparse: block,
+        $(
+            $variant: path,
+            $use: item,
+            dense [ $($dense_var: ident),+ $(,)* ]
+            sparse [ $($sparse_var: ident),+ $(,)* ]
+        )*
+
+    ) => {{
+
+        use ty::block::Block;
+        use error::*;
+
+
+        match *$block {
+            $(
+            $variant(ref mut block) => {
+                $use;
+
+                match *block {
+                    // Dense
+
+                    $(
+                    $dense_var(ref mut $bid) => $dense,
+                    )+
+
+                    // Sparse
+
+                    $(
+                    $sparse_var(ref mut $bid) => $sparse,
+                    )+
+                }
+            }
+            )*
+        }
+    }};
+
+    // `private`, map immutable block given Block variants and types combination
+
+    (@ map
+        $block: expr,
+        $bid: ident,
+        $dense: block,
+        $sparse: block,
+        $(
+            $variant: path,
+            $use: item,
+            dense [ $($dense_var: ident),+ $(,)* ]
+            sparse [ $($sparse_var: ident),+ $(,)* ]
+        )*
+    )
+        => {{
+        use ty::block::Block;
+
+        match *$block {
+            $(
+            $variant(ref block) => {
+                $use;
+
+                match *block {
+                    // Dense
+
+                    $(
+                    $dense_var(ref $bid) => $dense,
+                    )+
+
+                    // Sparse
+
+                    $(
+                    $sparse_var(ref $bid) => $sparse,
+                    )+
+                }
+            }
+            )*
+        }
+    }};
+}
+
+/// Unwrap Block and Fragment, verifying that the underlying types are the same
+///
+/// After both types are unwrapped given block is executed within the unwrapped context
+///
+///
+/// # Arguments
+///
+/// `$block` - `ty::block::Block` to unwrap
+/// `$frag` - `ty::fragment::Fragment` to combine with the block
+/// `$bid` - unwrapped block identifier, for use within `$what`
+/// `$fid` - unwrapped fragment's block identifier, for use within `$what`
+/// `$fidx` - unwrapped fragment's index identifier (for sparse blocks)
+/// `$what` - an expression block to eval
+///
+/// # Return values
+///
+/// Result<`$what`, `error::Error`>
+
 macro_rules! map_fragment {
+
+    // @todo: refactor this to use map_block
+    // right now it's not trivial, as this macro requires access to $dense_var and $sparse_var
+    // which cannot be easily accessed from outside the macro
 
     (mut map owned
         $block: expr,

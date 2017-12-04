@@ -1,4 +1,4 @@
-use bincode::deserialize;
+use bincode::{Error as BinError, deserialize};
 use block::BlockType;
 use catalog::{Catalog, Column, ColumnMap};
 use error;
@@ -10,7 +10,7 @@ use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
 use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
-use uuid::Uuid;
+use huuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
@@ -49,7 +49,7 @@ pub struct ScanFilter {
 pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
-    pub partition_id: u64,
+    pub partition_id: Uuid,
     pub projection: Vec<u32>,
     pub filters: Vec<ScanFilter>,
 }
@@ -59,6 +59,7 @@ pub struct AddColumnRequest {
     pub column_name: String,
     pub column_type: BlockType,
 }
+
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct PartitionInfo {
@@ -73,7 +74,7 @@ impl<'a> PartitionInfo {
         PartitionInfo {
             min_ts: partition.ts_min.into(),
             max_ts: partition.ts_max.into(),
-            id: partition.id,
+            id: partition.id.into(),
             location: String::new(),
         }
     }
@@ -98,9 +99,8 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn parse(data: Vec<u8>) -> Request {
-        let message: Request = deserialize(&data[..]).unwrap();
-        message
+    pub fn parse(data: Vec<u8>) -> Result<Request, BinError> {
+        deserialize(&data[..])
     }
 }
 
@@ -130,6 +130,7 @@ pub enum Reply<'reply> {
     AddColumn(Result<usize, Error>),
     Flush,
     DataCompaction,
+    SerializeError(String),
     Other,
 }
 
@@ -176,26 +177,43 @@ impl<'reply> Reply<'reply> {
         let mut inserted = 0;
         let source = insert.source;
 
-        if timestamps.len() == 0 {
+        if timestamps.is_empty() {
             return Reply::Insert(Err(Error::NoData("Timestamps cannot be empty".into())));
         }
-        if insert.columns.len() == 0 {
+        if insert.columns.is_empty() {
             return Reply::Insert(Err(Error::NoData("Cannot insert empty vector".into())));
         }
         for block in insert.columns.iter() {
             for (id, fragment) in block {
-                if fragment.len() != timestamps.len() {
-                    let err_msg = format!("Data length does not match timestamp length (column \
-                                           {})",
-                                          id);
+                if fragment.is_sparse() && fragment.len() > timestamps.len() {
+                    let err_msg = format!("Sparse block data length is greater than timestamp \
+                                           length (column {}, timestamps {}, data length {})",
+                                          id,
+                                          timestamps.len(),
+                                          fragment.len());
+                    return Reply::Insert(Err(Error::InconsistentData(err_msg)));
+                }
+                if !fragment.is_sparse() && fragment.len() != timestamps.len() {
+                    let err_msg = format!("Dense block data length does not match timestamp \
+                                           length (column {}, timestamps {}, data length {})",
+                                          id,
+                                          timestamps.len(),
+                                          fragment.len());
                     return Reply::Insert(Err(Error::InconsistentData(err_msg)));
                 }
             }
         }
 
-        catalog.ensure_group(source)
-            .chain_err(|| format!("Could not create group for source {}", source))
-            .unwrap();
+        {
+            // Block for a mutable borrow
+            let groups_ensured = catalog.ensure_group(source)
+                .chain_err(|| format!("Could not create group for source {}", source));
+            if groups_ensured.is_err() {
+                return Reply::Insert(Err(Error::CatalogError(groups_ensured.unwrap_err()
+                    .description()
+                    .into())));
+            }
+        }
 
         for block in insert.columns.iter() {
             let append = Append {
@@ -209,19 +227,18 @@ impl<'reply> Reply<'reply> {
                 Err(e) => return Reply::Insert(Err(Error::Unknown(e.description().into()))),
             }
         }
-        catalog.flush()
-            .chain_err(|| "Cannot flush catalog after inserting")
-            .unwrap();
-        Reply::Insert(Ok(inserted))
+        let flushed = catalog.flush()
+            .chain_err(|| "Cannot flush catalog after inserting");
+        if flushed.is_err() {
+            Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().description().into())))
+        } else {
+            Reply::Insert(Ok(inserted))
+        }
     }
 
     fn scan(scan: ScanRequest, _catalog: &Catalog) -> Reply<'reply> {
         if scan.min_ts > scan.max_ts {
             return Reply::Scan(Err(Error::InvalidScanRequest("min_ts > max_ts".into())));
-        }
-        if scan.projection.len() == 0 {
-            return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
-                .into())));
         }
         if scan.filters.len() == 0 {
             return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
@@ -248,10 +265,7 @@ impl<'reply> Reply<'reply> {
             .collect();
         let mut partitions: Vec<PartitionInfo> = catalog.groups
             .values()
-            .flat_map(|g| {
-                let immutable: Vec<&Partition> = g.immutable_partitions.values().collect();
-                immutable
-            })
+            .flat_map(|g| g.immutable_partitions.values().collect::<Vec<_>>())
             .map(|partition| PartitionInfo::from(partition))
             .collect();
         let mutable: Vec<PartitionInfo> = catalog.groups
@@ -281,6 +295,7 @@ pub enum Error {
     NoData(String),
     InconsistentData(String),
     InvalidScanRequest(String),
+    CatalogError(String),
     Unknown(String),
 }
 
@@ -607,8 +622,8 @@ mod tests {
                     timestamps: vec![1, 2, 3, 4, 5, 6],
                     columns: vec![hashmap_mut!{
                         1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
-                        2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205],
-                                                   vec![121, 221, 321, 421, 521])
+                        2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206, 207],
+                                                   vec![121, 221, 321, 421, 521, 621, 721])
                     }],
                 };
                 let reply = Reply::insert(insert, &mut catalog);
@@ -655,7 +670,6 @@ mod tests {
                     })
                     .unwrap();
 
-
                 let source = 100;
                 let insert = InsertMessage {
                     source: source,
@@ -701,6 +715,7 @@ mod tests {
 
         mod scan {
             use super::*;
+            use huuid::Uuid;
 
             #[test]
             fn fails_if_mints_later_then_maxts() {
@@ -712,7 +727,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_id: 1,
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -731,7 +746,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 10,
-                    partition_id: 1,
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -761,36 +776,9 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: 1,
+                    partition_id: Uuid::new(1, 1),
                     projection: vec![1, 2, 3],
                     filters: vec![],
-                };
-
-                let reply = Reply::scan(request, &cat);
-                match reply {
-                    Reply::Scan(Err(Error::InvalidScanRequest(_))) => { /* OK, do nothing */ }
-                    _ => panic!("Should have rejected the scan request"),
-                }
-            }
-
-            #[test]
-            fn fails_if_projection_empty() {
-                let cat = Catalog {
-                    columns: Default::default(),
-                    groups: Default::default(),
-                    data_root: "".into(),
-                };
-                let request = ScanRequest {
-                    min_ts: 1,
-                    max_ts: 10,
-                    partition_id: 1,
-                    projection: vec![],
-                    filters: vec![ScanFilter {
-                                      column: 1,
-                                      op: ScanComparison::Eq,
-                                      val: 10,
-                                      str_val: "".into(),
-                                  }],
                 };
 
                 let reply = Reply::scan(request, &cat);

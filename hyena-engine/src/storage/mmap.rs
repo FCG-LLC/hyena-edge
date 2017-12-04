@@ -72,7 +72,6 @@ mod tests {
 
     #[test]
     fn it_maps_new_file() {
-
         let (_dir, file) = tempfile!(prefix TEMPDIR_PREFIX);
 
         let _storage = MemmapStorage::new(&file, FILE_SIZE)
@@ -98,7 +97,10 @@ mod tests {
             .unwrap();
 
         assert_file_size!(file, FILE_SIZE);
-        assert_eq!(&TEST_BYTES[..], &storage.as_ref()[..TEST_BYTES_LEN]);
+        assert_eq!(
+            &TEST_BYTES[..],
+            &<MemmapStorage as AsRef<[u8]>>::as_ref(&storage)[..TEST_BYTES_LEN]
+        );
     }
 
     #[test]

@@ -20,7 +20,7 @@ mod tests {
 
     #[test]
     fn single_typed() {
-        let _v = random!(u64);
+        let _ = random!(u64);
     }
 
     #[test]

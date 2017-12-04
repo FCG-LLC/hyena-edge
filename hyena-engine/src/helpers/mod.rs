@@ -1,5 +1,5 @@
 #[macro_use]
-pub(crate) mod flame;
+pub(crate) mod perf;
 
 #[macro_use]
 pub(crate) mod lock;
@@ -19,6 +19,8 @@ pub(crate) mod tempfile;
 #[macro_use]
 pub(crate) mod block;
 
+#[cfg(test)]
+pub(crate) mod table;
 
 /// helper facilitating calling expressions that utilize `std::ops::Carrier`
 /// in functions with no `Result` return type
@@ -37,15 +39,10 @@ macro_rules! carry {
 pub(crate) mod tests {
 
     macro_rules! hashmap {
-        ( $($key:expr => $value:expr),* $(,)* ) => {{
+        () => {{
             use std::collections::hash_map::HashMap;
 
-            let hash = HashMap::new();
-            $(
-                hash.insert($key, $value);
-            )*
-
-            hash
+            HashMap::new()
         }};
     }
 
@@ -68,7 +65,7 @@ pub(crate) mod tests {
             let vec = $vec;
 
             let mut v = Vec::from($vec);
-            for _i in 1..count {
+            for _ in 1..count {
                 v.extend(&vec);
             }
 

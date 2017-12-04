@@ -5,12 +5,15 @@ use block::{BlockData, BufferHead, SparseIndex};
 use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp};
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
 use std::sync::RwLock;
+use std::iter::FromIterator;
+use ty::fragment::Fragment;
 use mutator::BlockRefData;
+use scanner::{Scan, ScanFilterApply, ScanResult};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -142,6 +145,156 @@ impl<'part> Partition<'part> {
 
         // todo: fix this (should be slen)
         Ok(42)
+    }
+
+    pub(crate) fn scan(&self, scan: &Scan) -> Result<ScanResult> {
+        // only filters and projection for now
+        // full ts range
+
+        // filter
+
+        let rowids: HashSet<usize> = scan.filters
+            .par_iter()
+            .map(|(block_id, filters)| {
+                if let Some(block) = self.blocks.get(block_id) {
+                    let block = acquire!(read block);
+
+                    Some(map_block!(map block, blk, {
+                        let mut ret = Vec::new();
+                        let mut rowid = 0;
+
+                        for val in blk.as_slice().iter() {
+                            if filters.iter().all(|f| f.apply(val)) {
+                                ret.push(rowid)
+                            }
+
+                            rowid += 1;
+                        }
+
+                        ret.into_iter().collect()
+                    }, {
+                        let mut ret = Vec::new();
+
+                        let (idx, data) = blk.as_indexed_slice();
+                        let mut rowid = 0;
+
+                        for val in data.iter() {
+                            if filters.iter().all(|f| f.apply(val)) {
+                                // this is a safe cast u32 -> usize
+                                ret.push(idx[rowid] as usize)
+                            }
+
+                            rowid += 1;
+                        }
+
+                        ret.into_iter().collect()
+                    }))
+                } else {
+                    // if this is a sparse block, then it's a valid case
+                    // so we'll leave the decision whether scan failed or not here
+                    // to our caller (who has access to the catalog)
+
+                    Some(HashSet::new())
+                }
+            })
+            .reduce(
+                || None,
+                |a, b| {
+                    if a.is_none() {
+                        b
+                    } else if b.is_none() {
+                        a
+                    } else {
+                        Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
+                    }
+                },
+            )
+            .ok_or_else(|| "scan error")?;
+
+        // this is superfluous if we're dealing with dense blocks only
+        // as it doesn't matter if rowids are sorted then
+        // but it still should be cheaper than converting for each sparse block separately
+
+        let mut rowids = Vec::from_iter(rowids.into_iter());
+        rowids.sort_unstable();
+
+        let rowids = rowids;
+
+        let all_columns = if scan.projection.is_some() {
+            None
+        } else {
+            Some(self.blocks.keys().cloned().collect::<Vec<_>>())
+        };
+
+        // materialize
+        let materialized = if scan.projection.is_some() {
+            scan.projection.as_ref().unwrap()
+        } else {
+            all_columns.as_ref().unwrap()
+        }.par_iter()
+            .map(|block_id| {
+                if let Some(block) = self.blocks.get(block_id) {
+                    let block = acquire!(read block);
+
+                    Ok((
+                        *block_id,
+                        Some(map_block!(map block, blk, {
+
+                        let bs = blk.as_slice();
+
+                        Fragment::from(if bs.is_empty() {
+                                Vec::new()
+                            } else {
+                                rowids.iter()
+                                    .map(|rowid| bs[*rowid])
+                                    .collect::<Vec<_>>()
+                            })
+                    }, {
+                        let (index, data) = blk.as_indexed_slice();
+
+                        let mut result = Vec::new();
+                        let mut result_idx = Vec::new();
+                        let mut curidx = 0;
+                        let mut i = &index[..];
+
+                        for rowid in &rowids[..] {
+
+                            for (rid, idx) in i.iter().scan(curidx, |c, &v| {
+                                let ret = (*c, v as usize);
+                                *c += 1;
+
+                                Some(ret)
+                            }) {
+                                if *rowid == idx {
+                                    result.push(data[rid]);
+                                    // todo: fix `as` casting
+                                    result_idx.push(rid as u32);
+                                    curidx = rid + 1;
+                                    break;
+                                }
+                            }
+
+                            i = &index[curidx..];
+
+                            if i.is_empty() {
+                                break;
+                            }
+                        }
+
+                        Fragment::from((result, result_idx))
+                    })),
+                    ))
+                } else {
+                    // if this is a sparse block, then it's a valid case
+                    // so we'll leave the decision whether scan failed or not here
+                    // to our caller (who has access to the catalog)
+
+                    Ok((*block_id, None))
+                }
+            })
+            .collect::<Result<HashMap<_, _>>>();
+
+        materialized.map(|m| m.into())
     }
 
     #[allow(unused)]
@@ -282,7 +435,10 @@ impl<'part> Partition<'part> {
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
+//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
     {
+
         type_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {

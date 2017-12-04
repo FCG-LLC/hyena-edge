@@ -1,9 +1,19 @@
 
 macro_rules! seqfill {
-    (vec $ty: ty, $count: expr, $start: expr, $step: expr) => {{
-        let v: Vec<$ty> = seqfill!(gen $ty, $count, $start, $step);
+    (vec $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
+        seqfill!(iter $ty as $asty, $count, $start, $step).collect::<Vec<$ty>>()
+    }};
 
-        v
+    (vec $ty: ty as $asty: ty, $count: expr, $start: expr) => {
+        seqfill!(vec $ty as $asty, $count, $start, 1)
+    };
+
+    (vec $ty: ty as $asty: ty, $count: expr) => {
+        seqfill!(vec $ty as $asty, $count, 0, 1)
+    };
+
+    (vec $ty: ty, $count: expr, $start: expr, $step: expr) => {{
+        seqfill!(iter $ty, $count, $start, $step).collect::<Vec<$ty>>()
     }};
 
     (vec $ty: ty, $count: expr, $start: expr) => {
@@ -14,7 +24,26 @@ macro_rules! seqfill {
         seqfill!(vec $ty, $count, 0, 1)
     };
 
-    (gen $ty: ty, $count: expr, $start: expr, $step: expr) => {{
+    (vec $ty: ty) => {
+        seqfill!(vec $ty, 0, 0, 1)
+    };
+
+    (iter $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
+        let start: $asty = $start as $asty;
+        let step: $asty = $step as $asty;
+        let count: usize = $count;
+
+        (0..count)
+            .into_iter()
+            .enumerate()
+            .map(move |(idx, _)| {
+                let v = start + (idx as $asty) * step;
+
+                v as $ty
+            })
+    }};
+
+    (iter $ty: ty, $count: expr, $start: expr, $step: expr) => {{
         use num::NumCast;
 
         let start = $start;
@@ -24,7 +53,7 @@ macro_rules! seqfill {
         (0..count)
             .into_iter()
             .enumerate()
-            .map(|(idx, _)| {
+            .map(move |(idx, _)| {
                 let v = seqfill!(@ as start, u64)
                         + seqfill!(@ as idx, u64)
                         * seqfill!(@ as step, u64);
@@ -32,15 +61,14 @@ macro_rules! seqfill {
                 <$ty as NumCast>::from(v)
                     .unwrap_or_else(|| {v as $ty})
             })
-            .collect()
     }};
 
-    (gen $ty: ty, $count: expr, $start: expr) => {
-        seqfill!(gen $ty, $count, $start, 1)
+    (iter $ty: ty, $count: expr, $start: expr) => {
+        seqfill!(iter $ty, $count, $start, 1)
     };
 
-    (gen $ty: ty, $count: expr) => {
-        seqfill!(gen $ty, $count, 0, 1)
+    (iter $ty: ty, $count: expr) => {
+        seqfill!(iter $ty, $count, 0, 1)
     };
 
     (@ as $v: expr, $ty: ty ) => {
@@ -128,7 +156,7 @@ mod tests {
 
     #[test]
     fn as_vec() {
-        let v: Vec<_> = seqfill!(gen u32, 10, 10, 2);
+        let v = seqfill!(iter u32, 10, 10, 2).collect::<Vec<_>>();
 
         assert_eq!(&v[..], &[10, 12, 14, 16, 18, 20, 22, 24, 26, 28][..]);
     }
@@ -146,10 +174,23 @@ mod tests {
         assert_eq!(v, v2);
     }
 
+    #[test]
+    fn as_ty() {
+        let count = 1000;
+
+        let v = seqfill!(vec u64 as u8, count);
+
+        let v2 = (0..count)
+            .into_iter()
+            .map(|e| e as u8 as u64)
+            .collect::<Vec<u64>>();
+
+        assert_eq!(v, v2);
+    }
+
     #[cfg(all(feature = "nightly", test))]
     mod benches {
         use test::Bencher;
-        use super::*;
 
         #[bench]
         fn simple(b: &mut Bencher) {

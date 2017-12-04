@@ -4,6 +4,8 @@ use ty::Timestamp;
 use std::mem::transmute;
 use extprim::i128::i128;
 use extprim::u128::u128;
+use std::marker::PhantomData;
+use ty::value::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fragment {
@@ -66,6 +68,50 @@ pub enum FragmentRef<'frag> {
 }
 
 macro_rules! frag_apply {
+    (@ merge $self: expr, $other: expr, $self_block: ident, $self_idx: ident,
+        $other_block: ident, $other_idx: ident
+        dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
+        sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
+
+        match $self {
+            $(
+                $dense_variants(ref mut $self_block) => {
+                    if let $dense_variants(ref mut $other_block) = $other {
+                        Ok($dense)
+                    } else {
+                        Err("incompatible source fragment variant in merge".into())
+                    }
+                }
+            )+
+
+            $(
+                $sparse_variants(ref mut $self_block, ref mut $self_idx) => {
+                    if let $sparse_variants(ref mut $other_block, ref mut _other_idx) = $other {
+                        #[allow(unreachable_code)]
+                        Ok($sparse)
+                    } else {
+                        Err("incompatible source fragment variant in merge".into())
+                    }
+                }
+            )+
+        }
+    }};
+
+    (@ mut $self: expr, $block: ident, $idx: ident
+        dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
+        sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
+
+        match $self {
+            $(
+                $dense_variants(ref mut $block) => $dense,
+            )+
+
+            $(
+                $sparse_variants(ref mut $block, ref mut $idx) => $sparse,
+            )+
+        }
+    }};
+
     (@ $self: expr, $block: ident, $idx: ident
         dense [ $dense: block, $( $dense_variants: ident ),+ $(,)* ]
         sparse [ $sparse: block, $( $sparse_variants: ident ),+ $(,)* ]) => {{
@@ -81,6 +127,25 @@ macro_rules! frag_apply {
         }
     }};
 
+    (merge $self: expr, $other: expr, $self_block: ident, $self_idx: ident,
+        $other_block: ident, $other_idx: ident, $dense: block, $sparse: block) => {
+        frag_apply!(@ merge $self, $other, $self_block, $self_idx, $other_block, $other_idx
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
+        )
+    };
+
+    (mut $self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
+        frag_apply!(@ mut $self, $block, $idx
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
+        )
+    };
+
     ($self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
@@ -89,6 +154,7 @@ macro_rules! frag_apply {
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
     };
+
 }
 
 impl Fragment {
@@ -164,6 +230,71 @@ impl Fragment {
         use self::Fragment::*;
 
         frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
+    }
+
+    #[allow(unused)]
+    pub(crate) fn sort_unstable(&mut self) {
+        use self::Fragment::*;
+
+        frag_apply!(mut *self, blk, idx, {
+            blk.sort()
+        }, {
+            let mut v = (*idx).iter().cloned()
+                .zip((*blk).iter().cloned())
+                .collect::<Vec<_>>();
+
+            v.sort_unstable_by_key(|&(_, blk)| blk);
+
+            let (nidx, nblk): (Vec<_>, Vec<_>) = v.into_iter().unzip();
+
+            blk.copy_from_slice(nblk.as_slice());
+            idx.copy_from_slice(nidx.as_slice());
+        })
+    }
+
+    pub fn merge(&mut self, _other: &mut Fragment) -> Result<()> {
+        use self::Fragment::*;
+
+        frag_apply!(merge
+            *self,
+            *_other,
+            _sblk,
+            _sidx,
+            _oblk,
+            _oidx,
+            {
+                _sblk.append(_oblk);
+            },
+            {
+                unimplemented!();
+            }
+        )
+    }
+
+    pub fn iter<'frag>(&'frag self) -> FragmentIter<'frag> {
+        use self::Fragment::*;
+
+        frag_apply!(*self, blk, idx, {
+            FragmentIter(Box::new(blk.iter()
+                .map(|v| Value::from(*v))
+                .enumerate()), PhantomData)
+        }, {
+            FragmentIter(Box::new(idx.iter()
+                .zip(blk)
+                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+            ), PhantomData)
+        })
+    }
+}
+
+pub struct FragmentIter<'frag>(Box<Iterator<Item = (usize, Value)> + 'frag>,
+PhantomData<&'frag Value>);
+
+impl<'frag> Iterator for FragmentIter<'frag> {
+    type Item = (usize, Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
     }
 }
 
@@ -410,6 +541,36 @@ mod tests {
 
                             frag.split_at_idx(100).unwrap();
                         }
+
+                        #[test]
+                        fn sort() {
+                            let buf = random!(gen $B, 1000);
+
+                            let mut expected = buf.clone();
+                            expected.sort();
+                            let expected = Fragment::from(expected);
+
+                            let mut frag = Fragment::from(buf);
+                            frag.sort_unstable();
+
+                            assert_eq!(frag, expected);
+                        }
+
+                        #[test]
+                        fn iter() {
+                            let buf = (1..100).into_iter().collect::<Vec<$B>>();
+
+                            let frag = Fragment::from(buf.clone());
+
+                            let v = frag.iter().collect::<Vec<_>>();
+
+                            let expected = buf.iter()
+                                .enumerate()
+                                .map(|(idx, val)| (idx, Value::from(*val)))
+                                .collect::<Vec<_>>();
+
+                            assert_eq!(expected, v);
+                        }
                     }
                 )*
             }
@@ -497,6 +658,53 @@ mod tests {
 
                             assert_variant!(left, FragmentRef::$T(_, vidx),
                                             *vidx.last().unwrap() < dense_count);
+                        }
+
+                        #[test]
+                        fn sort() {
+                            let buf: Vec<$B> = vec![10, 4, 2, 18, 7, 35, 16, 9, 10, 0];
+                            let idx: Vec<u32> = vec![1, 3, 8, 12, 16, 18, 31, 82, 120, 160];
+
+                            let expected: (Vec<$B>, Vec<u32>) = (
+                                vec![0, 2, 4, 7, 9, 10, 10, 16, 18, 35],
+                                vec![160, 8, 3, 16, 82, 1, 120, 31, 12, 18]
+                            );
+
+                            let expected = Fragment::from(expected);
+
+                            let mut frag = Fragment::from((buf, idx));
+                            frag.sort_unstable();
+
+                            assert_eq!(frag, expected);
+                        }
+
+                        #[test]
+                        fn iter() {
+                            let buf: Vec<$B> = vec![10, 4, 2, 18, 7, 35, 16, 9, 10, 0];
+                            let idx: Vec<u32> = vec![1, 3, 8, 12, 16, 18, 31, 82, 120, 160];
+
+                            let expected: Vec<(usize, $B)> = vec![
+                                (1, 10),
+                                (3, 4),
+                                (8, 2),
+                                (12, 18),
+                                (16, 7),
+                                (18, 35),
+                                (31, 16),
+                                (82, 9),
+                                (120, 10),
+                                (160, 0),
+                            ];
+
+                            let expected = expected.into_iter()
+                                .map(|(idx, val)| (idx, Value::from(val)))
+                                .collect::<Vec<_>>();
+
+                            let frag = Fragment::from((buf, idx));
+
+                            let v = frag.iter().collect::<Vec<_>>();
+
+                            assert_eq!(expected, v);
                         }
                     }
                 )*
