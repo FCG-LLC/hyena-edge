@@ -2110,16 +2110,21 @@ mod tests {
                     (td, cat, now)
                 }};
 
-                (dense simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                (dense simple $( $name: ident, $idx: expr, $value: expr),+ $(,)*) => {
+                    scan_test_impl!(dense long MAX_RECORDS - 1, $( $name, $idx, $value, )+ );
+                };
+
+                (dense long $count: expr, $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) =>
+                {
                     $(
                     #[test]
                     fn $name() {
                         use ty::fragment::Fragment;
                         use scanner::ScanResult;
 
-                        let (_td, catalog, now) = scan_test_impl!(init);
+                        let (_td, catalog, now) = scan_test_impl!(init count $count);
 
-                        let record_count = MAX_RECORDS - 1;
+                        let record_count = $count;
 
                         let scan = Scan::new(
                             hashmap! {
@@ -2296,6 +2301,12 @@ mod tests {
                 simple_sparse_u16, 3, 100_u16,
                 simple_sparse_u32, 4, 100_u32,
                 simple_sparse_u64, 5, 100_u64,);
+
+            scan_test_impl!(dense long MAX_RECORDS * 2 - 1,
+                long_u8, 2, 100_u8,
+                long_u16, 3, 100_u16,
+                long_u32, 4, 100_u32,
+                long_u64, 5, 100_u64,);
         }
 
         /// The tests that use manually crafted blocks
