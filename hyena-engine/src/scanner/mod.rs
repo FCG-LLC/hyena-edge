@@ -101,7 +101,7 @@ impl ScanResult {
                 let mut other_data = o.unwrap();
 
                 self_data
-                    .merge(&mut other_data)
+                    .merge(&mut other_data, 0)
                     .chain_err(|| "unable to merge scan results")?;
             }
         }
