@@ -85,8 +85,9 @@ impl ScanResult {
     ///
     /// We are assuming that the contained columns are the same
     /// because that should always be the case in our "supertable" model
-    ///
     pub(crate) fn merge(&mut self, mut other: ScanResult) -> Result<()> {
+        let offset = self.dense_len();
+
         for (k, v) in self.data.iter_mut() {
             let o = if let Some(o) = other.data.remove(k) {
                 o
@@ -101,12 +102,56 @@ impl ScanResult {
                 let mut other_data = o.unwrap();
 
                 self_data
-                    .merge(&mut other_data, 0)
+                    .merge(&mut other_data, offset)
                     .chain_err(|| "unable to merge scan results")?;
             }
         }
 
         Ok(())
+    }
+
+    /// Get the length of a dense result `Fragment`
+    ///
+    /// This is needed for proper sparse offset calculation.
+
+    fn dense_len(&self) -> usize {
+        // try to find the first dense column
+        // in most cases it should be a `ts`, which has index = 0
+
+        if let Some((_, dense)) = self.data.iter()
+            .find(|&(colidx, col)| {
+                // this is a very ugly hack
+                // that needs to be here until we get rid of source_id column
+                // treat source_id column (index == 1) as sparse
+                // as it's always empty anyway
+                *colidx != 1 &&
+
+                // this is the proper part
+                // that gets to stay
+                col.as_ref().map_or(false, |col| !col.is_sparse())
+            }) {
+
+            dense.as_ref().map_or(0, |col| col.len())
+        } else {
+            // all sparse columns, so we have to find the maximum index value
+            // which means iterating over all columns
+
+            use std::cmp::max;
+
+            self.data.iter().fold(0, |max_idx, (_, col)| {
+                // all columns have to be sparse here
+                // hence why only debug-time assert
+                debug_assert!(col.as_ref().map_or(true, |col| col.is_sparse()));
+
+                // this is not a logic error, as this is used to determine
+                // the base offset for sparse index
+                // so zero in case of all empty Fragments is perfectly valid
+                max(max_idx,
+                    col.as_ref()
+                        .map_or(0, |col| col.max_index().unwrap_or(0)))
+            })
+        }
+
     }
 }
 
@@ -244,6 +289,106 @@ mod tests {
             merged.merge(b).chain_err(|| "merge failed").unwrap();
 
             assert_eq!(merged, expected);
+        }
+
+        #[test]
+        fn some_a_some_b_sparse() {
+            let mut a = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(seqfill!(vec u64, 10))),
+                3 => Some(Fragment::from(seqfill!(vec u16, 10))),
+                5 => Some(Fragment::from((seqfill!(vec u64, 5), seqfill!(vec u32, 5, 5)))),
+            });
+
+            let b = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(seqfill!(vec u64, 10, 20))),
+                3 => Some(Fragment::from(seqfill!(vec u16, 10, 15))),
+                5 => Some(Fragment::from((seqfill!(vec u64, 5), seqfill!(vec u32, 5)))),
+            });
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some({
+                    let mut frag = seqfill!(vec u64, 10);
+                    frag.extend(seqfill!(vec u64, 10, 20));
+                    Fragment::from(frag)
+                }),
+                3 => Some({
+                    let mut frag = seqfill!(vec u16, 10);
+                    frag.extend(seqfill!(vec u16, 10, 15));
+                    Fragment::from(frag)
+                }),
+                5 => Some({
+                    let mut data = seqfill!(vec u64, 5);
+                    data.extend(seqfill!(vec u64, 5));
+                    let mut idx = seqfill!(vec u32, 5, 5);
+                    idx.extend(seqfill!(vec u32, 5, 10));
+
+                    Fragment::from((data, idx))
+                }),
+            });
+
+            a.merge(b).chain_err(|| "merge failed").unwrap();
+
+            assert_eq!(expected, a);
+        }
+    }
+
+    mod dense_len {
+        use super::*;
+
+        #[test]
+        fn dense_ts() {
+            let expected = 5;
+
+            let result = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(seqfill!(vec u64, expected))),
+                1 => Some(Fragment::from(seqfill!(vec u32, expected))),
+            });
+
+            assert_eq!(result.dense_len(), expected);
+        }
+
+        #[test]
+        fn dense_no_ts() {
+            let expected = 20;
+
+            let result = ScanResult::from(hashmap! {
+                4 => Some(Fragment::from((seqfill!(vec u64, 14), seqfill!(vec u32, 4, 11)))),
+                6 => Some(Fragment::from(seqfill!(vec u32, expected))),
+            });
+
+            assert_eq!(result.dense_len(), expected);
+        }
+
+        #[test]
+        fn empty() {
+            let expected = 0;
+
+            let result = ScanResult::from(hashmap! {});
+
+            assert_eq!(result.dense_len(), expected);
+        }
+
+        #[test]
+        fn empty_columns() {
+            let expected = 0;
+
+            let result = ScanResult::from(hashmap! {
+                1 => None,
+            });
+
+            assert_eq!(result.dense_len(), expected);
+        }
+
+        #[test]
+        fn sparse() {
+            let expected = 14;
+
+            let result = ScanResult::from(hashmap! {
+                3 => Some(Fragment::from((seqfill!(vec u64, 4), seqfill!(vec u32, 3, 8, 2)))),
+                4 => Some(Fragment::from((seqfill!(vec u64, 14), seqfill!(vec u32, 4, 11)))),
+            });
+
+            assert_eq!(result.dense_len(), expected);
         }
     }
 }
