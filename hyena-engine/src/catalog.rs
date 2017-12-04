@@ -2045,13 +2045,19 @@ mod tests {
                     (td, cat, now)
                 }};
 
-                (init sparse) => {{
+                (init sparse) => {
+                    scan_test_impl!(init sparse count MAX_RECORDS - 4, 4);
+                };
+
+                (init sparse count $count: expr, $sparse_ratio: expr) => {{
+                    use block::BlockType as BlockTy;
                     use ty::block::BlockType::Memmap;
 
                     let now = <Timestamp as Default>::default();
 
-                    let dense_count = MAX_RECORDS - 4 ;
-                    let record_count = dense_count / 4;
+                    let dense_count = $count;
+                    let sparse_ratio = $sparse_ratio;
+                    let record_count = dense_count / sparse_ratio;
 
                     let mut v = vec![Timestamp::from(0); dense_count];
                     seqfill!(Timestamp, &mut v[..], now);
@@ -2059,25 +2065,21 @@ mod tests {
                     let data = hashmap! {
                         2 => Fragment::from((
                             seqfill!(vec u8 as u8, record_count),
-                            seqfill!(vec u32, record_count, 0, 4)
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
                         )),
                         3 => Fragment::from((
                             seqfill!(vec u16 as u8, record_count),
-                            seqfill!(vec u32, record_count, 0, 4)
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
                         )),
                         4 => Fragment::from((
                             seqfill!(vec u32 as u8, record_count),
-                            seqfill!(vec u32, record_count, 0, 4)
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
                         )),
                         5 => Fragment::from((
                             seqfill!(vec u64 as u8, record_count),
-                            seqfill!(vec u32, record_count, 0, 4)
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
                         )),
                     };
-
-                    let mut expected = data.clone();
-
-                    expected.insert(0, Fragment::from(v.clone()));
 
                     let td = append_test_impl!(
                         hashmap! {
@@ -2089,16 +2091,8 @@ mod tests {
                             5 => Column::new(Memmap(BlockTy::U64Sparse), "col4"),
                         },
                         now,
-                        vec![expected],
                         [
                             v.into(),
-                            dense_count,
-                            hashmap! {
-                                2 => (record_count, 4, 0),
-                                3 => (record_count, 4, 0),
-                                4 => (record_count, 4, 0),
-                                5 => (record_count, 4, 0),
-                            },
                             data
                         ]
                     );
@@ -2173,17 +2167,23 @@ mod tests {
                 };
 
                 (sparse simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    scan_test_impl!(sparse long MAX_RECORDS - 4, 4, $( $name, $idx, $value, )+ );
+                };
+
+                (sparse long $count: expr, $sparse_ratio: expr,
+                    $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
                     $(
                     #[test]
                     fn $name() {
                         use ty::fragment::Fragment;
-                        use std::collections::HashMap;
                         use scanner::ScanResult;
 
-                        let (_td, catalog, now) = scan_test_impl!(init sparse);
+                        let (_td, catalog, now) =
+                            scan_test_impl!(init sparse count $count, $sparse_ratio);
 
-                        let dense_count = MAX_RECORDS - 4;
-                        let record_count = dense_count / 4;
+                        let dense_count = $count;
+                        let sparse_ratio = $sparse_ratio;
+                        let record_count = dense_count / sparse_ratio;
 
                         let scan = Scan::new(
                             hashmap! {
@@ -2203,9 +2203,10 @@ mod tests {
                         // accopanying value of the record
                         fn u8_filter<T: Ord>(data: Vec<T>, val: u8) -> Vec<T> {
                             let v = data.into_iter()
-                                .scan((3, 0_u8), |&mut (ref mut pos, ref mut idx), v| {
+                                .scan(($sparse_ratio - 1, 0_u8),
+                                    |&mut (ref mut pos, ref mut idx), v| {
                                     *pos += 1;
-                                    if *pos > 3 {
+                                    if *pos > ($sparse_ratio - 1) {
                                         *pos = 0;
 
                                         if {
@@ -2264,22 +2265,22 @@ mod tests {
                             1 => Some(Fragment::from(Vec::<u32>::new())),
                             2 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u8 as u8, record_count),
-                                seqfill!(vec u32, record_count, 0, 4),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
                                 $value as u8,
                             ))),
                             3 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u16 as u8, record_count),
-                                seqfill!(vec u32, record_count, 0, 4),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
                                 $value as u8,
                             ))),
                             4 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u32 as u8, record_count),
-                                seqfill!(vec u32, record_count, 0, 4),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
                                 $value as u8,
                             ))),
                             5 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u64 as u8, record_count),
-                                seqfill!(vec u32, record_count, 0, 4),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
                                 $value as u8,
                             ))),
                         });
@@ -2307,6 +2308,12 @@ mod tests {
                 long_u16, 3, 100_u16,
                 long_u32, 4, 100_u32,
                 long_u64, 5, 100_u64,);
+
+            scan_test_impl!(sparse long MAX_RECORDS * 2 - 4, 4,
+                long_sparse_u8, 2, 100_u8,
+                long_sparse_u16, 3, 100_u16,
+                long_sparse_u32, 4, 100_u32,
+                long_sparse_u64, 5, 100_u64,);
         }
 
         /// The tests that use manually crafted blocks
