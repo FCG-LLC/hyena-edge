@@ -2000,12 +2000,17 @@ mod tests {
             use super::*;
 
             macro_rules! scan_test_impl {
-                (init) => {{
+                (init) => {
+                    scan_test_impl!(init count MAX_RECORDS - 1)
+                };
+
+                (init count $count: expr) => {{
+                    use block::BlockType as BlockTy;
                     use ty::block::BlockType::Memmap;
 
                     let now = <Timestamp as Default>::default();
 
-                    let record_count = MAX_RECORDS - 1;
+                    let record_count = $count;
 
                     let mut v = vec![Timestamp::from(0); record_count];
                     seqfill!(Timestamp, &mut v[..], now);
@@ -2017,10 +2022,6 @@ mod tests {
                         5 => Fragment::from(seqfill!(vec u64 as u8, record_count)),
                     };
 
-                    let mut expected = data.clone();
-
-                    expected.insert(0, Fragment::from(v.clone()));
-
                     let td = append_test_impl!(
                         hashmap! {
                             0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
@@ -2031,16 +2032,8 @@ mod tests {
                             5 => Column::new(Memmap(BlockTy::U64Dense), "col4"),
                         },
                         now,
-                        vec![expected],
                         [
                             v.into(),
-                            record_count,
-                            hashmap! {
-                                2 => (record_count, 0, 0),
-                                3 => (record_count, 0, 0),
-                                4 => (record_count, 0, 0),
-                                5 => (record_count, 0, 0),
-                            },
                             data
                         ]
                     );
@@ -2122,7 +2115,6 @@ mod tests {
                     #[test]
                     fn $name() {
                         use ty::fragment::Fragment;
-                        use std::collections::HashMap;
                         use scanner::ScanResult;
 
                         let (_td, catalog, now) = scan_test_impl!(init);
@@ -2536,7 +2528,7 @@ mod tests {
 //             +--------+----+--------+---------+--------+---------+
                 #[test]
                 fn two_dense_one_block() {
-                    let (td, catalog, now) = scan_minimal_init!(ops);
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
 
                     let expected = ScanResult::from(hashmap! {
                         0 => Some(Fragment::from(vec![4_u64, 7])),
@@ -2557,7 +2549,7 @@ mod tests {
                         None,
                     );
 
-                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -2572,7 +2564,7 @@ mod tests {
 //             +--------+----+--------+---------+--------+---------+
                 #[test]
                 fn two_sparse_one_block() {
-                    let (td, catalog, now) = scan_minimal_init!(ops);
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
 
                     let expected = ScanResult::from(hashmap! {
                         0 => Some(Fragment::from(vec![2_u64, 6])),
@@ -2593,7 +2585,7 @@ mod tests {
                         None,
                     );
 
-                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -2606,7 +2598,7 @@ mod tests {
 //             +--------+----+--------+---------+--------+---------+
                 #[test]
                 fn sparse_dense_one_block() {
-                    let (td, catalog, now) = scan_minimal_init!(ops);
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
 
                     let expected = ScanResult::from(hashmap! {
                         0 => Some(Fragment::from(vec![1_u64])),
@@ -2627,7 +2619,7 @@ mod tests {
                         None,
                     );
 
-                    let mut result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
