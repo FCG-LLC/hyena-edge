@@ -2007,6 +2007,7 @@ mod tests {
                 (init count $count: expr) => {{
                     use block::BlockType as BlockTy;
                     use ty::block::BlockType::Memmap;
+                    use ty::fragment::Fragment;
 
                     let now = <Timestamp as Default>::default();
 
@@ -2052,6 +2053,7 @@ mod tests {
                 (init sparse count $count: expr, $sparse_ratio: expr) => {{
                     use block::BlockType as BlockTy;
                     use ty::block::BlockType::Memmap;
+                    use ty::fragment::Fragment;
 
                     let now = <Timestamp as Default>::default();
 
@@ -2654,7 +2656,7 @@ mod tests {
                     $(
                     #[bench]
                     fn $name(b: &mut Bencher) {
-                        let (_, catalog, _) = scan_test_impl!(init);
+                        let (_td, catalog, _) = scan_test_impl!(init);
 
                         let scan = Scan::new(
                             hashmap! {
@@ -2675,7 +2677,7 @@ mod tests {
                     $(
                     #[bench]
                     fn $name(b: &mut Bencher) {
-                        let (_, catalog, _) = scan_test_impl!(init sparse);
+                        let (_td, catalog, _) = scan_test_impl!(init sparse);
 
                         let scan = Scan::new(
                             hashmap! {
