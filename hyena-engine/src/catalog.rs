@@ -2177,6 +2177,19 @@ mod tests {
 
                 (sparse long $count: expr, $sparse_ratio: expr,
                     $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+
+                    scan_test_impl!(sparse multi $count, $sparse_ratio,
+                        $( $name, |v| (v as u64) < ($value as u64), [
+                            $idx, [ ScanFilterOp::Lt($value).into(), ],
+                        ],)+ );
+                };
+
+                (sparse multi $count: expr, $sparse_ratio: expr,
+                    $( $name: ident, $exp_filter: expr,
+                        [ $( $idx: expr,
+                            [ $( $value: expr, )+ $(,*)* ]
+                           ),+ $(,)*
+                        ] ),+ $(,)*) => {
                     $(
                     #[test]
                     fn $name() {
@@ -2190,10 +2203,14 @@ mod tests {
                         let sparse_ratio = $sparse_ratio;
                         let record_count = dense_count / sparse_ratio;
 
+                        let mut filters = HashMap::new();
+
+                        $(
+                            filters.insert($idx, vec![$( $value )+]);
+                        )+
+
                         let scan = Scan::new(
-                            hashmap! {
-                                $idx => vec![ScanFilterOp::Lt($value).into()]
-                            },
+                            filters,
                             None,
                             None,
                             None,
@@ -2204,30 +2221,30 @@ mod tests {
 
                         let mut v = vec![Timestamp::from(0); dense_count];
                         seqfill!(Timestamp, &mut v[..], now);
-                        let v = u8_dense_filter(v, $value as u8, sparse_ratio);
+                        let v = u8_dense_filter(v, $exp_filter, sparse_ratio);
 
                         let expected = ScanResult::from(hashmap! {
                             0 => Some(Fragment::from(v)),
-                            1 => Some(Fragment::from(Vec::<u32>::new())),
+                            1 => Some(Fragment::from(Vec::<SparseIndex>::new())),
                             2 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u8 as u8, record_count),
                                 seqfill!(vec u32, record_count, 0, sparse_ratio),
-                                $value as u8,
+                                $exp_filter,
                             ))),
                             3 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u16 as u8, record_count),
                                 seqfill!(vec u32, record_count, 0, sparse_ratio),
-                                $value as u8,
+                                $exp_filter,
                             ))),
                             4 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u32 as u8, record_count),
                                 seqfill!(vec u32, record_count, 0, sparse_ratio),
-                                $value as u8,
+                                $exp_filter,
                             ))),
                             5 => Some(Fragment::from(u8_sparse_filter(
                                 seqfill!(vec u64 as u8, record_count),
                                 seqfill!(vec u32, record_count, 0, sparse_ratio),
-                                $value as u8,
+                                $exp_filter,
                             ))),
                         });
 
@@ -2297,7 +2314,7 @@ mod tests {
                 // Sparse test filter for dense columns.
                 // This helper filters out every 4th record and additionally checks the
                 // accopanying value of the record
-                fn u8_dense_filter<T, R>(data: Vec<T>, val: u8, sparse_ratio: R) -> Vec<T>
+                fn u8_dense_filter<T, R, F>(data: Vec<T>, val: F, sparse_ratio: R) -> Vec<T>
                     where
                         T: Ord,
                         R: Ord +
@@ -2306,7 +2323,8 @@ mod tests {
                             Sub<Output = R> +
                             Add<Output = R> +
                             AddAssign +
-                            Zero
+                            Zero,
+                        F: Fn(u8) -> bool,
                 {
                     let one = R::from_u8(1).expect("Unable to convert value");
                     let ratio = sparse_ratio - one;
@@ -2319,7 +2337,7 @@ mod tests {
                                 *pos = R::zero();
 
                                 if {
-                                    let t = *idx < val;
+                                    let t = val(*idx);
                                     *idx = idx.wrapping_add(1_u8);
                                     t
                                 } {
@@ -2341,15 +2359,16 @@ mod tests {
                 // This helper filters out generated values from a sparse data
                 // while translating resulting rowidx values
                 // so the resulting sparse column looks like a dense one (no nulls)
-                fn u8_sparse_filter<T>(data: Vec<T>, index: Vec<SparseIndex>, val: u8)
+                fn u8_sparse_filter<T, F>(data: Vec<T>, index: Vec<SparseIndex>, val: F)
                     -> (Vec<T>, Vec<SparseIndex>)
-                    where T: Ord + PartialEq + From<u8>
+                    where T: Ord + PartialEq + From<u8> + Copy,
+                        F: Fn(T) -> bool,
                 {
                     data.into_iter()
                         .zip(index.into_iter())
                         .scan(0_usize, |projected_idx, (v, _)| {
                             if {
-                                v < T::from(val)
+                                val(v)
                             } {
                                 Some(Some((v, {
                                     let t = *projected_idx;
@@ -2377,6 +2396,25 @@ mod tests {
                     long_u16, 3, 100_u16,
                     long_u32, 4, 100_u32,
                     long_u64, 5, 100_u64,);
+
+                scan_test_impl!(sparse multi MAX_RECORDS * 2 - 1, 4,
+                    multi_u8, move |v| v < 100 && v > 30, [
+                        2, [ ScanFilterOp::Lt(100_u8).into(), ],
+                        3, [ ScanFilterOp::Gt(30_u16).into(), ],
+                    ],
+                    multi_u16, move |v| v < 100 && v > 30, [
+                        3, [ ScanFilterOp::Lt(100_u16).into(), ],
+                        4, [ ScanFilterOp::Gt(30_u32).into(), ],
+                    ],
+                    multi_u32, move |v| v < 100 && v > 30, [
+                        4, [ ScanFilterOp::Lt(100_u32).into(), ],
+                        5, [ ScanFilterOp::Gt(30_u64).into(), ],
+                    ],
+                    multi_u64, move |v| v < 100 && v > 30, [
+                        5, [ ScanFilterOp::Lt(100_u64).into(), ],
+                        2, [ ScanFilterOp::Gt(30_u8).into(), ],
+                    ],
+                );
             }
         }
 
