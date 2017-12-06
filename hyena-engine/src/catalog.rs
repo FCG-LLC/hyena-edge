@@ -2134,18 +2134,6 @@ mod tests {
 
                         let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
-                        fn u8_filter<T: Ord>(data: Vec<T>, val: u8) -> Vec<T> {
-                            let v = data.into_iter()
-                                .enumerate()
-                                .filter_map(|(idx, v)| if (idx as u8) < val {
-                                    Some(v)
-                                }  else {
-                                    None
-                                })
-                                .collect::<Vec<_>>();
-                            v
-                        }
-
                         let mut v = vec![Timestamp::from(0); record_count];
                         seqfill!(Timestamp, &mut v[..], now);
                         let v = u8_filter(v, 100);
@@ -2199,68 +2187,9 @@ mod tests {
 
                         let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
-                        // Help generate ts data for the test expectation
-                        //
-                        // This helper filters out every 4th record and additionally checks the
-                        // accopanying value of the record
-                        fn u8_filter<T: Ord>(data: Vec<T>, val: u8) -> Vec<T> {
-                            let v = data.into_iter()
-                                .scan(($sparse_ratio - 1, 0_u8),
-                                    |&mut (ref mut pos, ref mut idx), v| {
-                                    *pos += 1;
-                                    if *pos > ($sparse_ratio - 1) {
-                                        *pos = 0;
-
-                                        if {
-                                            let t = *idx < val;
-                                            *idx = idx.wrapping_add(1_u8);
-                                            t
-                                        } {
-                                            Some(Some(v))
-                                        } else {
-                                            Some(None)
-                                        }
-                                    }  else {
-                                        Some(None)
-                                    }
-                                })
-                                .filter_map(|v| v)
-                                .collect::<Vec<_>>();
-                            v
-                        }
-
-                        // Help generate sparse data for the test expectation
-                        //
-                        // This helper filters out generated values from a sparse data
-                        // while translating resulting rowidx values
-                        // so the resulting sparse column looks like a dense one (no nulls)
-                        fn u8_sparse_filter<T>(data: Vec<T>, index: Vec<u32>, val: u8)
-                            -> (Vec<T>, Vec<u32>)
-                            where T: Ord + PartialEq + From<u8>
-                            {
-                                data.into_iter()
-                                    .zip(index.into_iter())
-                                    .scan(0_usize, |projected_idx, (v, _)| {
-                                        if {
-                                            v < T::from(val)
-                                        } {
-                                            Some(Some((v, {
-                                                let t = *projected_idx;
-                                                *projected_idx += 1;
-                                                t as u32
-                                            })))
-                                        } else {
-                                            Some(None)
-                                        }
-                                    })
-                                    .filter_map(|element| element)
-                                    .collect::<Vec<_>>()
-                                    .into_iter().unzip()
-                        }
-
                         let mut v = vec![Timestamp::from(0); dense_count];
                         seqfill!(Timestamp, &mut v[..], now);
-                        let v = u8_filter(v, $value as u8);
+                        let v = u8_dense_filter(v, $value as u8, sparse_ratio);
 
                         let expected = ScanResult::from(hashmap! {
                             0 => Some(Fragment::from(v)),
@@ -2293,29 +2222,124 @@ mod tests {
                 }
             }
 
-            scan_test_impl!(dense simple
-                simple_u8, 2, 100_u8,
-                simple_u16, 3, 100_u16,
-                simple_u32, 4, 100_u32,
-                simple_u64, 5, 100_u64,);
+            mod dense {
+                use super::*;
 
-            scan_test_impl!(sparse simple
-                simple_sparse_u8, 2, 100_u8,
-                simple_sparse_u16, 3, 100_u16,
-                simple_sparse_u32, 4, 100_u32,
-                simple_sparse_u64, 5, 100_u64,);
+                fn u8_filter<T: Ord>(data: Vec<T>, val: u8) -> Vec<T> {
+                    data.into_iter()
+                        .enumerate()
+                        .filter_map(|(idx, v)| if (idx as u8) < val {
+                            Some(v)
+                        }  else {
+                            None
+                        })
+                        .collect::<Vec<_>>()
+                }
 
-            scan_test_impl!(dense long MAX_RECORDS * 2 - 1,
-                long_u8, 2, 100_u8,
-                long_u16, 3, 100_u16,
-                long_u32, 4, 100_u32,
-                long_u64, 5, 100_u64,);
+                scan_test_impl!(dense simple
+                    simple_u8, 2, 100_u8,
+                    simple_u16, 3, 100_u16,
+                    simple_u32, 4, 100_u32,
+                    simple_u64, 5, 100_u64,);
 
-            scan_test_impl!(sparse long MAX_RECORDS * 2 - 4, 4,
-                long_sparse_u8, 2, 100_u8,
-                long_sparse_u16, 3, 100_u16,
-                long_sparse_u32, 4, 100_u32,
-                long_sparse_u64, 5, 100_u64,);
+                scan_test_impl!(dense long MAX_RECORDS * 2 - 1,
+                    long_u8, 2, 100_u8,
+                    long_u16, 3, 100_u16,
+                    long_u32, 4, 100_u32,
+                    long_u64, 5, 100_u64,);
+            }
+
+            mod sparse {
+                use super::*;
+                use std::ops::{Add, AddAssign, Sub};
+                use num::{FromPrimitive, Zero};
+
+                // Help generate ts data for the test expectation
+                //
+                // Sparse test filter for dense columns.
+                // This helper filters out every 4th record and additionally checks the
+                // accopanying value of the record
+                fn u8_dense_filter<T, R>(data: Vec<T>, val: u8, sparse_ratio: R) -> Vec<T>
+                    where
+                        T: Ord,
+                        R: Ord +
+                            Copy +
+                            FromPrimitive +
+                            Sub<Output = R> +
+                            Add<Output = R> +
+                            AddAssign +
+                            Zero
+                {
+                    let one = R::from_u8(1).expect("Unable to convert value");
+                    let ratio = sparse_ratio - one;
+
+                    data.into_iter()
+                        .scan((ratio, 0_u8),
+                            |&mut (ref mut pos, ref mut idx), v| {
+                            *pos += one;
+                            if *pos > ratio {
+                                *pos = R::zero();
+
+                                if {
+                                    let t = *idx < val;
+                                    *idx = idx.wrapping_add(1_u8);
+                                    t
+                                } {
+                                    Some(Some(v))
+                                } else {
+                                    Some(None)
+                                }
+                            }  else {
+                                Some(None)
+                            }
+                        })
+                        .filter_map(|v| v)
+                        .collect::<Vec<_>>()
+                }
+
+                // Help generate sparse data for the test expectation
+                //
+                // Sparse test filter for sparse columns.
+                // This helper filters out generated values from a sparse data
+                // while translating resulting rowidx values
+                // so the resulting sparse column looks like a dense one (no nulls)
+                fn u8_sparse_filter<T>(data: Vec<T>, index: Vec<SparseIndex>, val: u8)
+                    -> (Vec<T>, Vec<SparseIndex>)
+                    where T: Ord + PartialEq + From<u8>
+                {
+                    data.into_iter()
+                        .zip(index.into_iter())
+                        .scan(0_usize, |projected_idx, (v, _)| {
+                            if {
+                                v < T::from(val)
+                            } {
+                                Some(Some((v, {
+                                    let t = *projected_idx;
+                                    *projected_idx += 1;
+                                    t as SparseIndex
+                                })))
+                            } else {
+                                Some(None)
+                            }
+                        })
+                        .filter_map(|element| element)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .unzip()
+                }
+
+                scan_test_impl!(sparse simple
+                    simple_u8, 2, 100_u8,
+                    simple_u16, 3, 100_u16,
+                    simple_u32, 4, 100_u32,
+                    simple_u64, 5, 100_u64,);
+
+                scan_test_impl!(sparse long MAX_RECORDS * 2 - 4, 4,
+                    long_u8, 2, 100_u8,
+                    long_u16, 3, 100_u16,
+                    long_u32, 4, 100_u32,
+                    long_u64, 5, 100_u64,);
+            }
         }
 
         /// The tests that use manually crafted blocks
