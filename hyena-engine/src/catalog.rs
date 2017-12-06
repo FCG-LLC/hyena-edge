@@ -2110,7 +2110,18 @@ mod tests {
                     scan_test_impl!(dense long MAX_RECORDS - 1, $( $name, $idx, $value, )+ );
                 };
 
-                (dense long $count: expr, $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) =>
+                (dense long $count: expr, $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    scan_test_impl!(dense multi $count,
+                        $( $name, |v| v < $value as u8, [
+                            $idx, [ ScanFilterOp::Lt($value).into(), ],
+                        ],)+ );
+                };
+
+                (dense multi $count: expr, $( $name: ident, $exp_filter: expr,
+                    [ $( $idx: expr,
+                        [ $( $value: expr, )+ $(,*)* ]
+                       ),+ $(,)*
+                    ] ),+ $(,)*) =>
                 {
                     $(
                     #[test]
@@ -2122,10 +2133,14 @@ mod tests {
 
                         let record_count = $count;
 
+                        let mut filters = HashMap::new();
+
+                        $(
+                            filters.insert($idx, vec![$( $value )+]);
+                        )+
+
                         let scan = Scan::new(
-                            hashmap! {
-                                $idx => vec![ScanFilterOp::Lt($value).into()]
-                            },
+                            filters,
                             None,
                             None,
                             None,
@@ -2136,19 +2151,19 @@ mod tests {
 
                         let mut v = vec![Timestamp::from(0); record_count];
                         seqfill!(Timestamp, &mut v[..], now);
-                        let v = u8_filter(v, 100);
+                        let v = u8_filter(v, $exp_filter);
 
                         let expected = ScanResult::from(hashmap! {
                             0 => Some(Fragment::from(v)),
-                            1 => Some(Fragment::from(Vec::<u32>::new())),
+                            1 => Some(Fragment::from(Vec::<SparseIndex>::new())),
                             2 => Some(Fragment::from(u8_filter(
-                                seqfill!(vec u8, record_count),100))),
+                                seqfill!(vec u8, record_count), $exp_filter))),
                             3 => Some(Fragment::from(u8_filter(
-                                seqfill!(vec u16 as u8, record_count), 100))),
+                                seqfill!(vec u16 as u8, record_count), $exp_filter))),
                             4 => Some(Fragment::from(u8_filter(
-                                seqfill!(vec u32 as u8, record_count), 100))),
+                                seqfill!(vec u32 as u8, record_count), $exp_filter))),
                             5 => Some(Fragment::from(u8_filter(
-                                seqfill!(vec u64 as u8, record_count), 100))),
+                                seqfill!(vec u64 as u8, record_count), $exp_filter))),
                         });
 
                         assert_eq!(result, expected);
@@ -2225,10 +2240,14 @@ mod tests {
             mod dense {
                 use super::*;
 
-                fn u8_filter<T: Ord>(data: Vec<T>, val: u8) -> Vec<T> {
+                fn u8_filter<T, F>(data: Vec<T>, val: F) -> Vec<T>
+                    where
+                        T: Ord,
+                        F: Fn(u8) -> bool,
+                {
                     data.into_iter()
                         .enumerate()
-                        .filter_map(|(idx, v)| if (idx as u8) < val {
+                        .filter_map(|(idx, v)| if val(idx as u8) {
                             Some(v)
                         }  else {
                             None
@@ -2247,6 +2266,25 @@ mod tests {
                     long_u16, 3, 100_u16,
                     long_u32, 4, 100_u32,
                     long_u64, 5, 100_u64,);
+
+                scan_test_impl!(dense multi MAX_RECORDS * 2 - 1,
+                    multi_u8, move |v| v < 100 && v > 30, [
+                        2, [ ScanFilterOp::Lt(100_u8).into(), ],
+                        3, [ ScanFilterOp::Gt(30_u16).into(), ],
+                    ],
+                    multi_u16, move |v| v < 100 && v > 30, [
+                        3, [ ScanFilterOp::Lt(100_u16).into(), ],
+                        4, [ ScanFilterOp::Gt(30_u32).into(), ],
+                    ],
+                    multi_u32, move |v| v < 100 && v > 30, [
+                        4, [ ScanFilterOp::Lt(100_u32).into(), ],
+                        5, [ ScanFilterOp::Gt(30_u64).into(), ],
+                    ],
+                    multi_u64, move |v| v < 100 && v > 30, [
+                        5, [ ScanFilterOp::Lt(100_u64).into(), ],
+                        2, [ ScanFilterOp::Gt(30_u8).into(), ],
+                    ],
+                );
             }
 
             mod sparse {
