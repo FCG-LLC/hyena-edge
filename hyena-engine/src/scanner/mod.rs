@@ -168,7 +168,7 @@ pub trait ScanFilterApply<T> {
 
 macro_rules! scan_filter_impl {
 
-    ($( $ty: ty, $variant: ident ),+ $(,)*) => {
+    ($( $ty: ty, $variant: ident, $varname: expr ),+ $(,)*) => {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         pub enum ScanFilter {
             $(
@@ -186,6 +186,11 @@ macro_rules! scan_filter_impl {
                 if let ScanFilter::$variant(ref op) = *self {
                     op.apply(tested)
                 } else {
+                    // fail hard in debug builds
+                    debug_assert!(false,
+                        "Wrong scan filter variant for the column, expected {:?} and got {:?}",
+                        self.variant_name(), $varname);
+
                     error!("unable to apply filter op");
                     false
                 }
@@ -193,6 +198,17 @@ macro_rules! scan_filter_impl {
         }
 
         )+
+
+        impl ScanFilter {
+            #[inline]
+            fn variant_name(&self) -> &'static str {
+                match *self {
+                    $(
+                        ScanFilter::$variant(_) => $varname,
+                    )+
+                }
+            }
+        }
 
         $(
 
@@ -207,21 +223,41 @@ macro_rules! scan_filter_impl {
 }
 
 scan_filter_impl! {
-    u8, U8,
-    u16, U16,
-    u32, U32,
-    u64, U64,
-    u128, U128,
-    i8, I8,
-    i16, I16,
-    i32, I32,
-    i64, I64,
-    i128, I128,
+    u8, U8, "U8",
+    u16, U16, "U16",
+    u32, U32, "U32",
+    u64, U64, "U64",
+    u128, U128, "U128",
+    i8, I8, "I8",
+    i16, I16, "I16",
+    i32, I32, "I32",
+    i64, I64, "I64",
+    i128, I128, "I128",
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod filter {
+        use super::*;
+
+        #[test]
+        fn type_is_right() {
+            let op = ScanFilter::U8(ScanFilterOp::Eq(10));
+
+            assert!(op.apply(&10_u8));
+        }
+
+        #[test]
+        #[should_panic(
+            expected = "Wrong scan filter variant for the column, expected \"U8\" and got \"U16\"")]
+        fn type_is_wrong() {
+            let op = ScanFilter::U8(ScanFilterOp::Eq(10));
+
+            assert!(op.apply(&10_u16));
+        }
+    }
 
     mod merge {
         use super::*;
