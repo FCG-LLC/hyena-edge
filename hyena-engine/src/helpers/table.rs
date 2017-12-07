@@ -228,4 +228,26 @@ mod tests {
         // compile check
         data.to_display_table(Some(vec!["ts", "d1", "s1"]));
     }
+
+    #[test]
+    fn rowiter3() {
+        let mut data: HashMap<usize, Fragment> = HashMap::new();
+
+        let ts = Fragment::from((0..50).into_iter().collect::<Vec<u64>>());
+        let s1 = Fragment::from((
+            vec![0_u32, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+            vec![0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]));
+
+        let s2 = Fragment::from((
+            vec![0_u8, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+            vec![2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46]));
+
+        data.insert(0, ts);
+        data.insert(2, s1);
+        data.insert(3, s2);
+
+
+        // compile check
+        data.to_display_table(Some(vec!["ts", "s1", "s2"]));
+    }
 }

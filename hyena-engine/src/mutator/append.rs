@@ -65,7 +65,7 @@ mod tests {
         let ap = Append {
             ts: frag,
             source_id: 1,
-            data: hashmap_mut! {
+            data: hashmap! {
                 2 => u64frag,
                 8 => u64sfrag,
             },

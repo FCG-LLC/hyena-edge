@@ -1,6 +1,6 @@
 use error::*;
 use block::SparseIndex;
-use ty::Timestamp;
+use ty::{Timestamp, RowId};
 use std::mem::transmute;
 use extprim::i128::i128;
 use extprim::u128::u128;
@@ -86,8 +86,7 @@ macro_rules! frag_apply {
 
             $(
                 $sparse_variants(ref mut $self_block, ref mut $self_idx) => {
-                    if let $sparse_variants(ref mut $other_block, ref mut _other_idx) = $other {
-                        #[allow(unreachable_code)]
+                    if let $sparse_variants(ref mut $other_block, ref mut $other_idx) = $other {
                         Ok($sparse)
                     } else {
                         Err("incompatible source fragment variant in merge".into())
@@ -252,21 +251,48 @@ impl Fragment {
         })
     }
 
-    pub fn merge(&mut self, _other: &mut Fragment) -> Result<()> {
+    pub(crate) fn max_index(&self) -> Option<RowId> {
         use self::Fragment::*;
+
+        frag_apply!(*self, _blk, idx, {
+            if !self.is_empty() { Some(self.len()) } else { None }
+        }, {
+            idx.last().map(|idx| *idx as RowId)
+        })
+    }
+
+    pub fn merge(&mut self, other: &mut Fragment, dense_count: usize) -> Result<()> {
+        use self::Fragment::*;
+
+        // todo: when `TryFrom` stabilizes we should use it
+        // and return a proper result here
+        let offset = dense_count as SparseIndex;
+
+        if offset as usize != dense_count {
+            bail!("Merge offset greater than max index value");
+        }
 
         frag_apply!(merge
             *self,
-            *_other,
-            _sblk,
-            _sidx,
-            _oblk,
-            _oidx,
+            *other,
+            sblk,
+            sidx,
+            oblk,
+            oidx,
             {
-                _sblk.append(_oblk);
+                sblk.append(oblk);
             },
             {
-                unimplemented!();
+                // shift index by the given offset
+                if offset != 0 {
+                    oidx.iter_mut()
+                        .for_each(|idx| {
+                            *idx += offset;
+                        })
+                }
+
+                sblk.append(oblk);
+                sidx.append(oidx);
             }
         )
     }

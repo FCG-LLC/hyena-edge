@@ -777,7 +777,7 @@ mod tests {
 
                 let source_ids = [1, 5, 7];
 
-                let root = tempdir!(persistent);
+                let root = tempdir!();
 
                 let mut cat = Catalog::new(&root)
                     .chain_err(|| "Unable to create catalog")
@@ -806,6 +806,38 @@ mod tests {
                 }
 
                 (root, cat, ts_min)
+            }};
+
+            ($schema: expr,
+                $now: expr,
+                $([
+                    $ts: expr,
+                    $data: expr    // HashMap
+                ]),+ $(,)*) => {{
+
+                let columns = $schema;
+
+                let now = $now;
+
+                let init = append_test_impl!(init columns.clone(), now);
+                let cat = init.1;
+
+                $(
+
+                let data = $data;
+
+                let append = Append {
+                    ts: $ts,
+                    source_id: 1,
+                    data,
+                };
+
+
+                cat.append(&append).expect("unable to append fragment");
+
+                )+
+
+                init.0
             }};
 
             ($schema: expr,
@@ -1003,14 +1035,14 @@ mod tests {
 
                 let record_count = 1;
 
-                let columns = hashmap_mut! {
+                let columns = hashmap! {
                     0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                     2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
                     3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
                 };
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => random!(gen u8, record_count).into(),
                     3 => random!(gen u32, record_count).into(),
                 };
@@ -1041,14 +1073,14 @@ mod tests {
 
                 let record_count = 100;
 
-                let columns = hashmap_mut! {
+                let columns = hashmap! {
                     0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                     2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
                     3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
                 };
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => random!(gen u8, record_count).into(),
                     3 => random!(gen u32, record_count).into(),
                 };
@@ -1079,7 +1111,7 @@ mod tests {
                 let record_count = 100;
                 let column_count = 10000;
 
-                let mut columns = hashmap_mut! {
+                let mut columns = hashmap! {
                     0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                 };
@@ -1119,14 +1151,14 @@ mod tests {
 
                 let record_count = MAX_RECORDS;
 
-                let columns = hashmap_mut! {
+                let columns = hashmap! {
                     0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                     2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
                     3 => Column::new(Memmap(BlockTy::U32Dense), "col2"),
                 };
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => random!(gen u8, record_count).into(),
                     3 => random!(gen u32, record_count).into(),
                 };
@@ -1167,12 +1199,12 @@ mod tests {
 
                 let v = unsafe { transmute::<_, Vec<Timestamp>>(data.clone()) };
 
-                let expected = hashmap_mut! {
+                let expected = hashmap! {
                     0 => Fragment::from(data)
                 };
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                     },
@@ -1191,7 +1223,7 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
@@ -1201,7 +1233,7 @@ mod tests {
                 expected.insert(0, Fragment::from(v.clone()));
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1212,7 +1244,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1230,7 +1262,7 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
@@ -1240,7 +1272,7 @@ mod tests {
                 expected.insert(0, Fragment::from(v.clone()));
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1251,7 +1283,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1269,18 +1301,18 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
 
                 let expected = vec![
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
                         2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
                         3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS)),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(Vec::from(&v[MAX_RECORDS..])),
                         2 => Fragment::from(seqfill!(vec u8, 100, MAX_RECORDS)),
                         3 => Fragment::from(seqfill!(vec u32, 100, MAX_RECORDS)),
@@ -1288,7 +1320,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1299,7 +1331,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1317,19 +1349,19 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
 
                 let expected = vec![
                     hashmap!{},
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
                         2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
                         3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS)),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(Vec::from(&v[MAX_RECORDS..])),
                         2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
                         3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
@@ -1337,7 +1369,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1348,7 +1380,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1369,13 +1401,13 @@ mod tests {
                 let mut v_2 = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v_2[..], ts_base);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from(seqfill!(vec u8, record_count)),
                     3 => Fragment::from(seqfill!(vec u32, record_count)),
                 };
 
                 let expected = vec![
-                    hashmap_mut! {
+                    hashmap! {
                         0 => <Fragment as From<Vec<Timestamp>>>::from(
                             merge_iter!(v_1.clone().into_iter(), v_2.clone().into_iter())
                         ),
@@ -1385,7 +1417,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1396,7 +1428,7 @@ mod tests {
                     [
                         v_1.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1405,7 +1437,7 @@ mod tests {
                     [
                         v_2.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count, 0, 0),
                             3 => (record_count, 0, 0),
                         },
@@ -1430,7 +1462,7 @@ mod tests {
                 let b1_c2 = seqfill!(vec u8, record_count_1);
                 let b1_c3 = seqfill!(vec u32, record_count_1);
 
-                let data_1 = hashmap_mut! {
+                let data_1 = hashmap! {
                     2 => Fragment::from(b1_c2.clone()),
                     3 => Fragment::from(b1_c3.clone()),
                 };
@@ -1438,18 +1470,18 @@ mod tests {
                 let b2_c2 = seqfill!(vec u8, record_count_2);
                 let b2_c3 = seqfill!(vec u32, record_count_2);
 
-                let data_2 = hashmap_mut! {
+                let data_2 = hashmap! {
                     2 => Fragment::from(b2_c2.clone()),
                     3 => Fragment::from(b2_c3.clone()),
                 };
 
                 let expected = vec![
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(v_1[..MAX_RECORDS].to_vec()),
                         2 => Fragment::from(b1_c2[..MAX_RECORDS].to_vec()),
                         3 => Fragment::from(b1_c3[..MAX_RECORDS].to_vec()),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(merge_iter!(
                                 into Vec<Timestamp>,
                                 v_1[MAX_RECORDS..].iter().cloned(),
@@ -1469,7 +1501,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1480,7 +1512,7 @@ mod tests {
                     [
                         v_1.into(),
                         record_count_1,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_1, 0, 0),
                             3 => (record_count_1, 0, 0),
                         },
@@ -1489,7 +1521,7 @@ mod tests {
                     [
                         v_2.into(),
                         record_count_2,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_2, 0, 0),
                             3 => (record_count_2, 0, 0),
                         },
@@ -1514,7 +1546,7 @@ mod tests {
                 let b1_c2 = seqfill!(vec u8, record_count_1);
                 let b1_c3 = seqfill!(vec u32, record_count_1);
 
-                let data_1 = hashmap_mut! {
+                let data_1 = hashmap! {
                     2 => Fragment::from(b1_c2.clone()),
                     3 => Fragment::from(b1_c3.clone()),
                 };
@@ -1522,19 +1554,19 @@ mod tests {
                 let b2_c2 = seqfill!(vec u8, record_count_2);
                 let b2_c3 = seqfill!(vec u32, record_count_2);
 
-                let data_2 = hashmap_mut! {
+                let data_2 = hashmap! {
                     2 => Fragment::from(b2_c2.clone()),
                     3 => Fragment::from(b2_c3.clone()),
                 };
 
                 let expected = vec![
                     hashmap! {},
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(v_1.clone()),
                         2 => Fragment::from(b1_c2),
                         3 => Fragment::from(b1_c3),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(v_2.clone()),
                         2 => Fragment::from(b2_c2),
                         3 => Fragment::from(b2_c3),
@@ -1542,7 +1574,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1553,7 +1585,7 @@ mod tests {
                     [
                         v_1.into(),
                         record_count_1,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_1, 0, 0),
                             3 => (record_count_1, 0, 0),
                         },
@@ -1562,7 +1594,7 @@ mod tests {
                     [
                         v_2.into(),
                         record_count_2,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_2, 0, 0),
                             3 => (record_count_2, 0, 0),
                         },
@@ -1587,7 +1619,7 @@ mod tests {
                 let b1_c2 = seqfill!(vec u8, record_count_1);
                 let b1_c3 = seqfill!(vec u32, record_count_1);
 
-                let data_1 = hashmap_mut! {
+                let data_1 = hashmap! {
                     2 => Fragment::from(b1_c2.clone()),
                     3 => Fragment::from(b1_c3.clone()),
                 };
@@ -1595,18 +1627,18 @@ mod tests {
                 let b2_c2 = seqfill!(vec u8, record_count_2);
                 let b2_c3 = seqfill!(vec u32, record_count_2);
 
-                let data_2 = hashmap_mut! {
+                let data_2 = hashmap! {
                     2 => Fragment::from(b2_c2.clone()),
                     3 => Fragment::from(b2_c3.clone()),
                 };
 
                 let expected = vec![
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(v_1[..MAX_RECORDS].to_vec()),
                         2 => Fragment::from(b1_c2[..MAX_RECORDS].to_vec()),
                         3 => Fragment::from(b1_c3[..MAX_RECORDS].to_vec()),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(merge_iter!(
                                 into Vec<Timestamp>,
                                 v_1[MAX_RECORDS..].iter().cloned(),
@@ -1623,7 +1655,7 @@ mod tests {
                                 b2_c3[..MAX_RECORDS - 100].iter().cloned(),
                         )),
                     },
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Fragment::from(merge_iter!(
                                 into Vec<Timestamp>,
                                 v_2[MAX_RECORDS - 100..].iter().cloned(),
@@ -1640,7 +1672,7 @@ mod tests {
                 ];
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
@@ -1651,7 +1683,7 @@ mod tests {
                     [
                         v_1.into(),
                         record_count_1,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_1, 0, 0),
                             3 => (record_count_1, 0, 0),
                         },
@@ -1660,7 +1692,7 @@ mod tests {
                     [
                         v_2.into(),
                         record_count_2,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (record_count_2, 0, 0),
                             3 => (record_count_2, 0, 0),
                         },
@@ -1681,13 +1713,13 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let mut columns = hashmap_mut! {
+                let mut columns = hashmap! {
                     0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                 };
 
                 let mut data = hashmap!{};
-                let mut expected = hashmap_mut! {
+                let mut expected = hashmap! {
                     0 => Fragment::from(v.clone()),
                 };
                 let mut counts = hashmap!{};
@@ -1733,7 +1765,7 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
                             seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
                         )),
@@ -1747,7 +1779,7 @@ mod tests {
                 expected.insert(0, Fragment::from(v.clone()));
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
@@ -1758,7 +1790,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (sparse_count_2, sparse_step_2, 0),
                             3 => (sparse_count_3, sparse_step_3, 0),
                         },
@@ -1780,7 +1812,7 @@ mod tests {
                 let mut v_1 = vec![Timestamp::from(0); record_count];
                 let ts_start = seqfill!(Timestamp, &mut v_1[..], now);
 
-                let data_1 = hashmap_mut! {
+                let data_1 = hashmap! {
                     2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
                             seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
                         )),
@@ -1792,7 +1824,7 @@ mod tests {
                 let mut v_2 = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v_2[..], ts_start);
 
-                let data_2 = hashmap_mut! {
+                let data_2 = hashmap! {
                     2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
                             seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
                         )),
@@ -1801,7 +1833,7 @@ mod tests {
                         )),
                 };
 
-                let expected = hashmap_mut! {
+                let expected = hashmap! {
                     0 => Fragment::from(
                         v_1.clone().into_iter().chain(v_2.clone().into_iter()).collect::<Vec<_>>()
                     ),
@@ -1824,7 +1856,7 @@ mod tests {
                 };
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
@@ -1835,7 +1867,7 @@ mod tests {
                     [
                         v_1.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (sparse_count_2, sparse_step_2, 0),
                             3 => (sparse_count_3, sparse_step_3, 0),
                         },
@@ -1844,7 +1876,7 @@ mod tests {
                     [
                         v_2.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (sparse_count_2, sparse_step_2, 0),
                             3 => (sparse_count_3, sparse_step_3, 0),
                         },
@@ -1864,7 +1896,7 @@ mod tests {
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let data = hashmap_mut! {
+                let data = hashmap! {
                     2 => Fragment::from((seqfill!(vec u8, sparse_count_2),
                             seqfill!(vec u32, sparse_count_2, 0, sparse_step_2)
                         )),
@@ -1875,7 +1907,7 @@ mod tests {
                 expected.insert(0, Fragment::from(v.clone()));
 
                 append_test_impl!(
-                    hashmap_mut! {
+                    hashmap! {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                         1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
                         2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
@@ -1885,7 +1917,7 @@ mod tests {
                     [
                         v.into(),
                         record_count,
-                        hashmap_mut! {
+                        hashmap! {
                             2 => (sparse_count_2, sparse_step_2, 0),
                         },
                         data
@@ -1957,72 +1989,761 @@ mod tests {
 
     mod scan {
         use super::*;
-        use ty::fragment::Fragment;
         use scanner::ScanFilterOp;
 
-        macro_rules! scan_test_impl {
-            (init) => {{
-                let now = <Timestamp as Default>::default();
+        /// The tests that use full blocks and generated data
+        ///
+        /// The 'heavy' suite
 
-                let record_count = MAX_RECORDS - 1;
+        #[macro_use]
+        mod full {
+            use super::*;
 
-                let mut v = vec![Timestamp::from(0); record_count];
-                seqfill!(Timestamp, &mut v[..], now);
-
-                let data = hashmap_mut! {
-                    2 => Fragment::from(seqfill!(vec u8, record_count)),
-                    3 => Fragment::from(seqfill!(vec u32, record_count)),
+            macro_rules! scan_test_impl {
+                (init) => {
+                    scan_test_impl!(init count MAX_RECORDS - 1)
                 };
 
-                let mut expected = data.clone();
+                (init count $count: expr) => {{
+                    use block::BlockType as BlockTy;
+                    use ty::block::BlockType::Memmap;
+                    use ty::fragment::Fragment;
 
-                expected.insert(0, Fragment::from(v.clone()));
+                    let now = <Timestamp as Default>::default();
 
-                let td = append_test_impl!(
-                    hashmap_mut! {
-                        0 => Column::new(TyBlockType::Memmap(BlockType::U64Dense), "ts"),
-                        1 => Column::new(TyBlockType::Memmap(BlockType::U32Dense), "source"),
-                        2 => Column::new(TyBlockType::Memmap(BlockType::U8Dense), "col1"),
-                        3 => Column::new(TyBlockType::Memmap(BlockType::U32Dense), "col2"),
-                    },
-                    now,
-                    vec![expected],
-                    [
-                        v.into(),
-                        record_count,
-                        hashmap_mut! {
-                            2 => (record_count, 0, 0),
-                            3 => (record_count, 0, 0),
+                    let record_count = $count;
+
+                    let mut v = vec![Timestamp::from(0); record_count];
+                    seqfill!(Timestamp, &mut v[..], now);
+
+                    let data = hashmap! {
+                        2 => Fragment::from(seqfill!(vec u8 as u8, record_count)),
+                        3 => Fragment::from(seqfill!(vec u16 as u8, record_count)),
+                        4 => Fragment::from(seqfill!(vec u32 as u8, record_count)),
+                        5 => Fragment::from(seqfill!(vec u64 as u8, record_count)),
+                    };
+
+                    let td = append_test_impl!(
+                        hashmap! {
+                            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                            1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                            2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
+                            3 => Column::new(Memmap(BlockTy::U16Dense), "col2"),
+                            4 => Column::new(Memmap(BlockTy::U32Dense), "col3"),
+                            5 => Column::new(Memmap(BlockTy::U64Dense), "col4"),
                         },
-                        data
-                    ]
+                        now,
+                        [
+                            v.into(),
+                            data
+                        ]
+                    );
+
+                    let cat = Catalog::with_data(&td)
+                        .chain_err(|| "unable to open catalog")
+                        .unwrap();
+
+                    (td, cat, now)
+                }};
+
+                (init sparse) => {
+                    scan_test_impl!(init sparse count MAX_RECORDS - 4, 4);
+                };
+
+                (init sparse count $count: expr, $sparse_ratio: expr) => {{
+                    use block::BlockType as BlockTy;
+                    use ty::block::BlockType::Memmap;
+                    use ty::fragment::Fragment;
+
+                    let now = <Timestamp as Default>::default();
+
+                    let dense_count = $count;
+                    let sparse_ratio = $sparse_ratio;
+                    let record_count = dense_count / sparse_ratio;
+
+                    let mut v = vec![Timestamp::from(0); dense_count];
+                    seqfill!(Timestamp, &mut v[..], now);
+
+                    let data = hashmap! {
+                        2 => Fragment::from((
+                            seqfill!(vec u8 as u8, record_count),
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
+                        )),
+                        3 => Fragment::from((
+                            seqfill!(vec u16 as u8, record_count),
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
+                        )),
+                        4 => Fragment::from((
+                            seqfill!(vec u32 as u8, record_count),
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
+                        )),
+                        5 => Fragment::from((
+                            seqfill!(vec u64 as u8, record_count),
+                            seqfill!(vec u32, record_count, 0, sparse_ratio)
+                        )),
+                    };
+
+                    let td = append_test_impl!(
+                        hashmap! {
+                            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                            1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+                            2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
+                            3 => Column::new(Memmap(BlockTy::U16Sparse), "col2"),
+                            4 => Column::new(Memmap(BlockTy::U32Sparse), "col3"),
+                            5 => Column::new(Memmap(BlockTy::U64Sparse), "col4"),
+                        },
+                        now,
+                        [
+                            v.into(),
+                            data
+                        ]
+                    );
+
+                    let cat = Catalog::with_data(&td)
+                        .chain_err(|| "unable to open catalog")
+                        .unwrap();
+
+                    (td, cat, now)
+                }};
+
+                (dense simple $( $name: ident, $idx: expr, $value: expr),+ $(,)*) => {
+                    scan_test_impl!(dense long MAX_RECORDS - 1, $( $name, $idx, $value, )+ );
+                };
+
+                (dense long $count: expr, $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    scan_test_impl!(dense multi $count,
+                        $( $name, |v| v < $value as u8, [
+                            $idx, [ ScanFilterOp::Lt($value).into(), ],
+                        ],)+ );
+                };
+
+                (dense multi $count: expr, $( $name: ident, $exp_filter: expr,
+                    [ $( $idx: expr,
+                        [ $( $value: expr, )+ $(,*)* ]
+                       ),+ $(,)*
+                    ] ),+ $(,)*) =>
+                {
+                    $(
+                    #[test]
+                    fn $name() {
+                        use ty::fragment::Fragment;
+                        use scanner::ScanResult;
+
+                        let (_td, catalog, now) = scan_test_impl!(init count $count);
+
+                        let record_count = $count;
+
+                        let mut filters = HashMap::new();
+
+                        $(
+                            filters.insert($idx, vec![$( $value )+]);
+                        )+
+
+                        let scan = Scan::new(
+                            filters,
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                        let mut v = vec![Timestamp::from(0); record_count];
+                        seqfill!(Timestamp, &mut v[..], now);
+                        let v = u8_filter(v, $exp_filter);
+
+                        let expected = ScanResult::from(hashmap! {
+                            0 => Some(Fragment::from(v)),
+                            1 => Some(Fragment::from(Vec::<SparseIndex>::new())),
+                            2 => Some(Fragment::from(u8_filter(
+                                seqfill!(vec u8, record_count), $exp_filter))),
+                            3 => Some(Fragment::from(u8_filter(
+                                seqfill!(vec u16 as u8, record_count), $exp_filter))),
+                            4 => Some(Fragment::from(u8_filter(
+                                seqfill!(vec u32 as u8, record_count), $exp_filter))),
+                            5 => Some(Fragment::from(u8_filter(
+                                seqfill!(vec u64 as u8, record_count), $exp_filter))),
+                        });
+
+                        assert_eq!(result, expected);
+                    }
+                    )+
+                };
+
+                (sparse simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    scan_test_impl!(sparse long MAX_RECORDS - 4, 4, $( $name, $idx, $value, )+ );
+                };
+
+                (sparse long $count: expr, $sparse_ratio: expr,
+                    $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+
+                    scan_test_impl!(sparse multi $count, $sparse_ratio,
+                        $( $name, |v| (v as u64) < ($value as u64), [
+                            $idx, [ ScanFilterOp::Lt($value).into(), ],
+                        ],)+ );
+                };
+
+                (sparse multi $count: expr, $sparse_ratio: expr,
+                    $( $name: ident, $exp_filter: expr,
+                        [ $( $idx: expr,
+                            [ $( $value: expr, )+ $(,*)* ]
+                           ),+ $(,)*
+                        ] ),+ $(,)*) => {
+                    $(
+                    #[test]
+                    fn $name() {
+                        use ty::fragment::Fragment;
+                        use scanner::ScanResult;
+
+                        let (_td, catalog, now) =
+                            scan_test_impl!(init sparse count $count, $sparse_ratio);
+
+                        let dense_count = $count;
+                        let sparse_ratio = $sparse_ratio;
+                        let record_count = dense_count / sparse_ratio;
+
+                        let mut filters = HashMap::new();
+
+                        $(
+                            filters.insert($idx, vec![$( $value )+]);
+                        )+
+
+                        let scan = Scan::new(
+                            filters,
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                        let mut v = vec![Timestamp::from(0); dense_count];
+                        seqfill!(Timestamp, &mut v[..], now);
+                        let v = u8_dense_filter(v, $exp_filter, sparse_ratio);
+
+                        let expected = ScanResult::from(hashmap! {
+                            0 => Some(Fragment::from(v)),
+                            1 => Some(Fragment::from(Vec::<SparseIndex>::new())),
+                            2 => Some(Fragment::from(u8_sparse_filter(
+                                seqfill!(vec u8 as u8, record_count),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
+                                $exp_filter,
+                            ))),
+                            3 => Some(Fragment::from(u8_sparse_filter(
+                                seqfill!(vec u16 as u8, record_count),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
+                                $exp_filter,
+                            ))),
+                            4 => Some(Fragment::from(u8_sparse_filter(
+                                seqfill!(vec u32 as u8, record_count),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
+                                $exp_filter,
+                            ))),
+                            5 => Some(Fragment::from(u8_sparse_filter(
+                                seqfill!(vec u64 as u8, record_count),
+                                seqfill!(vec u32, record_count, 0, sparse_ratio),
+                                $exp_filter,
+                            ))),
+                        });
+
+                        assert_eq!(result, expected);
+                    }
+                    )+
+                }
+            }
+
+            mod dense {
+                use super::*;
+
+                fn u8_filter<T, F>(data: Vec<T>, val: F) -> Vec<T>
+                    where
+                        T: Ord,
+                        F: Fn(u8) -> bool,
+                {
+                    data.into_iter()
+                        .enumerate()
+                        .filter_map(|(idx, v)| if val(idx as u8) {
+                            Some(v)
+                        }  else {
+                            None
+                        })
+                        .collect::<Vec<_>>()
+                }
+
+                scan_test_impl!(dense simple
+                    simple_u8, 2, 100_u8,
+                    simple_u16, 3, 100_u16,
+                    simple_u32, 4, 100_u32,
+                    simple_u64, 5, 100_u64,);
+
+                scan_test_impl!(dense long MAX_RECORDS * 2 - 1,
+                    long_u8, 2, 100_u8,
+                    long_u16, 3, 100_u16,
+                    long_u32, 4, 100_u32,
+                    long_u64, 5, 100_u64,);
+
+                scan_test_impl!(dense multi MAX_RECORDS * 2 - 1,
+                    multi_u8, move |v| v < 100 && v > 30, [
+                        2, [ ScanFilterOp::Lt(100_u8).into(), ],
+                        3, [ ScanFilterOp::Gt(30_u16).into(), ],
+                    ],
+                    multi_u16, move |v| v < 100 && v > 30, [
+                        3, [ ScanFilterOp::Lt(100_u16).into(), ],
+                        4, [ ScanFilterOp::Gt(30_u32).into(), ],
+                    ],
+                    multi_u32, move |v| v < 100 && v > 30, [
+                        4, [ ScanFilterOp::Lt(100_u32).into(), ],
+                        5, [ ScanFilterOp::Gt(30_u64).into(), ],
+                    ],
+                    multi_u64, move |v| v < 100 && v > 30, [
+                        5, [ ScanFilterOp::Lt(100_u64).into(), ],
+                        2, [ ScanFilterOp::Gt(30_u8).into(), ],
+                    ],
                 );
+            }
 
-                let cat = Catalog::with_data(&td)
-                    .chain_err(|| "unable to open catalog")
-                    .unwrap();
+            mod sparse {
+                use super::*;
+                use std::ops::{Add, AddAssign, Sub};
+                use num::{FromPrimitive, Zero};
 
-                (td, cat)
-            }};
+                // Help generate ts data for the test expectation
+                //
+                // Sparse test filter for dense columns.
+                // This helper filters out every 4th record and additionally checks the
+                // accopanying value of the record
+                fn u8_dense_filter<T, R, F>(data: Vec<T>, val: F, sparse_ratio: R) -> Vec<T>
+                    where
+                        T: Ord,
+                        R: Ord +
+                            Copy +
+                            FromPrimitive +
+                            Sub<Output = R> +
+                            Add<Output = R> +
+                            AddAssign +
+                            Zero,
+                        F: Fn(u8) -> bool,
+                {
+                    let one = R::from_u8(1).expect("Unable to convert value");
+                    let ratio = sparse_ratio - one;
+
+                    data.into_iter()
+                        .scan((ratio, 0_u8),
+                            |&mut (ref mut pos, ref mut idx), v| {
+                            *pos += one;
+                            if *pos > ratio {
+                                *pos = R::zero();
+
+                                if {
+                                    let t = val(*idx);
+                                    *idx = idx.wrapping_add(1_u8);
+                                    t
+                                } {
+                                    Some(Some(v))
+                                } else {
+                                    Some(None)
+                                }
+                            }  else {
+                                Some(None)
+                            }
+                        })
+                        .filter_map(|v| v)
+                        .collect::<Vec<_>>()
+                }
+
+                // Help generate sparse data for the test expectation
+                //
+                // Sparse test filter for sparse columns.
+                // This helper filters out generated values from a sparse data
+                // while translating resulting rowidx values
+                // so the resulting sparse column looks like a dense one (no nulls)
+                fn u8_sparse_filter<T, F>(data: Vec<T>, index: Vec<SparseIndex>, val: F)
+                    -> (Vec<T>, Vec<SparseIndex>)
+                    where T: Ord + PartialEq + From<u8> + Copy,
+                        F: Fn(T) -> bool,
+                {
+                    data.into_iter()
+                        .zip(index.into_iter())
+                        .scan(0_usize, |projected_idx, (v, _)| {
+                            if {
+                                val(v)
+                            } {
+                                Some(Some((v, {
+                                    let t = *projected_idx;
+                                    *projected_idx += 1;
+                                    t as SparseIndex
+                                })))
+                            } else {
+                                Some(None)
+                            }
+                        })
+                        .filter_map(|element| element)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .unzip()
+                }
+
+                scan_test_impl!(sparse simple
+                    simple_u8, 2, 100_u8,
+                    simple_u16, 3, 100_u16,
+                    simple_u32, 4, 100_u32,
+                    simple_u64, 5, 100_u64,);
+
+                scan_test_impl!(sparse long MAX_RECORDS * 2 - 4, 4,
+                    long_u8, 2, 100_u8,
+                    long_u16, 3, 100_u16,
+                    long_u32, 4, 100_u32,
+                    long_u64, 5, 100_u64,);
+
+                scan_test_impl!(sparse multi MAX_RECORDS * 2 - 1, 4,
+                    multi_u8, move |v| v < 100 && v > 30, [
+                        2, [ ScanFilterOp::Lt(100_u8).into(), ],
+                        3, [ ScanFilterOp::Gt(30_u16).into(), ],
+                    ],
+                    multi_u16, move |v| v < 100 && v > 30, [
+                        3, [ ScanFilterOp::Lt(100_u16).into(), ],
+                        4, [ ScanFilterOp::Gt(30_u32).into(), ],
+                    ],
+                    multi_u32, move |v| v < 100 && v > 30, [
+                        4, [ ScanFilterOp::Lt(100_u32).into(), ],
+                        5, [ ScanFilterOp::Gt(30_u64).into(), ],
+                    ],
+                    multi_u64, move |v| v < 100 && v > 30, [
+                        5, [ ScanFilterOp::Lt(100_u64).into(), ],
+                        2, [ ScanFilterOp::Gt(30_u8).into(), ],
+                    ],
+                );
+            }
         }
 
-        #[test]
-        fn simple() {
-            let (_, catalog) = scan_test_impl!(init);
+        /// The tests that use manually crafted blocks
+        ///
+        /// The 'light' suite
+        mod minimal {
+            use super::*;
+            use ty::fragment::Fragment;
+            use scanner::ScanFilter;
+            use self::TyBlockType::Memmap;
 
-            let scan = Scan::new(
-                hashmap_mut! {
-                    2 => vec![ScanFilterOp::Lt(100_u8).into()]
-                },
-                None,
-                None,
-                None,
-                None,
-            );
+            macro_rules! scan_minimal_init {
+                ($ts:expr, $length:expr,
+                    dense [ $( $dense_idx:expr => (
+                        $dense_ty:ident,
+                        $dense_name:expr,
+                        vec![$($dense_data:tt)*]) ),* $(,)*],
+                    sparse [ $( $sparse_idx:expr => (
+                        $sparse_ty:ident,
+                        $sparse_name:expr,
+                        vec![$($sparse_data:tt)*],
+                        vec![$($sparse_data_idx:tt)*]) ),* $(,)*]
+                    $(,)*
+                ) => {{
+                    use block::BlockType as BlockTy;
 
-            let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let now = $ts;
 
-            println!("{:?}", result);
+                    let mut v = vec![Timestamp::from(0); $length];
+                    seqfill!(Timestamp, &mut v[..], now);
+
+                    // ts column is awlays present
+                    let mut schema = hashmap! {
+                        0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    };
+
+                    let mut data = hashmap! {};
+
+                    $(
+                        schema.insert($dense_idx,
+                            Column::new(Memmap(BlockTy::$dense_ty), $dense_name));
+
+                        data.insert($dense_idx,
+                            Fragment::from(vec![$($dense_data)*]));
+                    )*
+
+                    $(
+                        schema.insert($sparse_idx,
+                            Column::new(Memmap(BlockTy::$sparse_ty), $sparse_name));
+
+                        data.insert($sparse_idx,
+                            Fragment::from((vec![$($sparse_data)*], vec![$($sparse_data_idx)*])));
+                    )*
+
+                    let td = append_test_impl!(
+                        schema,
+                        now,
+                        [
+                            v.into(),
+                            data
+                        ]
+                    );
+
+                    let cat = Catalog::with_data(&td)
+                        .chain_err(|| "unable to open catalog")
+                        .unwrap();
+
+                    (td, cat, now)
+                }};
+
+//             +--------+----+---------+---------+
+//             | rowidx | ts | sparse1 | sparse2 |
+//             +--------+----+---------+---------+
+//             |   0    | 1  |         | 10      |
+//             +--------+----+---------+---------+
+//             |   1    | 2  | 1       | 20      |
+//             +--------+----+---------+---------+
+//             |   2    | 3  |         |         |
+//             +--------+----+---------+---------+
+//             |   3    | 4  | 2       |         |
+//             +--------+----+---------+---------+
+//             |   4    | 5  |         |         |
+//             +--------+----+---------+---------+
+//             |   5    | 6  | 3       | 30      |
+//             +--------+----+---------+---------+
+//             |   6    | 7  |         |         |
+//             +--------+----+---------+---------+
+//             |   7    | 8  |         |         |
+//             +--------+----+---------+---------+
+//             |   8    | 9  | 4       | 7       |
+//             +--------+----+---------+---------+
+//             |   9    | 10 |         | 8       |
+//             +--------+----+---------+---------+
+                () => {
+                    scan_minimal_init!(1, 10,
+                        dense [],
+                        sparse [
+                            1 => (U8Sparse, "sparse1",
+                                vec![1_u8, 2, 3, 4,], vec![1_u32, 3, 5, 8,]),
+                            2 => (U16Sparse, "sparse2",
+                                vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
+                        ])
+                };
+
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 1  | 5      |         | 10     | 10      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 2  | 6      | 1       | 20     | 20      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   2    | 3  | 7      |         | 30     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   3    | 4  | 2      | 2       | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   4    | 5  | 3      |         | 50     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   5    | 6  | 4      | 3       | 50     | 30      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   6    | 7  | 1      |         | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   7    | 8  | 2      |         | 30     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   8    | 9  | 3      | 4       | 20     | 7       |
+//             +--------+----+--------+---------+--------+---------+
+//             |   9    | 10 | 4      |         | 10     | 8       |
+//             +--------+----+--------+---------+--------+---------+
+                (ops) => {
+                    scan_minimal_init!(1, 10,
+                        dense [
+                            1 => (U32Dense, "dense1",
+                                vec![5_u32, 6, 7, 2, 3, 4, 1, 2, 3, 4]),
+                            3 => (U16Dense, "dense2",
+                                vec![10_u16, 20, 30, 40, 50, 50, 40, 30, 20, 10]),
+                        ],
+                        sparse [
+                            2 => (U8Sparse, "sparse1",
+                                vec![1_u8, 2, 3, 4,], vec![1_u32, 3, 5, 8,]),
+                            4 => (U16Sparse, "sparse2",
+                                vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
+                        ])
+                };
+            }
+
+            #[test]
+            fn scan_dense() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                    1 => Some(Fragment::from((vec![1_u8], vec![1_u32]))),
+                    2 => Some(Fragment::from((vec![10_u16, 20], vec![0_u32, 1_u32]))),
+                });
+
+                let scan = Scan::new(
+                    hashmap! {
+                        0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                    },
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
+            }
+
+            #[test]
+            fn scan_sparse1() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![9_u64])),
+                    1 => Some(Fragment::from((vec![4_u8], vec![0_u32]))),
+                    2 => Some(Fragment::from((vec![7_u16], vec![0_u32]))),
+                });
+
+                let scan = Scan::new(
+                    hashmap! {
+                        1 => vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]
+                    },
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
+            }
+
+            #[test]
+            fn scan_sparse2() {
+                let (_td, catalog, _) = scan_minimal_init!();
+
+                let expected = ScanResult::from(hashmap! {
+                    0 => Some(Fragment::from(vec![2_u64, 5, 10])),
+                    1 => Some(Fragment::from((vec![1_u8], vec![0_u32]))),
+                    2 => Some(Fragment::from((vec![20_u16, 8], vec![0_u32, 2]))),
+                });
+
+                let scan = Scan::new(
+                    hashmap! {
+                        0 => vec![ScanFilter::U64(ScanFilterOp::In(hashset![2, 5, 10]))]
+                    },
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                assert_eq!(expected, result);
+            }
+
+            mod and_op {
+                use super::*;
+
+//             dense1 < 3 && dense2 > 30
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 4  | 2      | 2       | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 7  | 1      |         | 40     |         |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn two_dense_one_block() {
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![4_u64, 7])),
+                        1 => Some(Fragment::from(vec![2_u32, 1])),
+                        2 => Some(Fragment::from((vec![2_u8], vec![0_u32]))),
+                        3 => Some(Fragment::from(vec![40_u16, 40])),
+                        4 => Some(Fragment::from((Vec::<u16>::new(), Vec::<u32>::new()))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            1 => vec![ScanFilter::U32(ScanFilterOp::Lt(3))],
+                            3 => vec![ScanFilter::U16(ScanFilterOp::Gt(30))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
+
+//             sparse1 < 4 && sparse2 > 15
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 2  | 6      | 1       | 20     | 20      |
+//             +--------+----+--------+---------+--------+---------+
+//             |   1    | 6  | 4      | 3       | 50     | 30      |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn two_sparse_one_block() {
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![2_u64, 6])),
+                        1 => Some(Fragment::from(vec![6_u32, 4])),
+                        2 => Some(Fragment::from((vec![1_u8, 3], vec![0_u32, 1]))),
+                        3 => Some(Fragment::from(vec![20_u16, 50])),
+                        4 => Some(Fragment::from((vec![20_u16, 30], vec![0_u32, 1]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            2 => vec![ScanFilter::U8(ScanFilterOp::Lt(4))],
+                            4 => vec![ScanFilter::U16(ScanFilterOp::Gt(15))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
+
+//             dense1 > 4 && sparse2 < 15
+//             +--------+----+--------+---------+--------+---------+
+//             | rowidx | ts | dense1 | sparse1 | dense2 | sparse2 |
+//             +--------+----+--------+---------+--------+---------+
+//             |   0    | 1  | 5      |         | 10     | 10      |
+//             +--------+----+--------+---------+--------+---------+
+                #[test]
+                fn sparse_dense_one_block() {
+                    let (_td, catalog, _) = scan_minimal_init!(ops);
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64])),
+                        1 => Some(Fragment::from(vec![5_u32])),
+                        2 => Some(Fragment::from((Vec::<u8>::new(), Vec::<u32>::new()))),
+                        3 => Some(Fragment::from(vec![10_u16])),
+                        4 => Some(Fragment::from((vec![10_u16], vec![0_u32]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            1 => vec![ScanFilter::U32(ScanFilterOp::Gt(4))],
+                            4 => vec![ScanFilter::U16(ScanFilterOp::Lt(15))],
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
+                }
+            }
         }
 
         #[cfg(all(feature = "nightly", test))]
@@ -2030,22 +2751,61 @@ mod tests {
             use test::Bencher;
             use super::*;
 
-            #[bench]
-            fn simple(b: &mut Bencher) {
-                let (_, catalog) = scan_test_impl!(init);
+            macro_rules! scan_bench_impl {
+                (dense simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    $(
+                    #[bench]
+                    fn $name(b: &mut Bencher) {
+                        let (_td, catalog, _) = scan_test_impl!(init);
 
-                let scan = Scan::new(
-                    hashmap_mut! {
-                        2 => vec![ScanFilterOp::Lt(100_u8).into()]
-                    },
-                    None,
-                    None,
-                    None,
-                    None,
-                );
+                        let scan = Scan::new(
+                            hashmap! {
+                                $idx => vec![ScanFilterOp::Lt($value).into()]
+                            },
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
 
-                b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                    }
+                    )+
+                };
+
+                (sparse simple $( $name: ident, $idx: expr, $value: expr ),+ $(,)*) => {
+                    $(
+                    #[bench]
+                    fn $name(b: &mut Bencher) {
+                        let (_td, catalog, _) = scan_test_impl!(init sparse);
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                $idx => vec![ScanFilterOp::Lt($value).into()]
+                            },
+                            None,
+                            None,
+                            None,
+                            None,
+                        );
+
+                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                    }
+                    )+
+                };
             }
+
+            scan_bench_impl!(dense simple
+                simple_u8, 2, 100_u8,
+                simple_u16, 3, 100_u16,
+                simple_u32, 4, 100_u32,
+                simple_u64, 5, 100_u64,);
+
+            scan_bench_impl!(sparse simple
+                simple_sparse_u8, 2, 100_u8,
+                simple_sparse_u16, 3, 100_u16,
+                simple_sparse_u32, 4, 100_u32,
+                simple_sparse_u64, 5, 100_u64,);
         }
     }
 
