@@ -80,27 +80,30 @@ where
 mod tests {
     use super::*;
     use params::tests::BLOCK_SIZE;
+    use extprim::i128::i128;
+    use extprim::u128::u128;
 
-    #[cfg(feature = "block_128")]
     #[macro_use]
     mod block_128 {
+
         macro_rules! dense_block_128_impl {
             ($T: tt, $data: expr) => {{
+                use std::mem::size_of;
                 let data = $data;
 
                 let mut block = DenseNumericBlock::<$T, _>::new(data)
                     .chain_err(|| "failed to create block")
                     .unwrap();
 
-                let s = [!0, 0];
+                let s = [!$T::zero(), $T::zero()];
                 let source = s.into_iter().cycle();
 
                 let len = {
-                    let mut data = block.as_mut_slice_append();
+                    let data = block.as_mut_slice_append();
                     let len = data.len();
                     let source = source.clone().take(len).map(|v| *v).collect::<Vec<_>>();
 
-                    data.copy_from_slice(&source);
+                    data.copy_from_slice(&source[..]);
                     len
                 };
 
@@ -232,7 +235,6 @@ mod tests {
             super::generic::block_ts(make_storage());
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_u128() {
             dense_block_128_impl!(u128, make_storage());
@@ -258,7 +260,6 @@ mod tests {
             super::generic::block_t::<u8, _>(make_storage());
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_i128() {
             dense_block_128_impl!(i128, make_storage());
@@ -313,7 +314,6 @@ mod tests {
             super::generic::block_ts(make_storage("dense_ts"));
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_u128() {
             dense_block_128_impl!(u128, make_storage("dense_u128"));
@@ -339,7 +339,6 @@ mod tests {
             super::generic::block_t::<u8, _>(make_storage("dense_u8"));
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_i128() {
             dense_block_128_impl!(i128, make_storage("dense_i128"));

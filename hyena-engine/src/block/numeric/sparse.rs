@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use storage::Storage;
 use block::{BlockData, BufferHead, IndexMut, IndexRef};
 
-
 pub type SparseIndex = u32;
 
 pub type SparseIndexedNumericBlock<'block, T, ST, SI> = SparseNumericBlock<
@@ -155,9 +154,9 @@ where
 mod tests {
     use super::*;
     use params::tests::BLOCK_SIZE;
+    use extprim::i128::i128;
+    use extprim::u128::u128;
 
-
-    #[cfg(feature = "block_128")]
     #[macro_use]
     mod block_128 {
         macro_rules! sparse_block_128_impl {
@@ -169,7 +168,7 @@ mod tests {
                     .chain_err(|| "failed to create block")
                     .unwrap();
 
-                let s = [!0, 0, !0];
+                let s = [!$T::zero(), $T::zero(), !$T::zero()];
                 let source = s.into_iter().cycle();
 
                 let len = {
@@ -376,7 +375,6 @@ mod tests {
             super::generic::block_tf::<T, _, _>(storage, index);
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_u128() {
             let (data, index) = make_storage::<u128>();
@@ -404,7 +402,6 @@ mod tests {
             block_t::<u8>()
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_i128() {
             let (data, index) = make_storage::<i128>();
@@ -485,7 +482,7 @@ mod tests {
             let (storage, index) = make_storage::<T>(name);
             super::generic::block_tf::<T, _, _>(storage, index);
         }
-        #[cfg(feature = "block_128")]
+        
         #[test]
         fn block_u128() {
             let (data, index) = make_storage::<u128>("sparse_u128");
@@ -513,7 +510,6 @@ mod tests {
             block_t::<u8>("sparse_u8")
         }
 
-        #[cfg(feature = "block_128")]
         #[test]
         fn block_i128() {
             let (data, index) = make_storage::<i128>("sparse_i128");

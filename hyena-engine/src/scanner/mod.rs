@@ -5,6 +5,8 @@ use std::fmt::Debug;
 use partition::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
+use extprim::i128::i128;
+use extprim::u128::u128;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -159,10 +161,12 @@ scan_filter_impl! {
     u16, U16,
     u32, U32,
     u64, U64,
+    u128, U128,
     i8, I8,
     i16, I16,
     i32, I32,
     i64, I64,
+    i128, I128,
 }
 
 #[cfg(test)]

@@ -2,9 +2,10 @@ use error::*;
 use block::SparseIndex;
 use ty::Timestamp;
 use std::mem::transmute;
+use extprim::i128::i128;
+use extprim::u128::u128;
 use std::marker::PhantomData;
 use ty::value::Value;
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fragment {
@@ -12,7 +13,6 @@ pub enum Fragment {
     I16Dense(Vec<i16>),
     I32Dense(Vec<i32>),
     I64Dense(Vec<i64>),
-    #[cfg(feature = "block_128")]
     I128Dense(Vec<i128>),
 
     // Dense, Unsigned
@@ -20,7 +20,6 @@ pub enum Fragment {
     U16Dense(Vec<u16>),
     U32Dense(Vec<u32>),
     U64Dense(Vec<u64>),
-    #[cfg(feature = "block_128")]
     U128Dense(Vec<u128>),
 
     // Sparse, Signed
@@ -28,7 +27,6 @@ pub enum Fragment {
     I16Sparse(Vec<i16>, Vec<SparseIndex>),
     I32Sparse(Vec<i32>, Vec<SparseIndex>),
     I64Sparse(Vec<i64>, Vec<SparseIndex>),
-    #[cfg(feature = "block_128")]
     I128Sparse(Vec<i128>, Vec<SparseIndex>),
 
     // Sparse, Unsigned
@@ -36,7 +34,6 @@ pub enum Fragment {
     U16Sparse(Vec<u16>, Vec<SparseIndex>),
     U32Sparse(Vec<u32>, Vec<SparseIndex>),
     U64Sparse(Vec<u64>, Vec<SparseIndex>),
-    #[cfg(feature = "block_128")]
     U128Sparse(Vec<u128>, Vec<SparseIndex>),
 }
 
@@ -46,15 +43,13 @@ pub enum FragmentRef<'frag> {
     I16Dense(&'frag [i16]),
     I32Dense(&'frag [i32]),
     I64Dense(&'frag [i64]),
-    #[cfg(feature = "block_128")]
-    I128Dense(&'fag [i128]),
+    I128Dense(&'frag [i128]),
 
     // Dense, Unsigned
     U8Dense(&'frag [u8]),
     U16Dense(&'frag [u16]),
     U32Dense(&'frag [u32]),
     U64Dense(&'frag [u64]),
-    #[cfg(feature = "block_128")]
     U128Dense(&'frag [u128]),
 
     // Sparse, Signed
@@ -62,7 +57,6 @@ pub enum FragmentRef<'frag> {
     I16Sparse(&'frag [i16], &'frag [SparseIndex]),
     I32Sparse(&'frag [i32], &'frag [SparseIndex]),
     I64Sparse(&'frag [i64], &'frag [SparseIndex]),
-    #[cfg(feature = "block_128")]
     I128Sparse(&'frag [i128], &'frag [SparseIndex]),
 
     // Sparse, Unsigned
@@ -70,7 +64,6 @@ pub enum FragmentRef<'frag> {
     U16Sparse(&'frag [u16], &'frag [SparseIndex]),
     U32Sparse(&'frag [u32], &'frag [SparseIndex]),
     U64Sparse(&'frag [u64], &'frag [SparseIndex]),
-    #[cfg(feature = "block_128")]
     U128Sparse(&'frag [u128], &'frag [SparseIndex]),
 }
 
@@ -137,28 +130,28 @@ macro_rules! frag_apply {
     (merge $self: expr, $other: expr, $self_block: ident, $self_idx: ident,
         $other_block: ident, $other_idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ merge $self, $other, $self_block, $self_idx, $other_block, $other_idx
-            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense ]
-            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
-                              U8Sparse, U16Sparse, U32Sparse, U64Sparse ]
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
     };
 
     (mut $self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ mut $self, $block, $idx
-            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense ]
-            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
-                              U8Sparse, U16Sparse, U32Sparse, U64Sparse ]
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
     };
 
     ($self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ $self, $block, $idx
-            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense ]
-            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse,
-                              U8Sparse, U16Sparse, U32Sparse, U64Sparse ]
+            dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+            sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                              U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
     };
 
@@ -445,20 +438,24 @@ fragment_variant_impl!(dense
                        I16Dense, i16;
                        I32Dense, i32;
                        I64Dense, i64;
+                       I128Dense, i128;
                        U8Dense, u8;
                        U16Dense, u16;
                        U32Dense, u32;
-                       U64Dense, u64;);
+                       U64Dense, u64;
+                       U128Dense, u128;);
 
 fragment_variant_impl!(sparse
                        I8Sparse, i8;
                        I16Sparse, i16;
                        I32Sparse, i32;
                        I64Sparse, i64;
+                       I128Sparse, i128;
                        U8Sparse, u8;
                        U16Sparse, u16;
                        U32Sparse, u32;
-                       U64Sparse, u64;);
+                       U64Sparse, u64;
+                       U128Sparse, u128;);
 
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
