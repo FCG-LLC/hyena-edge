@@ -17,6 +17,8 @@ use std::result::Result;
 use ty::{BlockType as TyBlockType, ColumnId, TimestampFragment};
 use ty::fragment::Fragment;
 use huuid::Uuid;
+use extprim::i128::i128;
+use extprim::u128::u128;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
@@ -80,10 +82,12 @@ pub enum FilterVal {
     I16(i16),
     I32(i32),
     I64(i64),
+    I128(i128),
     U8(u8),
     U16(u16),
     U32(u32),
     U64(u64),
+    U128(u128)
 }
 
 impl FilterVal {
@@ -93,10 +97,12 @@ impl FilterVal {
             FilterVal::U16(val) => S::ScanFilter::U16(op.to_scan_filter_op(val)),
             FilterVal::U32(val) => S::ScanFilter::U32(op.to_scan_filter_op(val)),
             FilterVal::U64(val) => S::ScanFilter::U64(op.to_scan_filter_op(val)),
+            FilterVal::U128(val) => S::ScanFilter::U128(op.to_scan_filter_op(val)),
             FilterVal::I8(val) => S::ScanFilter::I8(op.to_scan_filter_op(val)),
             FilterVal::I16(val) => S::ScanFilter::I16(op.to_scan_filter_op(val)),
             FilterVal::I32(val) => S::ScanFilter::I32(op.to_scan_filter_op(val)),
             FilterVal::I64(val) => S::ScanFilter::I64(op.to_scan_filter_op(val)),
+            FilterVal::I128(val) => S::ScanFilter::I128(op.to_scan_filter_op(val)),
         }
     }
 }
