@@ -81,10 +81,13 @@ pub struct ScanResult {
 
 impl ScanResult {
 
-    pub(crate) fn identity() -> ScanResult {
-        ScanResult {
-            data: HashMap::new(),
-        }
+    /// Return merge identity for `ScanResult`
+    ///
+    /// According to Wikipedia:
+    /// "An identity element is a special type of element of a set with respect to a binary
+    /// operation on that set, which leaves other elements unchanged when combined with them."
+    pub(crate) fn merge_identity() -> ScanResult {
+        Default::default()
     }
 
     /// Merge two `ScanResult`s
