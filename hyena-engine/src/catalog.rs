@@ -3353,6 +3353,100 @@ mod tests {
 
                     scan_assert(result, expected_1, expected_2);
                 }
+
+                mod projection {
+                    use super::*;
+
+                    #[test]
+                    fn selected() {
+                        let (_td, catalog, _) = scan_minimal_init!(multi);
+
+                        let expected_1 = ScanResult::from(hashmap! {
+                            0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                            2 => Some(Fragment::from(vec![11_u32, 12, 13])),
+                            4 => Some(Fragment::from((vec![5_u32], vec![1_u32]))),
+                        });
+
+                        let expected_2 = ScanResult::from(hashmap! {
+                            0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                            2 => Some(Fragment::from(vec![211_u32, 212, 213])),
+                            4 => Some(Fragment::from((vec![25_u32], vec![1_u32]))),
+                        });
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                            },
+                            Some(vec![0, 2, 4]),
+                            None,
+                            None,
+                            None,
+                        );
+
+                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                        scan_assert(result, expected_1, expected_2);
+                    }
+
+                    #[test]
+                    fn no_queried() {
+                        let (_td, catalog, _) = scan_minimal_init!(multi);
+
+                        let expected_1 = ScanResult::from(hashmap! {
+                            2 => Some(Fragment::from(vec![11_u32, 12, 13])),
+                            4 => Some(Fragment::from((vec![5_u32], vec![1_u32]))),
+                        });
+
+                        let expected_2 = ScanResult::from(hashmap! {
+                            2 => Some(Fragment::from(vec![211_u32, 212, 213])),
+                            4 => Some(Fragment::from((vec![25_u32], vec![1_u32]))),
+                        });
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                            },
+                            Some(vec![2, 4]),
+                            None,
+                            None,
+                            None,
+                        );
+
+                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                        scan_assert(result, expected_1, expected_2);
+                    }
+
+                    #[test]
+                    fn non_existent() {
+                        let (_td, catalog, _) = scan_minimal_init!(multi);
+
+                        let expected_1 = ScanResult::from(hashmap! {
+                            2 => Some(Fragment::from(vec![11_u32, 12, 13])),
+                            4 => Some(Fragment::from((vec![5_u32], vec![1_u32]))),
+                            7 => None,
+                        });
+
+                        let expected_2 = ScanResult::from(hashmap! {
+                            2 => Some(Fragment::from(vec![211_u32, 212, 213])),
+                            4 => Some(Fragment::from((vec![25_u32], vec![1_u32]))),
+                        });
+
+                        let scan = Scan::new(
+                            hashmap! {
+                                0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                            },
+                            Some(vec![2, 4, 7]),
+                            None,
+                            None,
+                            None,
+                        );
+
+                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                        scan_assert(result, expected_1, expected_2);
+                    }
+                }
             }
         }
 
