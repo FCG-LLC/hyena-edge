@@ -502,7 +502,7 @@ impl<'cat> Catalog<'cat> {
 
     fn ensure_default_columns(&mut self) -> Result<()> {
         let ts_column = Column::new(TyBlockType::Memmap(BlockType::U64Dense), "timestamp");
-        let source_column = Column::new(TyBlockType::Memmap(BlockType::I32Dense), "source_id"); // will be String some day
+        let source_column = Column::new(TyBlockType::Memory(BlockType::I32Dense), "source_id");
         let mut map = HashMap::new();
         map.insert(0, ts_column);
         map.insert(1, source_column);
