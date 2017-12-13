@@ -257,7 +257,8 @@ impl<'pg> PartitionGroup<'pg> {
                 .unwrap();
         }
 
-        Ok(0)
+        // todo: this is not very accurate, as the actual write could have failed
+        Ok(fragcount)
     }
 
     pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
@@ -479,7 +480,7 @@ impl Deref for PartitionMeta {
 }
 
 impl<'cat> Catalog<'cat> {
-    pub(crate) fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+    pub fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         let root = root.as_ref().to_path_buf();
 
         let meta = root.join(CATALOG_METADATA);
@@ -579,19 +580,26 @@ impl<'cat> Catalog<'cat> {
         Catalog::serialize(self, &meta)
     }
 
-    pub fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
+    /// Extend internal column map without any sanitization checks.
+    ///
+    /// This function uses `std::iter::Extend` internally,
+    /// so it allows redefinition of a column type.
+    /// Use this feature with great caution.
+    pub(crate) fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
         self.columns.extend(type_map);
 
         Ok(())
     }
 
-    // Adds the column to the catalog. It verifies that catalog does not already contain:
-    // a) column with the given id, or
-    // b) column with the given name.
-    // This function takes all-or-nothing approach: either all columns can are added, or none gets added.
+    /// Adds the column to the catalog. It verifies that catalog does not already contain:
+    /// a) column with the given id, or
+    /// b) column with the given name.
+    /// This function takes all-or-nothing approach:
+    /// either all columns can are added, or none gets added.
     pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
         for (id, column) in column_map.iter() {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
+
             if self.columns.contains_key(id) {
                 bail!(ErrorKind::ColumnIdAlreadyExists(*id));
             }
@@ -600,9 +608,12 @@ impl<'cat> Catalog<'cat> {
             }
         }
 
-        Ok(self.columns.extend(column_map))
+        self.ensure_columns(column_map)
     }
 
+    /// Fetch the first non-occupied column index
+    ///
+    /// todo: rethink this approach (max() every time)
     pub fn next_id(&self) -> usize {
         let default = 0;
         *self.columns.keys().max().unwrap_or(&default) + 1
@@ -664,6 +675,14 @@ impl<'cat> Catalog<'cat> {
             pg.flush().unwrap();
             pg
         }))
+    }
+
+    /// Add new partition group with given source id
+
+    pub fn add_partition_group(&mut self, source_id: SourceId) -> Result<()> {
+        let _ = self.ensure_group(source_id)?;
+
+        Ok(())
     }
 
     fn create_single_partition(pg: &mut PartitionGroup) {

@@ -71,6 +71,8 @@ macro_rules! block_map_expr {
     };
 }
 
+// todo: consider renaming to `BlockStorageType`
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockType {
     Memory(block::BlockType),

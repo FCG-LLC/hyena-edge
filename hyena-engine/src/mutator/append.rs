@@ -10,6 +10,14 @@ pub struct Append {
 }
 
 impl Append {
+    pub fn new(ts: TimestampFragment, source_id: SourceId, data: BlockData) -> Append {
+        Append {
+            ts,
+            source_id,
+            data,
+        }
+    }
+
     pub fn len(&self) -> usize {
         // return count of the ts records
         self.ts.len()
