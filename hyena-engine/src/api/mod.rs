@@ -324,17 +324,28 @@ impl Reply {
         };
 
         let cm: &ColumnMap = catalog.as_ref();
+        println!("Data: {:?}", result);
 
-        let srm = result.data.into_iter().map(|(column, fragment)| {
-            DataTriple {
-                column_id: column,
-                column_type: match cm.get(&column).unwrap().ty {
-                    TyBlockType::Memory(t) => t,
-                    TyBlockType::Memmap(t) => t,
-                },
-                data: fragment
-            }
-        }).collect::<Vec<DataTriple>>();
+        let srm = result.data
+            .into_iter()
+            .map(|(column, fragment)| {
+                match cm.get(&column) {
+                    None => None,
+                    Some(col) =>
+                        Some(DataTriple {
+                            column_id: column,
+                            column_type: match col.ty {
+                                TyBlockType::Memory(t) => t,
+                                TyBlockType::Memmap(t) => t,
+                            },
+                            data: fragment
+                        })
+                }
+            })
+            .filter(|item| item.is_some())
+            .map(|item| item.unwrap()) // None items, which can fail the `unwrap`,
+                                       // has been filtered out in previous line
+            .collect::<Vec<DataTriple>>();
 
         Reply::Scan(Ok(ScanResultMessage::from(srm)))
     }
