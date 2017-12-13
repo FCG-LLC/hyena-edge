@@ -535,13 +535,31 @@ impl<'cat> Catalog<'cat> {
     }
 
     pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
-        let res = self.groups
-            .par_iter()
-            .filter(|&(pgid, _)| *pgid == 1)
-            .map(|(_, pg)| pg.scan(&scan))
-            .collect::<Result<Vec<ScanResult>>>();
 
-        res.map(|mut v| v.pop().unwrap())
+        let all_groups = if scan.groups.is_some() {
+            None
+        } else {
+            Some(self.groups.keys().cloned().collect::<Vec<_>>())
+        };
+
+        if scan.groups.is_some() {
+            scan.groups.as_ref().unwrap()
+        } else {
+            all_groups.as_ref().unwrap()
+        }
+        .par_iter()
+        .filter_map(|pgid| self.groups.get(pgid))
+        .map(|pg| pg.scan(&scan))
+        // todo: this would potentially be better with some short-circuiting combinator instead
+        // need to bench with collect_into()
+        .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
+            let mut a = a?;
+            let b = b?;
+
+            a.merge(b)?;
+
+            Ok(a)
+        })
     }
 
     pub fn flush(&self) -> Result<()> {
@@ -813,6 +831,21 @@ mod tests {
                 $([
                     $ts: expr,
                     $data: expr    // HashMap
+                ]),+ $(,)*) => {
+
+                append_test_impl!($schema, $now, $([
+                    $ts,
+                    $data,
+                    1  // default source_id used in tests
+                ])+)
+            };
+
+            ($schema: expr,
+                $now: expr,
+                $([
+                    $ts: expr,
+                    $data: expr,    // HashMap
+                    $source_id: expr
                 ]),+ $(,)*) => {{
 
                 let columns = $schema;
@@ -828,7 +861,7 @@ mod tests {
 
                 let append = Append {
                     ts: $ts,
-                    source_id: 1,
+                    source_id: $source_id,
                     data,
                 };
 
@@ -2427,6 +2460,68 @@ mod tests {
             use scanner::ScanFilter;
             use self::TyBlockType::Memmap;
 
+            /// Helper for 'minimal' scan tests
+            ///
+            /// Creates a temp directory with fresh catalog
+            /// and initializes it with provided schema / data
+            /// by leveraging append_test_impl!
+            ///
+            /// ## First variant: init shourtcut for single-pg tests
+            ///
+            /// $ts: base timestamp
+            /// $length: records count
+            /// dense []: dense data/schema info
+            /// $dense_idx: a column index for the dense value (of type ColumnId)
+            /// $dense_ty: type of the dense column (e.g. U64Dense)
+            /// $dense_name: a name of the dense column (e.g. "dense1")
+            /// vec![$dense_data]: data values (e.g. vec![1_u64, 2, 3] for U64Dense block)
+            ///
+            /// Remember that this is not a true vec! macro,
+            /// but rather an emulation for better readability.
+            /// Also remember to provide correct value types, so no '1' but '1_u32'
+            /// for U32Dense block.
+            ///
+            /// sparse []: sparse data/schema info
+            /// $sparse_idx: a column index for the dense value (of type ColumnId)
+            /// $sparse_ty: type of the sparse column (e.g. U64Sparse)
+            /// $sparse_name: a name of the column (e.g. "sparse1")
+            /// vec![$sparse_data]: data values for the sparse column
+            /// vec![$sparse_data_idx]: index values for the sparse column
+            /// (always of type `SparseIndex`)
+            ///
+            /// Also remember to double-check column indexes to properly match dense/sparse
+            /// columns.
+            ///
+            /// ## Second variant: init for multi-pg tests
+            ///
+            /// $ts: base timestamp
+            /// $length: records count
+            ///
+            /// schema
+            ///
+            /// dense []: dense schema info
+            /// $dense_schema_idx: a column index for the dense value (of type ColumnId)
+            /// $dense_ty: type of the dense column (e.g. U64Dense)
+            /// $dense_name: a name of the dense column (e.g. "dense1")
+            ///
+            /// sparse []: sparse schema info
+            /// $sparse_schema_idx: a column index for the sparse value (of type ColumnId)
+            /// $sparse_ty: type of the sparse column (e.g. U64Sparse)
+            /// $sparse_name: a name of the column (e.g. "sparse1")
+            ///
+            /// data []:
+            /// $source_id: partition group id (a.k.a. source_id)
+            ///
+            /// dense []:
+            /// $dense_idx: a column index for the dense value (of type ColumnId)
+            /// vec![$dense_data]: data values (e.g. vec![1_u64, 2, 3] for U64Dense block)
+            ///
+            /// sparse []:
+            /// $sparse_idx: a column index for the sparse value (of type ColumnId)
+            /// vec![$sparse_data]: data values for the sparse column
+            /// vec![$sparse_data_idx]: index values for the sparse column
+            /// (always of type `SparseIndex`)
+
             macro_rules! scan_minimal_init {
                 ($ts:expr, $length:expr,
                     dense [ $( $dense_idx:expr => (
@@ -2439,6 +2534,61 @@ mod tests {
                         vec![$($sparse_data:tt)*],
                         vec![$($sparse_data_idx:tt)*]) ),* $(,)*]
                     $(,)*
+                ) => {
+                    scan_minimal_init!($ts, $length,
+                        schema
+                            dense [$(
+                                $dense_idx => (
+                                    $dense_ty,
+                                    $dense_name
+                                ),
+                            )*],
+                            sparse [$(
+                                $sparse_idx => (
+                                    $sparse_ty,
+                                    $sparse_name
+                                ),
+                            )*],
+                        data [
+                            1 => [
+                                dense [$(
+                                    $dense_idx => (
+                                        vec![$( $dense_data )*]
+                                    ),
+                                )*],
+                                sparse [$(
+                                    $sparse_idx => (
+                                        vec![$( $sparse_data )*],
+                                        vec![$( $sparse_data_idx )*]
+                                    ),
+                                )*]
+                            ],
+                        ]
+                    )
+                };
+
+                ($ts:expr, $length:expr,
+                    schema
+                        dense [ $( $dense_schema_idx:expr => (
+                            $dense_ty:ident,
+                            $dense_name:expr
+                        )),* $(,)*],
+                        sparse [ $( $sparse_schema_idx:expr => (
+                            $sparse_ty:ident,
+                            $sparse_name:expr
+                        )),* $(,)*],
+
+                    data [ $(
+                        $source_id: expr => [
+                            dense [ $( $dense_idx:expr => (
+                                vec![$( $dense_data:tt )*]
+                            )),* $(,)*],
+                            sparse [ $( $sparse_idx:expr => (
+                                vec![$( $sparse_data:tt )*],
+                                vec![$( $sparse_data_idx:tt )*]
+                            )),* $(,)*]
+                        ]
+                    ),* $(,)* ]
                 ) => {{
                     use block::BlockType as BlockTy;
 
@@ -2452,31 +2602,45 @@ mod tests {
                         0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
                     };
 
-                    let mut data = hashmap! {};
+                    // adjust schema first
 
                     $(
-                        schema.insert($dense_idx,
+                        schema.insert($dense_schema_idx,
                             Column::new(Memmap(BlockTy::$dense_ty), $dense_name));
-
-                        data.insert($dense_idx,
-                            Fragment::from(vec![$($dense_data)*]));
                     )*
 
                     $(
-                        schema.insert($sparse_idx,
+                        schema.insert($sparse_schema_idx,
                             Column::new(Memmap(BlockTy::$sparse_ty), $sparse_name));
 
-                        data.insert($sparse_idx,
-                            Fragment::from((vec![$($sparse_data)*], vec![$($sparse_data_idx)*])));
                     )*
 
                     let td = append_test_impl!(
                         schema,
                         now,
+                        $(
                         [
-                            v.into(),
-                            data
-                        ]
+                            v.clone().into(),
+                            {
+                                let mut data = hashmap! {};
+                            $(
+                                data.insert($dense_idx,
+                                    Fragment::from(vec![$($dense_data)*]));
+                            )*
+
+                            $(
+
+                                data.insert($sparse_idx,
+                                    Fragment::from((
+                                        vec![$($sparse_data)*],
+                                        vec![$($sparse_data_idx)*])));
+                            )*
+
+                                data
+                            },
+                            $source_id
+                        ],
+                        )*
                     );
 
                     let cat = Catalog::with_data(&td)
@@ -2558,6 +2722,232 @@ mod tests {
                                 vec![ 10_u16, 20, 30, 7, 8, ], vec![ 0_u32, 1, 5, 8, 9, ]),
                         ])
                 };
+
+//             +--------+--------+----+--------+--------+---------+---------+
+//             | rowidx | source | ts | dense1 | dense2 | sparse1 | sparse2 |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   0    |   1    | 1  | 1      | 11     | 10      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   1    |   1    | 2  | 2      | 12     |         | 5       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   2    |   1    | 3  | 3      | 13     | 20      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   3    |   1    | 4  | 4      | 14     |         | 4       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   4    |   1    | 5  | 5      | 15     | 30      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   5    |   1    | 6  | 6      | 16     |         | 3       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   6    |   1    | 7  | 7      | 17     | 40      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   7    |   1    | 8  | 8      | 18     |         | 2       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   8    |   1    | 9  | 9      | 19     | 50      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   9    |   1    | 10 | 10     | 20     |         | 1       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   10   |   5    | 1  | 21     | 211    | 12      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   11   |   5    | 2  | 22     | 212    |         | 25      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   12   |   5    | 3  | 23     | 213    | 22      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   13   |   5    | 4  | 24     | 214    |         | 24      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   14   |   5    | 5  | 25     | 215    | 32      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   15   |   5    | 6  | 26     | 216    |         | 23      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   16   |   5    | 7  | 27     | 217    | 42      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   17   |   5    | 8  | 28     | 218    |         | 22      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   18   |   5    | 9  | 29     | 219    | 52      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   19   |   5    | 10 | 30     | 220    |         | 21      |
+//             +--------+--------+----+--------+--------+---------+---------+
+
+                (multi) => {
+                    scan_minimal_init!(
+                        1, 10,
+                        schema
+                            dense [
+                                1 => (U16Dense, "dense1"),
+                                2 => (U32Dense, "dense2")
+                            ],
+                            sparse [
+                                3 => (U8Sparse, "sparse1"),
+                                4 => (U32Sparse, "sparse2")
+                            ],
+                        data [
+                            1 => [
+                                dense [
+                                    1 => (vec![1_u16, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                                    2 => (vec![11_u32, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+                                ],
+                                sparse [
+                                    3 => (
+                                        vec![10_u8, 20, 30, 40, 50],
+                                        vec![0_u32, 2, 4, 6, 8]
+                                    ),
+                                    4 => (
+                                        vec![5_u32, 4, 3, 2, 1],
+                                        vec![1_u32, 3, 5, 7, 9]
+                                    ),
+                                ]
+                            ],
+                            5 => [
+                                dense [
+                                    1 => (vec![21_u16, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
+                                    2 => (vec![211_u32, 212, 213, 214,
+                                                215, 216, 217, 218, 219, 220]),
+                                ],
+                                sparse [
+                                    3 => (
+                                        vec![12_u8, 22, 32, 42, 52],
+                                        vec![0_u32, 2, 4, 6, 8]
+                                    ),
+                                    4 => (
+                                        vec![25_u32, 24, 23, 22, 21],
+                                        vec![1_u32, 3, 5, 7, 9]
+                                    ),
+                                ]
+                            ]
+                        ]
+                    )
+                };
+
+//             +--------+--------+----+--------+--------+---------+---------+
+//             | rowidx | source | ts | dense1 | dense2 | sparse1 | sparse2 |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   0    |   1    | 1  | 1      | 11     | 10      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   1    |   1    | 2  | 2      | 12     |         | 5       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   2    |   1    | 3  | 3      | 13     | 20      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   3    |   1    | 4  | 4      | 14     |         | 4       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   4    |   1    | 5  | 5      | 15     | 30      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   5    |   1    | 6  | 6      | 16     |         | 3       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   6    |   1    | 7  | 7      | 17     | 40      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   7    |   1    | 8  | 8      | 18     |         | 2       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   8    |   1    | 9  | 9      | 19     | 50      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   9    |   1    | 10 | 10     | 20     |         | 1       |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   10   |   5    | 1  | 21     | 211    | 12      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   11   |   5    | 2  | 22     | 212    |         | 25      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   12   |   5    | 3  | 23     | 213    | 22      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   13   |   5    | 4  | 24     | 214    |         | 24      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   14   |   5    | 5  | 25     | 215    | 32      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   15   |   5    | 6  | 26     | 216    |         | 23      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   16   |   5    | 7  | 27     | 217    | 42      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   17   |   5    | 8  | 28     | 218    |         | 22      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   18   |   5    | 9  | 29     | 219    | 52      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   19   |   5    | 10 | 30     | 220    |         | 21      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   20   |   7    | 1  | 31     | 311    | 13      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   21   |   7    | 2  | 32     | 312    |         | 35      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   22   |   7    | 3  | 33     | 313    | 23      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   23   |   7    | 4  | 34     | 314    |         | 34      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   24   |   7    | 5  | 35     | 315    | 33      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   25   |   7    | 6  | 36     | 316    |         | 33      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   26   |   7    | 7  | 37     | 317    | 43      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   27   |   7    | 8  | 38     | 318    |         | 32      |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   28   |   7    | 9  | 39     | 319    | 53      |         |
+//             +--------+--------+----+--------+--------+---------+---------+
+//             |   29   |   7    | 10 | 40     | 320    |         | 31      |
+//             +--------+--------+----+--------+--------+---------+---------+
+
+                (multi full) => {
+                    scan_minimal_init!(
+                        1, 10,
+                        schema
+                            dense [
+                                1 => (U16Dense, "dense1"),
+                                2 => (U32Dense, "dense2")
+                            ],
+                            sparse [
+                                3 => (U8Sparse, "sparse1"),
+                                4 => (U32Sparse, "sparse2")
+                            ],
+                        data [
+                            1 => [
+                                dense [
+                                    1 => (vec![1_u16, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                                    2 => (vec![11_u32, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+                                ],
+                                sparse [
+                                    3 => (
+                                        vec![10_u8, 20, 30, 40, 50],
+                                        vec![0_u32, 2, 4, 6, 8]
+                                    ),
+                                    4 => (
+                                        vec![5_u32, 4, 3, 2, 1],
+                                        vec![1_u32, 3, 5, 7, 9]
+                                    ),
+                                ]
+                            ],
+                            5 => [
+                                dense [
+                                    1 => (vec![21_u16, 22, 23, 24, 25, 26, 27, 28, 29, 30]),
+                                    2 => (vec![211_u32, 212, 213, 214,
+                                                215, 216, 217, 218, 219, 220]),
+                                ],
+                                sparse [
+                                    3 => (
+                                        vec![12_u8, 22, 32, 42, 52],
+                                        vec![0_u32, 2, 4, 6, 8]
+                                    ),
+                                    4 => (
+                                        vec![25_u32, 24, 23, 22, 21],
+                                        vec![1_u32, 3, 5, 7, 9]
+                                    ),
+                                ]
+                            ],
+                            7 => [
+                                dense [
+                                    1 => (vec![31_u16, 32, 33, 34, 35, 36, 37, 38, 39, 40]),
+                                    2 => (vec![311_u32, 312, 313, 314,
+                                                315, 316, 317, 318, 319, 320]),
+                                ],
+                                sparse [
+                                    3 => (
+                                        vec![13_u8, 23, 33, 43, 53],
+                                        vec![0_u32, 2, 4, 6, 8]
+                                    ),
+                                    4 => (
+                                        vec![35_u32, 34, 33, 32, 31],
+                                        vec![1_u32, 3, 5, 7, 9]
+                                    ),
+                                ]
+                            ]
+                        ]
+                    )
+                };
+
             }
 
             #[test]
@@ -2742,6 +3132,102 @@ mod tests {
                     let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
+                }
+            }
+
+            mod multi_pg {
+                use super::*;
+
+                /// Merge two ScanResults (expects) and compare to the actual result
+                ///
+                /// This function is needed because the ordering of the ScanResult merge
+                /// is not guaranteed by Catalog::scan()
+                ///
+                /// To implement the assertion we just try both ways to merge
+                /// and panic! only if both produce ScanResult != result.
+                fn scan_assert(result: ScanResult, a: ScanResult, b: ScanResult) {
+                    fn merge(a: &ScanResult, b: &ScanResult) -> ScanResult {
+                        let mut a = a.clone();
+                        let b = b.clone();
+
+                        a.merge(b).expect("ScanResult merge failed");
+                        a
+                    }
+
+                    if merge(&a, &b) != result && merge(&b, &a) != result {
+                        panic!("ScanResult assertion failed: {:?} != {:?} + {:?}",
+                            result, a, b);
+                    }
+                }
+
+                #[test]
+                fn scan() {
+                    let (_td, catalog, _) = scan_minimal_init!(multi);
+
+                    let expected_1 = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                        1 => Some(Fragment::from(vec![1_u16, 2, 3])),
+                        2 => Some(Fragment::from(vec![11_u32, 12, 13])),
+                        3 => Some(Fragment::from((vec![10_u8, 20], vec![0_u32, 2_u32]))),
+                        4 => Some(Fragment::from((vec![5_u32], vec![1_u32]))),
+                    });
+
+                    let expected_2 = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                        1 => Some(Fragment::from(vec![21_u16, 22, 23])),
+                        2 => Some(Fragment::from(vec![211_u32, 212, 213])),
+                        3 => Some(Fragment::from((vec![12_u8, 22], vec![0_u32, 2_u32]))),
+                        4 => Some(Fragment::from((vec![25_u32], vec![1_u32]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                        },
+                        None,
+                        None,
+                        None,
+                        None,
+                    );
+
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    scan_assert(result, expected_1, expected_2);
+                }
+
+                #[test]
+                fn pg_filter() {
+                    let (_td, catalog, _) = scan_minimal_init!(multi full);
+
+                    let expected_1 = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                        1 => Some(Fragment::from(vec![1_u16, 2, 3])),
+                        2 => Some(Fragment::from(vec![11_u32, 12, 13])),
+                        3 => Some(Fragment::from((vec![10_u8, 20], vec![0_u32, 2_u32]))),
+                        4 => Some(Fragment::from((vec![5_u32], vec![1_u32]))),
+                    });
+
+                    let expected_2 = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(vec![1_u64, 2, 3])),
+                        1 => Some(Fragment::from(vec![31_u16, 32, 33])),
+                        2 => Some(Fragment::from(vec![311_u32, 312, 313])),
+                        3 => Some(Fragment::from((vec![13_u8, 23], vec![0_u32, 2_u32]))),
+                        4 => Some(Fragment::from((vec![35_u32], vec![1_u32]))),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                        },
+                        None,
+                        Some(vec![1, 7]),
+                        None,
+                        None,
+                    );
+
+                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    scan_assert(result, expected_1, expected_2);
                 }
             }
         }

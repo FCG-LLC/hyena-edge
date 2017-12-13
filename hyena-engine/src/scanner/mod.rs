@@ -81,6 +81,15 @@ pub struct ScanResult {
 
 impl ScanResult {
 
+    /// Return merge identity for `ScanResult`
+    ///
+    /// According to Wikipedia:
+    /// "An identity element is a special type of element of a set with respect to a binary
+    /// operation on that set, which leaves other elements unchanged when combined with them."
+    pub(crate) fn merge_identity() -> ScanResult {
+        Default::default()
+    }
+
     /// Merge two `ScanResult`s
     ///
     /// We are assuming that the contained columns are the same
@@ -89,11 +98,8 @@ impl ScanResult {
         let offset = self.dense_len();
 
         for (k, v) in self.data.iter_mut() {
-            let o = if let Some(o) = other.data.remove(k) {
-                o
-            } else {
-                None
-            };
+            // default for Option is None
+            let o = other.data.remove(k).unwrap_or_default();
 
             if v.is_none() {
                 *v = o;
@@ -106,6 +112,9 @@ impl ScanResult {
                     .chain_err(|| "unable to merge scan results")?;
             }
         }
+
+        // add columns that are in other but not in self
+        self.data.extend(other.data.drain());
 
         Ok(())
     }
