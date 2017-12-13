@@ -13,8 +13,7 @@ pub(crate) mod random;
 pub(crate) mod seq;
 
 #[macro_use]
-#[cfg(test)]
-pub(crate) mod tempfile;
+pub mod tempfile;
 
 #[macro_use]
 pub(crate) mod block;
@@ -35,9 +34,9 @@ macro_rules! carry {
 
 
 #[macro_use]
-#[cfg(test)]
-pub(crate) mod tests {
+pub mod tests {
 
+    #[macro_export]
     macro_rules! hashmap {
         () => {{
             use std::collections::hash_map::HashMap;
@@ -59,6 +58,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[allow(unused_macros)]
     macro_rules! hashset {
         () => {{
             use std::collections::hash_set::HashSet;
@@ -80,6 +80,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[allow(unused_macros)]
     macro_rules! multiply_vec {
         ($vec: expr, $count: expr) => {{
             let count = $count;
@@ -94,6 +95,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[allow(unused_macros)]
     macro_rules! merge_iter {
         (into $ty: ty, $base: expr, $( $it: expr ),* $(,)*) => {{
             let it = $base;
@@ -116,6 +118,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[macro_export]
     macro_rules! count {
         ($cur: tt $(, $tail: tt)* $(,)*) => {
             1 + count!($($tail,)*)
@@ -124,6 +127,7 @@ pub(crate) mod tests {
         () => { 0 };
     }
 
+    #[allow(unused_macros)]
     macro_rules! assert_file_size {
         ($file: expr, $size: expr) => {{
             let metadata = $file.metadata()
@@ -134,6 +138,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[allow(unused_macros)]
     macro_rules! assert_variant {
         ($what: expr, $variant: pat, $test: expr) => {{
             let e = $what;
@@ -150,6 +155,7 @@ pub(crate) mod tests {
         };
     }
 
+    #[allow(unused_macros)]
     macro_rules! ensure_read {
         ($file: expr, $buf: expr, $size: expr) => {{
             use fs::ensure_file;
@@ -168,6 +174,7 @@ pub(crate) mod tests {
         }};
     }
 
+    #[allow(unused_macros)]
     macro_rules! ensure_write {
         ($file: expr, $w: expr, $size: expr) => {{
             use fs::ensure_file;

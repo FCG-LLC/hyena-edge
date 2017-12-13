@@ -7,7 +7,7 @@ use block;
 #[macro_use]
 pub(crate) mod ty_impl;
 
-pub(crate) mod memory;
+pub mod memory;
 #[cfg(feature = "mmap")]
 pub(crate) mod mmap;
 

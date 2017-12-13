@@ -1,6 +1,6 @@
 pub(super) mod timestamp;
 #[macro_use]
-pub(super) mod block;
+pub mod block;
 
 #[macro_use]
 pub mod fragment;

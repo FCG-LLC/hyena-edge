@@ -1,7 +1,8 @@
-pub(crate) const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
+pub const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
+#[cfg(test)]
 pub(crate) const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
 
-pub(crate) mod tempdir_tools {
+pub mod tempdir_tools {
     use error::*;
     use std::path::{Path, PathBuf};
     use std::fs::File;
@@ -50,7 +51,7 @@ pub(crate) mod tempdir_tools {
     impl TempDirExt for tempdir::TempDir {}
 }
 
-pub(crate) mod persistent_tempdir {
+pub mod persistent_tempdir {
     use tempdir;
     use std::io::Result;
     use std::path::Path;
@@ -90,6 +91,7 @@ pub(crate) mod persistent_tempdir {
     }
 }
 
+#[macro_export]
 macro_rules! tempdir {
     (@ $tdir: expr) => {
         $tdir
@@ -98,14 +100,15 @@ macro_rules! tempdir {
     };
 
     (persistent $prefix: expr) => {{
-        use ::helpers::tempfile::persistent_tempdir::TempDir;
+        use helpers::tempfile::persistent_tempdir::TempDir;
 
         tempdir!(@ TempDir::new($prefix))
     }};
 
-    (persistent) => {
-        tempdir!(persistent ::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX)
-    };
+    (persistent) => {{
+        use helpers::tempfile::DEFAULT_TEMPDIR_PREFIX;
+        tempdir!(persistent DEFAULT_TEMPDIR_PREFIX)
+    }};
 
     ($prefix: expr) => {{
         use tempdir::TempDir;
@@ -124,6 +127,7 @@ macro_rules! tempdir {
 /// add prefix as first (after persistent) keyword to use prefix other
 /// than default system temp
 
+#[macro_export]
 macro_rules! tempfile {
     (@ $tdir: expr, $($name: expr,)* ) => {{
         let dir = $tdir;

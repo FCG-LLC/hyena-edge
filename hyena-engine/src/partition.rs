@@ -434,8 +434,7 @@ impl<'part> Partition<'part> {
             .unwrap_or_default()
     }
 
-    #[allow(unused)]
-    pub(crate) fn get_blocks(&self) -> &BlockMap<'part> {
+    pub fn get_blocks(&self) -> &BlockMap<'part> {
         &self.blocks
     }
 

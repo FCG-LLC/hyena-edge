@@ -30,7 +30,7 @@ pub struct Catalog<'cat> {
     pub groups: PartitionGroupMap<'cat>,
 
     #[serde(skip)]
-    pub(crate) data_root: PathBuf,
+    pub data_root: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -473,7 +473,7 @@ impl Deref for PartitionMeta {
 }
 
 impl<'cat> Catalog<'cat> {
-    pub(crate) fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+    pub fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         let root = root.as_ref().to_path_buf();
 
         let meta = root.join(CATALOG_METADATA);

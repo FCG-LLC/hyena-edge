@@ -22,7 +22,6 @@ extern crate serde;
 extern crate bincode;
 extern crate byteorder;
 
-#[cfg(test)]
 extern crate tempdir;
 #[cfg(test)]
 extern crate num;
@@ -44,7 +43,7 @@ pub(crate) mod params;
 
 pub mod error;
 #[macro_use]
-pub(crate) mod helpers;
+pub mod helpers;
 #[macro_use]
 pub(crate) mod serde_utils;
 

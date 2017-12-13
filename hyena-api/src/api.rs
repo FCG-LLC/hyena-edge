@@ -344,8 +344,8 @@ mod tests {
         mod list_columns {
             use super::*;
             use super::Reply::ListColumns;
-            use ty::block::BlockType::*;
-            use block::BlockType;
+            use hyena_engine::ty::block::BlockType::*;
+            use hyena_engine::block::BlockType;
 
             #[test]
             fn returns_mem_and_mmap_columns() {
@@ -398,7 +398,7 @@ mod tests {
         mod add_column {
             use super::*;
             use super::Reply::{AddColumn, ListColumns};
-            use block::BlockType;
+            use hyena_engine::block::BlockType;
 
             #[test]
             fn adds_column() {
@@ -451,11 +451,11 @@ mod tests {
 
         mod insert {
             use super::*;
-            use ty::fragment::Fragment;
-            use block::BlockType::{I8Dense, U8Sparse};
-            use ty::block::BlockType::Memory;
-            use ty::block::Block as TyBlock;
-            use ty::block::memory::Block as MemBlock;
+            use hyena_engine::ty::fragment::Fragment;
+            use hyena_engine::block::BlockType::{I8Dense, U8Sparse};
+            use hyena_engine::ty::block::BlockType::Memory;
+            use hyena_engine::ty::block::Block as TyBlock;
+            use hyena_engine::ty::block::memory::Block as MemBlock;
 
             #[test]
             fn creates_source_group() {
@@ -478,8 +478,8 @@ mod tests {
 
             #[test]
             fn inserts_all_appends() {
-                use catalog;
-                use partition::Partition;
+                use hyena_engine::catalog;
+                use hyena_engine::partition::Partition;
                 use std::collections::VecDeque;
 
                 let source = 100;
@@ -638,10 +638,10 @@ mod tests {
         mod get_catalog {
             use super::*;
             use super::Reply::RefreshCatalog;
-            use block::BlockType;
-            use ty::fragment::Fragment;
-            use block::BlockType::{I8Dense, U8Sparse};
-            use ty::block::BlockType::Memory;
+            use hyena_engine::block::BlockType;
+            use hyena_engine::ty::fragment::Fragment;
+            use hyena_engine::block::BlockType::{I8Dense, U8Sparse};
+            use hyena_engine::ty::block::BlockType::Memory;
 
             #[test]
             fn handles_empty_catalog() {
@@ -715,7 +715,7 @@ mod tests {
 
         mod scan {
             use super::*;
-            use huuid::Uuid;
+            use hyena_engine::huuid::Uuid;
 
             #[test]
             fn fails_if_mints_later_then_maxts() {
