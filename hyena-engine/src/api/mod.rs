@@ -34,20 +34,20 @@ pub struct DataTriple {
     data: Option<Fragment>
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Default)]
 pub struct ScanResultMessage {
     data: Vec<DataTriple>
 }
 
 impl ScanResultMessage {
     pub fn new() -> ScanResultMessage {
-        ScanResultMessage {
-            data: Vec::new(),
-        }
+        Default::default()
     }
+}
 
-    pub fn with(data: Vec<DataTriple>) -> ScanResultMessage {
-        ScanResultMessage { data: data }
+impl From<Vec<DataTriple>> for ScanResultMessage {
+    fn from(data: Vec<DataTriple>) -> ScanResultMessage {
+        ScanResultMessage { data }
     }
 }
 
@@ -310,36 +310,33 @@ impl Reply {
         if scan_request.min_ts > scan_request.max_ts {
             return Reply::Scan(Err(Error::InvalidScanRequest("min_ts > max_ts".into())));
         }
-        if scan_request.projection.len() == 0 {
+        if scan_request.projection.is_empty() {
             return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
                 .into())));
         }
-        if scan_request.filters.len() == 0 {
+        if scan_request.filters.is_empty() {
             return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
         }
         let scan = Reply::build_scan(scan_request);
-        let result = catalog.scan(&scan).unwrap();
+        let result = match catalog.scan(&scan) {
+            Err(e) => return Reply::Scan(Err(Error::ScanError(e.description().into()))),
+            Ok(r) => r
+        };
 
         let cm: &ColumnMap = catalog.as_ref();
 
-        let srm = result.data.iter().map(|(column, fragment)| {
+        let srm = result.data.into_iter().map(|(column, fragment)| {
             DataTriple {
-                column_id: *column,
-                column_type: match cm.get(column).unwrap().ty {
+                column_id: column,
+                column_type: match cm.get(&column).unwrap().ty {
                     TyBlockType::Memory(t) => t,
                     TyBlockType::Memmap(t) => t,
                 },
-                data: fragment.clone()
-                    // TODO This should not be cloned.
-                    // The scan result should have lifetime tied to the catalog
-                    // and api::ScanResult should return return references.
-                    // Alternatively, it should be able to take over the
-                    // ownership of data fragments from ScanResult to
-                    // api::ScanResultMessage.
+                data: fragment
             }
         }).collect::<Vec<DataTriple>>();
 
-        Reply::Scan(Ok(ScanResultMessage::with(srm)))
+        Reply::Scan(Ok(ScanResultMessage::from(srm)))
     }
 
     fn build_scan(scan_request: ScanRequest) -> Scan {
@@ -349,11 +346,16 @@ impl Reply {
         };
         let mut partitions = HashSet::new();
         partitions.insert(scan_request.partition_id.into());
-        let mut filters = HashMap::new();
-        for filter in scan_request.filters {
-            filters.insert(filter.column,
-                           vec![filter.typed_val.to_scan_filter(&filter.op)]);
-        }
+
+        let filters = scan_request.filters
+            .iter()
+            .map(|filter| (
+                    filter.column,
+                    vec![filter.typed_val.to_scan_filter(&filter.op)]
+                    )
+                )
+            .collect();
+
         Scan::new(filters,
                   Some(scan_request.projection),
                   None,
@@ -409,6 +411,7 @@ pub enum Error {
     InconsistentData(String),
     InvalidScanRequest(String),
     CatalogError(String),
+    ScanError(String),
     Unknown(String),
 }
 
