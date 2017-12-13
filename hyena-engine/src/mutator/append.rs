@@ -4,9 +4,9 @@ use super::BlockData;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Append {
-    pub(crate) ts: TimestampFragment,
-    pub(crate) source_id: SourceId,
-    pub(crate) data: BlockData,
+    pub ts: TimestampFragment,
+    pub source_id: SourceId,
+    pub data: BlockData,
 }
 
 impl Append {

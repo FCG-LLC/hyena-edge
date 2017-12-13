@@ -19,31 +19,31 @@ use ty::block::{BlockTypeMap, BlockTypeMapTy};
 use ty::timestamp::MIN_TIMESTAMP;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
+pub type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
 pub(crate) type PartitionGroupMap<'pg> = HashMap<SourceId, PartitionGroup<'pg>>;
 pub type ColumnMap = HashMap<ColumnId, Column>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
-    pub(crate) columns: ColumnMap,
+    pub columns: ColumnMap,
 
-    pub(crate) groups: PartitionGroupMap<'cat>,
+    pub groups: PartitionGroupMap<'cat>,
 
     #[serde(skip)]
     pub(crate) data_root: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct PartitionGroup<'pg> {
+pub struct PartitionGroup<'pg> {
     // TODO: we should consider changing this to something more universal
     // and less coupled with our specific schema perhaps
     source_id: SourceId,
 
     #[serde(skip)]
-    pub(crate) immutable_partitions: PartitionMap<'pg>,
+    pub immutable_partitions: PartitionMap<'pg>,
 
     #[serde(skip)]
-    pub(crate) mutable_partitions: RwLock<VecDeque<Partition<'pg>>>,
+    pub mutable_partitions: RwLock<VecDeque<Partition<'pg>>>,
 
     #[serde(skip)]
     data_root: PathBuf,
@@ -403,8 +403,8 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Column {
-    pub(crate) ty: TyBlockType,
-    pub(crate) name: String,
+    pub ty: TyBlockType,
+    pub name: String,
 }
 
 impl Column {
@@ -431,7 +431,7 @@ impl Display for Column {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, Hash)]
-pub(crate) struct PartitionMeta {
+pub struct PartitionMeta {
     id: PartitionId,
 
     ts_min: Timestamp,
@@ -620,7 +620,7 @@ impl<'cat> Catalog<'cat> {
     }
 
     #[allow(unused)]
-    pub(crate) fn ensure_group(
+    pub fn ensure_group(
         &mut self,
         source_id: SourceId,
     ) -> Result<&mut PartitionGroup<'cat>> {

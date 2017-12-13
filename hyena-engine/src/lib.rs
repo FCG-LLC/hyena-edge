@@ -42,7 +42,7 @@ extern crate extprim;
 
 pub(crate) mod params;
 
-mod error;
+pub mod error;
 #[macro_use]
 pub(crate) mod helpers;
 #[macro_use]
@@ -52,16 +52,15 @@ mod fs;
 mod storage;
 #[cfg(feature = "hole_punching")]
 mod libc_utils;
-mod block;
+pub mod block;
 
 #[macro_use]
-mod ty;
-mod partition;
+pub mod ty;
+pub mod partition;
 pub mod catalog;
-mod mutator;
+pub mod mutator;
 mod scanner;
-pub mod api;
-mod huuid;
+pub mod huuid;
 
 #[cfg(test)]
 mod tests {

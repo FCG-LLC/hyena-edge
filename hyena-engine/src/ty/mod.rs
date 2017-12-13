@@ -7,8 +7,8 @@ pub mod fragment;
 
 pub mod value;
 
-pub(crate) use self::timestamp::Timestamp;
-pub(crate) use self::block::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap};
+pub use self::timestamp::Timestamp;
+pub use self::block::{Block, BlockHeadMap, BlockId, BlockMap, BlockType, BlockTypeMap};
 pub use self::fragment::{Fragment, FragmentRef, TimestampFragment};
 pub use self::value::Value;
 

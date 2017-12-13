@@ -1,16 +1,16 @@
 use bincode::{Error as BinError, deserialize};
-use block::BlockType;
-use catalog::{Catalog, Column, ColumnMap};
-use error;
-use error::ResultExt;
-use mutator::BlockData;
-use mutator::append::Append;
-use partition::Partition;
+use hyena_engine::block::BlockType;
+use hyena_engine::catalog::{Catalog, Column, ColumnMap};
+use hyena_engine::error;
+use hyena_engine::error::ResultExt;
+use hyena_engine::mutator::BlockData;
+use hyena_engine::mutator::append::Append;
+use hyena_engine::partition::Partition;
 use std::collections::hash_map::HashMap;
 use std::convert::From;
 use std::result::Result;
-use ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
-use huuid::Uuid;
+use hyena_engine::ty::{Block, BlockType as TyBlockType, ColumnId, TimestampFragment};
+use hyena_engine::huuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {

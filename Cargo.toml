@@ -24,6 +24,10 @@ bincode = "0.8.0"
 optional = false
 path = "hyena-engine"
 
+[dependencies.hyena-api]
+optional = false
+path = "hyena-api"
+
 [dependencies.colored_logger]
 git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
 optional = false
