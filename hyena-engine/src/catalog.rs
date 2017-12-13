@@ -269,6 +269,12 @@ impl<'pg> PartitionGroup<'pg> {
 
         partitions
             .par_iter()
+            .filter(|partition| if let Some(ref partitions) = scan.partitions {
+                // todo: benchmark Partition::get_id() -> &PartitionId
+                partitions.contains(&partition.get_id())
+            } else {
+                true
+            })
             .map(|partition| {
                 partition
                     .scan(&scan)
@@ -784,6 +790,8 @@ mod tests {
         use super::*;
         use ty::fragment::Fragment;
 
+        pub(crate) const DEFAULT_PARTITION_GROUPS: [SourceId; 3] = [1, 5, 7];
+
         macro_rules! append_test_impl {
             (init $columns: expr) => {
                 append_test_impl!(init $columns, <Timestamp as Default>::default())
@@ -791,9 +799,16 @@ mod tests {
             };
 
             (init $columns: expr, $ts_min: expr) => {{
+                // assume 1, 5, 7 as default partition group ids for tests
+                use catalog::tests::append::DEFAULT_PARTITION_GROUPS;
+
+                append_test_impl!(init DEFAULT_PARTITION_GROUPS, $columns, $ts_min)
+            }};
+
+            (init $partition_groups: expr, $columns: expr, $ts_min: expr) => {{
                 let ts_min = $ts_min;
 
-                let source_ids = [1, 5, 7];
+                let source_ids = $partition_groups;
 
                 let root = tempdir!();
 
@@ -840,7 +855,39 @@ mod tests {
                 ])+)
             };
 
+            ($partition_groups: expr,
+                $schema: expr,
+                $now: expr,
+                $([
+                    $ts: expr,
+                    $data: expr    // HashMap
+                ]),+ $(,)*) => {
+
+                append_test_impl!($partition_groups, $schema, $now, $([
+                    $ts,
+                    $data,
+                    1  // default source_id used in tests
+                ])+)
+            };
+
             ($schema: expr,
+                $now: expr,
+                $([
+                    $ts: expr,
+                    $data: expr,    // HashMap
+                    $source_id: expr
+                ]),+ $(,)*) => {{
+                use catalog::tests::append::DEFAULT_PARTITION_GROUPS;
+
+                append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $([
+                    $ts,
+                    $data,
+                    $source_id
+                ],)+)
+            }};
+
+            ($partition_groups: expr,
+                $schema: expr,
                 $now: expr,
                 $([
                     $ts: expr,
@@ -852,7 +899,7 @@ mod tests {
 
                 let now = $now;
 
-                let init = append_test_impl!(init columns.clone(), now);
+                let init = append_test_impl!(init $partition_groups, columns.clone(), now);
                 let cat = init.1;
 
                 $(
@@ -2284,6 +2331,83 @@ mod tests {
                         assert_eq!(result, expected);
                     }
                     )+
+                }
+            }
+
+            mod pruning {
+                use super::*;
+                use block::BlockType as BlockTy;
+                use self::TyBlockType::Memmap;
+                use ty::fragment::Fragment;
+                use scanner::{ScanResult, ScanFilter};
+
+
+                #[test]
+                fn partition() {
+                    let now = 1;
+
+                    let record_count = MAX_RECORDS * 4 - 1;
+
+                    let mut v = vec![Timestamp::from(0); record_count];
+                    seqfill!(Timestamp, &mut v[..], now);
+
+                    let td = append_test_impl!(
+                        [1],
+                        hashmap! {
+                            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                            1 => Column::new(Memmap(BlockTy::U32Dense), "source_id"),
+                        },
+                        now,
+                        [
+                            v.into(),
+                            hashmap! {}
+                        ]
+                    );
+
+                    let cat = Catalog::with_data(&td)
+                        .chain_err(|| "unable to open catalog")
+                        .unwrap();
+
+                    let pids = cat.groups
+                        .iter()
+                        .flat_map(|(_, pg)| {
+                            let parts = acquire!(read pg.mutable_partitions);
+                            parts
+                                .iter()
+                                // is_empty filtering is required because there's an empty
+                                // prtition created for each new partition group
+                                .filter_map(|p| if !p.is_empty() { Some(p.get_id()) } else { None })
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                        })
+                        .collect::<Vec<_>>();
+
+                    assert_eq!(pids.len(), 4);
+
+                    let parts = hashset! {pids[0], pids[2]};
+
+                    let v = seqfill!(iter u64, MAX_RECORDS, 1)
+                        .chain(seqfill!(iter u64, MAX_RECORDS, MAX_RECORDS * 2 + 1))
+                        .collect::<Vec<_>>();
+
+                    let expected = ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(v)),
+                        1 => Some(Fragment::from(Vec::<u32>::new())),
+                    });
+
+                    let scan = Scan::new(
+                        hashmap! {
+                            0 => vec![ScanFilter::U64(ScanFilterOp::Gt(0))] // a.k.a. full scan
+                        },
+                        None,
+                        None,
+                        Some(parts),
+                        None,
+                    );
+
+                    let result = cat.scan(&scan).chain_err(|| "scan failed").unwrap();
+
+                    assert_eq!(expected, result);
                 }
             }
 
