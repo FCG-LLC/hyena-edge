@@ -1,6 +1,5 @@
 use clap;
 use std::fs;
-use std::str;
 use futures::{future, Future, Stream};
 use tokio_core::reactor::Core;
 use nanomsg_tokio::Socket as NanoSocket;
