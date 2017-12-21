@@ -77,7 +77,7 @@ impl<'part> Partition<'part> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.blocks.is_empty() || self.len() != 0
+        self.blocks.is_empty() || self.len() == 0
     }
 
     pub(crate) fn append<'frag>(

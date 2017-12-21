@@ -3,6 +3,7 @@ use ty::ColumnId;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Deref;
 use partition::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
@@ -173,6 +174,14 @@ impl From<HashMap<ColumnId, Option<Fragment>>> for ScanResult {
 pub trait ScanFilterApply<T> {
     #[inline]
     fn apply(&self, tested: &T) -> bool;
+}
+
+impl Deref for ScanResult {
+    type Target = HashMap<ColumnId, Option<Fragment>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
 }
 
 macro_rules! scan_filter_impl {
