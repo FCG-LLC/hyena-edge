@@ -632,23 +632,6 @@ impl<'cat> Catalog<'cat> {
             .unwrap_or_default()
     }
 
-    #[allow(unused)]
-    fn create_partition<'part, TS>(
-        &mut self,
-        source_id: SourceId,
-        ts: TS,
-    ) -> Result<Partition<'part>>
-    where
-        TS: Into<Timestamp> + Clone + Copy,
-    {
-        let pg = self.ensure_group(source_id)
-            .chain_err(|| {
-                format!("Unable to retrieve partition group for {}", source_id)
-            })?;
-        pg.create_partition(ts)
-    }
-
-    #[allow(unused)]
     pub(crate) fn ensure_group(
         &mut self,
         source_id: SourceId,
