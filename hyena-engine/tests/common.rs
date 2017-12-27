@@ -29,8 +29,15 @@ macro_rules! wrap_result {
     };
 }
 
+// dead_code warning has to be silenced because of how integration-style tests work in Rust
+// This module is used in all other test modules and it's also treated as a standalone test
+// and for each test module it's linked and linted separately
+// So, if we use this function in all but one test module it will generate dead_code
+// during the compilation of that single module
+
 /// Get column index, column name pairs from the `Catalog`
 
+#[allow(dead_code)]
 pub fn get_columns(catalog: &Catalog) -> Vec<(usize, String)> {
     let mut columns = catalog
         .as_ref()

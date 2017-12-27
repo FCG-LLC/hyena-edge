@@ -3544,8 +3544,13 @@ mod tests {
                 .chain_err(|| "Unable to create catalog")
                 .unwrap();
 
-            cat.add_partition_group(1).unwrap();
-            cat.add_partition_group(1).unwrap();
+            const PG_ID: SourceId = 10;
+
+            cat.add_partition_group(PG_ID).unwrap();
+            cat.add_partition_group(PG_ID).unwrap();
+
+            assert_eq!(cat.groups.len(), 1);
+            assert_eq!(cat.groups.iter().nth(0).expect("partition group not found").0, &PG_ID);
         }
     }
 }
