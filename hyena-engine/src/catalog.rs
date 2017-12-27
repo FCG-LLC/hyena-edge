@@ -518,14 +518,8 @@ impl<'cat> Catalog<'cat> {
         Catalog::deserialize(&meta, &root)
     }
 
-    pub fn open_or_create<P: AsRef<Path> + Clone>(root: P) -> Catalog<'cat> {
-        match Catalog::with_data(root.clone()) {
-            Ok(catalog) => catalog,
-            Err(e) => {
-                debug!("Can't open data_dir: {:?}", e);
-                Catalog::new(root).unwrap()
-            }
-        }
+    pub fn open_or_create<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+        Catalog::with_data(root.as_ref()).or_else(|_| Catalog::new(root.as_ref()))
     }
 
     pub fn append(&self, data: &Append) -> Result<usize> {
