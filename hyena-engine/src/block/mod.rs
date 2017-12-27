@@ -1,7 +1,5 @@
 use error::*;
-use std::collections::hash_map::HashMap;
 use std::fmt::Debug;
-use ty::block::BlockId;
 use extprim::u128::u128;
 
 mod numeric;
@@ -144,9 +142,6 @@ pub trait BlockData<'block, T: 'block, I: 'block>
         }
     }
 }
-
-#[allow(unused)]
-pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockType {
