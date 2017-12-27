@@ -71,7 +71,7 @@ pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
 pub use self::ty::Value;
-pub use self::ty::timestamp::Timestamp;
+pub use self::ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
 
 pub use self::mutator::{Append, BlockData};
 
