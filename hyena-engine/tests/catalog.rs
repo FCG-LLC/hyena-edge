@@ -2,46 +2,16 @@ extern crate hyena_engine;
 extern crate tempdir;
 
 use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, Result, ResultExt, Scan, ScanFilter, ScanFilterOp, ScanResult,
+                   Fragment, ResultExt, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
-use tempdir::TempDir;
 
 use std::iter::repeat;
 use std::collections::{HashMap, HashSet};
 
-const TEMPDIR_PREFIX: &str = "hyena-int-test";
+#[macro_use]
+mod common;
 
-fn catalog_dir() -> Result<TempDir> {
-    TempDir::new(TEMPDIR_PREFIX).chain_err(|| "unable to create temporary directory")
-}
-
-fn wrap_result<F>(cl: F)
-where
-    F: Fn() -> Result<()>,
-{
-    cl().chain_err(|| "test execution failed").unwrap()
-}
-
-macro_rules! wrap_result {
-    ($cl: block) => {
-        wrap_result(|| {
-            $cl;
-            Ok(())
-        })
-    };
-}
-
-fn get_columns(catalog: &Catalog) -> Vec<(usize, String)> {
-    let mut columns = catalog
-        .as_ref()
-        .iter()
-        .map(|(colid, col)| (*colid, col.to_string()))
-        .collect::<Vec<_>>();
-
-    columns.sort_by_key(|&(colidx, _)| colidx);
-
-    columns
-}
+use common::{catalog_dir, get_columns, wrap_result};
 
 #[test]
 fn it_creates_catalog() {

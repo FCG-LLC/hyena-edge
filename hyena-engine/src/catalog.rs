@@ -3556,5 +3556,17 @@ mod tests {
                 create_random_partitions(pg, im_part_count, mut_part_count);
             }
         }
+
+        #[test]
+        fn add_partition_group_idempotence() {
+            let root = tempdir!();
+
+            let mut cat = Catalog::new(&root)
+                .chain_err(|| "Unable to create catalog")
+                .unwrap();
+
+            cat.add_partition_group(1).unwrap();
+            cat.add_partition_group(1).unwrap();
+        }
     }
 }
