@@ -85,15 +85,15 @@ macro_rules! flame {
 }
 
 #[allow(unused_macros)]
-macro_rules! t {		
-    ($t: expr, $name: expr) => {		
-        #[cfg(feature = "tperf")]		
-        println!("{}: {:?} s", $name, $t.elapsed());		
-    };		
+macro_rules! t {
+    ($t: expr, $name: expr) => {
+        #[cfg(feature = "tperf")]
+        println!("{}: {:?} s", $name, $t.elapsed());
+    };
 
-    () => {{		
-        use std::time::Instant;		
+    () => {{
+        use std::time::Instant;
 
-        Instant::now()		
-    }};		
+        Instant::now()
+    }};
 }
