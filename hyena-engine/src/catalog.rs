@@ -653,20 +653,22 @@ impl<'cat> Catalog<'cat> {
         &mut self,
         source_id: SourceId,
     ) -> Result<&mut PartitionGroup<'cat>> {
-        let root = self.data_root.clone();
+        let data_root = <_ as AsRef<Path>>::as_ref(&self.data_root);
 
         Ok(self.groups.entry(source_id).or_insert_with(|| {
             // this shouldn't fail in general
 
-            let root = PartitionGroupManager::new(root, source_id)
+            let root = PartitionGroupManager::new(data_root, source_id)
                 .chain_err(|| "Failed to create group manager")
                 .unwrap();
 
             let mut pg = PartitionGroup::new(&root, source_id)
                 .chain_err(|| "Unable to create partition group")
                 .unwrap();
+
             Catalog::create_single_partition(&mut pg);
             pg.flush().unwrap();
+
             pg
         }))
     }
