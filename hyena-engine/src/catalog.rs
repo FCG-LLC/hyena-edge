@@ -34,7 +34,7 @@ pub struct Catalog<'cat> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct PartitionGroup<'pg> {
+pub struct PartitionGroup<'pg> {
     // TODO: we should consider changing this to something more universal
     // and less coupled with our specific schema perhaps
     source_id: SourceId,
@@ -73,6 +73,10 @@ impl<'pg> PartitionGroup<'pg> {
         let meta = root.join(PARTITION_GROUP_METADATA);
 
         PartitionGroup::deserialize(&meta, &root)
+    }
+
+    pub fn partitions(&self) -> &PartitionMap<'pg> {
+        &self.immutable_partitions
     }
 
     fn flush(&self) -> Result<()> {
@@ -437,7 +441,7 @@ impl Display for Column {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, Hash)]
-pub(crate) struct PartitionMeta {
+pub struct PartitionMeta {
     id: PartitionId,
 
     ts_min: Timestamp,
@@ -455,6 +459,10 @@ impl PartitionMeta {
             ts_min: ts_min.into(),
             ts_max: ts_max.into(),
         }
+    }
+
+    pub fn id(&self) -> PartitionId {
+        self.id
     }
 }
 
@@ -666,6 +674,10 @@ impl<'cat> Catalog<'cat> {
         }))
     }
 
+    }
+
+    pub fn partition_groups(&self) -> &PartitionGroupMap<'cat> {
+        &self.groups
     fn create_single_partition(pg: &mut PartitionGroup) {
         let part = pg.create_partition(MIN_TIMESTAMP)
             .chain_err(|| "Unable to create partition")
