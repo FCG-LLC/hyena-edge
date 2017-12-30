@@ -1,11 +1,10 @@
 extern crate bincode;
 extern crate byteorder;
-#[macro_use]
-extern crate cfg_if;
 extern crate chrono;
 extern crate extprim;
 extern crate failure;
 extern crate num;
+extern crate rand;
 extern crate serde;
 #[macro_use]
 extern crate serde_derive;
