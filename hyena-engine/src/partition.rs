@@ -2,8 +2,9 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp,
+use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap,
 ColumnId, RowId};
+use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
@@ -586,7 +587,7 @@ mod tests {
     use ty::BlockId;
     use ty::block::{Block, BlockType as TyBlockType};
     use std::fmt::Debug;
-    use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+    use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
     use block::BlockData;
     use ty::fragment::Fragment;
 

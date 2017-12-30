@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use super::Storage;
 
-use super::map_type::{map_type, map_type_mut};
+use hyena_common::map_type::{map_type, map_type_mut};
 
 
 pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {

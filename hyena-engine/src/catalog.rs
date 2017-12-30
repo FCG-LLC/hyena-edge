@@ -1,5 +1,6 @@
 use error::*;
-use ty::{BlockType as TyBlockType, ColumnId, Timestamp};
+use ty::{BlockType as TyBlockType, ColumnId};
+use hyena_common::ty::{Timestamp, MIN_TIMESTAMP};
 use block::{BlockType, SparseIndex};
 use partition::{Partition, PartitionId};
 use storage::manager::{PartitionGroupManager, PartitionManager};
@@ -16,7 +17,6 @@ use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
 use ty::block::{BlockTypeMap, BlockTypeMapTy};
-use ty::timestamp::MIN_TIMESTAMP;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 pub(crate) type PartitionMap<'part> = HashMap<PartitionMeta, Partition<'part>>;
@@ -750,7 +750,7 @@ impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
 mod tests {
     use super::*;
     use storage::manager::RootManager;
-    use helpers::random::timestamp::RandomTimestampGen;
+    use hyena_test::random::timestamp::RandomTimestampGen;
     use params::BLOCK_SIZE;
 
     // until const fn stabilizes we have to use this hack
@@ -2011,7 +2011,7 @@ mod tests {
 
     mod partition_meta {
         use super::*;
-        use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+        use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
 
         #[test]
         fn deref() {

@@ -127,8 +127,7 @@ mod tests {
         use std::fmt::Debug;
         use std::ops::Not;
         use chrono::prelude::*;
-        use ty::Timestamp;
-        use ty::timestamp::ToTimestampMicros;
+        use hyena_common::ty::{Timestamp, ToTimestampMicros};
 
         pub(super) fn block_ts<'block, S: 'block + Storage<'block, Timestamp>>(storage: S) {
             let mut block = DenseNumericBlock::new(storage)

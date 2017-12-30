@@ -1,6 +1,6 @@
 use error::*;
 use std::path::{Path, PathBuf};
-use ty::Timestamp;
+use hyena_common::ty::Timestamp;
 use fs::ensure_dir;
 use chrono::prelude::*;
 

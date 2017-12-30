@@ -1,11 +1,12 @@
 use error::*;
 use block::SparseIndex;
-use ty::{Timestamp, RowId};
+use hyena_common::ty::Timestamp;
+use ty::RowId;
 use std::mem::transmute;
 use extprim::i128::i128;
 use extprim::u128::u128;
 use std::marker::PhantomData;
-use ty::value::Value;
+use hyena_common::ty::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fragment {
@@ -749,7 +750,7 @@ mod tests {
 
     mod timestamp {
         use super::*;
-        use helpers::random::timestamp::RandomTimestampGen;
+        use hyena_test::random::timestamp::RandomTimestampGen;
 
         #[test]
         fn is_eq() {

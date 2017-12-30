@@ -9,7 +9,7 @@ use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Colu
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
-use hyena_test::tempfile::volatile_tempdir::TempDir;
+use hyena_test::tempfile::VolatileTempDir as TempDir;
 
 use std::iter::repeat;
 use std::collections::HashMap;

@@ -1,4 +1,5 @@
-use ty::{ColumnId, Value};
+use ty::ColumnId;
+use hyena_common::ty::Value;
 use ty::fragment::{Fragment, FragmentIter};
 use scanner::ScanResult;
 use prettytable::Table;

@@ -2,7 +2,7 @@ use error::*;
 
 use libc::{fallocate, FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE};
 use std::os::unix::io::AsRawFd;
-use libc_utils::cvt_r;
+use hyena_common::libc::cvt_r;
 
 
 pub fn punch_hole<F: AsRawFd>(file: &F, size: usize) -> Result<()> {

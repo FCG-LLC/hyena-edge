@@ -19,6 +19,8 @@ extern crate serde_derive;
 extern crate serde;
 extern crate bincode;
 extern crate byteorder;
+#[macro_use]
+extern crate hyena_common;
 
 #[cfg(test)]
 #[macro_use]
@@ -42,22 +44,14 @@ extern crate term;
 extern crate static_assertions;
 extern crate extprim;
 
-#[cfg(test)]
-#[macro_use]
-use hyena_test::tempfile;
-
 pub(crate) mod params;
 
 mod error;
 #[macro_use]
 pub(crate) mod helpers;
-#[macro_use]
-pub(crate) mod serde_utils;
 
 mod fs;
 mod storage;
-#[cfg(feature = "hole_punching")]
-mod libc_utils;
 mod block;
 
 #[macro_use]
@@ -66,7 +60,6 @@ mod partition;
 pub mod catalog;
 mod mutator;
 mod scanner;
-mod huuid;
 
 pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
@@ -75,8 +68,8 @@ pub use self::catalog::{Catalog, Column, ColumnMap};
 pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
-pub use self::ty::Value;
-pub use self::ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
+pub use hyena_common::ty::Value;
+pub use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
 
 pub use self::mutator::{Append, BlockData};
 

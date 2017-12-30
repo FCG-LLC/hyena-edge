@@ -1,6 +1,6 @@
 use error::*;
 use super::Storage;
-use super::map_type::{map_type, map_type_mut};
+use hyena_common::map_type::{map_type, map_type_mut};
 use std::mem::{size_of, uninitialized};
 use std::intrinsics::copy_nonoverlapping;
 use std::marker::PhantomData;

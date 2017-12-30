@@ -5,7 +5,7 @@ extern crate failure;
 use self::failure::ResultExt;
 
 use self::hyena_test::tempfile;
-use self::tempfile::volatile_tempdir::TempDir;
+use self::tempfile::VolatileTempDir as TempDir;
 
 use hyena_engine::{Catalog, Result};
 
