@@ -92,7 +92,7 @@ mod tests {
                 let data = $data;
 
                 let mut block = DenseNumericBlock::<$T, _>::new(data)
-                    .chain_err(|| "failed to create block")
+                    .with_context(|_| "failed to create block")
                     .unwrap();
 
                 let s = [!$T::zero(), $T::zero()];
@@ -132,7 +132,7 @@ mod tests {
 
         pub(super) fn block_ts<'block, S: 'block + Storage<'block, Timestamp>>(storage: S) {
             let mut block = DenseNumericBlock::new(storage)
-                .chain_err(|| "failed to create block")
+                .with_context(|_| "failed to create block")
                 .unwrap();
 
             let d1 = Utc::now().to_timestamp_micros().into();
@@ -161,7 +161,7 @@ mod tests {
             S: 'block + Storage<'block, T>,
         {
             let mut block = DenseNumericBlock::new(storage)
-                .chain_err(|| "failed to create block")
+                .with_context(|_| "failed to create block")
                 .unwrap();
 
             let s = [!T::zero(), T::zero()];
@@ -193,7 +193,7 @@ mod tests {
             S: 'block + Storage<'block, T>,
         {
             let mut block = DenseNumericBlock::new(storage)
-                .chain_err(|| "failed to create block")
+                .with_context(|_| "failed to create block")
                 .unwrap();
 
             let s = [T::max_value(), T::zero()];
@@ -226,7 +226,7 @@ mod tests {
 
         fn make_storage() -> PagedMemoryStorage {
             PagedMemoryStorage::new(BLOCK_SIZE)
-                .chain_err(|| "failed to create memory storage")
+                .with_context(|_| "failed to create memory storage")
                 .unwrap()
         }
 
@@ -305,7 +305,7 @@ mod tests {
             let (_dir, file) = tempfile!(name);
 
             MemmapStorage::new(file, BLOCK_SIZE)
-                .chain_err(|| "failed to create memory storage")
+                .with_context(|_| "failed to create memory storage")
                 .unwrap()
         }
 

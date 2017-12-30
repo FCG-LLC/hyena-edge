@@ -1,5 +1,4 @@
 extern crate hyena_engine;
-extern crate tempdir;
 
 use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
                    Fragment, SparseIndex, Timestamp, TimestampFragment};

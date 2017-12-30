@@ -1,8 +1,10 @@
 extern crate hyena_engine;
-extern crate tempdir;
+extern crate failure;
+
+use failure::ResultExt;
 
 use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, ResultExt, Scan, ScanFilter, ScanFilterOp, ScanResult,
+                   Fragment, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
 use std::iter::repeat;
@@ -202,7 +204,7 @@ fn it_scans() {
             None,
         );
 
-        let result = cat.scan(&scan).chain_err(|| "scan failed")?;
+        let result = cat.scan(&scan).with_context(|_| "scan failed")?;
 
         let expected = {
             let mut result = HashMap::new();

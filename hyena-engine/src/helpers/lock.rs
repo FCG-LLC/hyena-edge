@@ -10,28 +10,28 @@ macro_rules! acquire {
 
     (raw read $lock: expr) => {
         $lock.read()
-            .map_err(|poison_err| Error::from(poison_err.to_string()))
-            .chain_err(|| "Unable to acquire read lock")
+            .map_err(|poison_err| ::failure::err_msg(poison_err.to_string()))
+            .with_context(|_| "Unable to acquire read lock")
             .unwrap()
     };
 
     (raw read carry $lock: expr) => {
         $lock.read()
-            .map_err(|poison_err| Error::from(poison_err.to_string()))
-            .chain_err(|| "Unable to acquire read lock")?
+            .map_err(|poison_err| ::failure::err_msg(poison_err.to_string()))
+            .with_context(|_| "Unable to acquire read lock")?
     };
 
     (raw write $lock: expr) => {
         $lock.write()
-            .map_err(|poison_err| Error::from(poison_err.to_string()))
-            .chain_err(|| "Unable to acquire write lock")
+            .map_err(|poison_err| ::failure::err_msg(poison_err.to_string()))
+            .with_context(|_| "Unable to acquire write lock")
             .unwrap()
     };
 
     (raw write carry $lock: expr) => {
         $lock.write()
-            .map_err(|poison_err| Error::from(poison_err.to_string()))
-            .chain_err(|| "Unable to acquire write lock")?
+            .map_err(|poison_err| ::failure::err_msg(poison_err.to_string()))
+            .with_context(|_| "Unable to acquire write lock")?
     };
 }
 

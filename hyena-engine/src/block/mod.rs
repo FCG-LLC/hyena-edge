@@ -138,7 +138,7 @@ pub trait BlockData<'block, T: 'block, I: 'block>
             Ok(())
         } else {
             // TODO: migrate to proper ErrorKind
-            Err("by_count exceeds current head".into())
+            Err(err_msg("by_count exceeds current head"))
         }
     }
 }

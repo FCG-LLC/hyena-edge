@@ -109,7 +109,7 @@ impl<'pg> PartitionGroup<'pg> {
                 bail!("column {} not found", colidx)
             })
             .collect::<Result<BlockTypeMapTy>>()
-            .chain_err(|| "failed to prepare all columns")?
+            .with_context(|_| err_msg("failed to prepare all columns"))?
             .into();
 
         let fragcount = data.len();
@@ -119,7 +119,7 @@ impl<'pg> PartitionGroup<'pg> {
             // current partition capacity
             let curpart = partitions
                 .back()
-                .ok_or_else(|| "Mutable partitions pool is empty")?;
+                .ok_or_else(|| err_msg("Mutable partitions pool is empty"))?;
 
             // empty partition capacity for this append
             let emptycap = catalog.space_for_blocks(&colindices);
@@ -191,7 +191,7 @@ impl<'pg> PartitionGroup<'pg> {
                                 // in reality we shouldn't ever use mid > u32::MAX
                                 // it's still worth to consider adding some check
                                 let (frag_0, frag_1) = frag.split_at_idx(mid as SparseIndex)
-                                    .chain_err(|| "unable to split sparse fragment")
+                                    .with_context(|_| "unable to split sparse fragment")
                                     .unwrap();
 
                                 hm_0.insert(*col_id, frag_0);
@@ -211,7 +211,7 @@ impl<'pg> PartitionGroup<'pg> {
                     ts_idx.push(
                         *(&ts_0[..]
                             .first()
-                            .ok_or_else(|| "ts_0 was empty, this shouldn't happen")
+                            .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
                             .unwrap()),
                     );
                     frag_0.insert(0, FragmentRef::from(&ts_0[..]));
@@ -239,7 +239,7 @@ impl<'pg> PartitionGroup<'pg> {
             .skip(if current_is_full { 0 } else { 1 })
             .map(|ts| self.create_partition(**ts))
             .collect::<Result<Vec<_>>>()
-            .chain_err(|| "Unable to create partition for writing")?;
+            .with_context(|_| "Unable to create partition for writing")?;
 
         partitions.extend(newparts);
 
@@ -253,7 +253,7 @@ impl<'pg> PartitionGroup<'pg> {
         {
             partition
                 .append(&typemap, &fragment, *offset as SparseIndex)
-                .chain_err(|| "partition append failed")
+                .with_context(|_| "partition append failed")
                 .unwrap();
         }
 
@@ -279,7 +279,7 @@ impl<'pg> PartitionGroup<'pg> {
             .map(|partition| {
                 partition
                     .scan(&scan)
-                    .chain_err(|| "partition scan failed")
+                    .with_context(|_| "partition scan failed")
                     .ok()
             })
             .reduce(
@@ -295,7 +295,7 @@ impl<'pg> PartitionGroup<'pg> {
                     Some(a)
                 },
             )
-            .ok_or_else(|| "partition scan failed".into())
+            .ok_or_else(|| err_msg("partition scan failed"))
     }
 
     fn create_partition<'part, TS>(&self, ts: TS) -> Result<Partition<'part>>
@@ -305,7 +305,7 @@ impl<'pg> PartitionGroup<'pg> {
         let part_id = Partition::gen_id();
 
         let part_root = PartitionManager::new(&self.data_root, part_id, ts)
-            .chain_err(|| "Unable to create partition data path")?;
+            .with_context(|_| "Unable to create partition data path")?;
 
         Partition::new(part_root, part_id, ts)
     }
@@ -318,7 +318,7 @@ impl<'pg> PartitionGroup<'pg> {
         ids.into_iter()
             .map(|part_meta| {
                 let path = PartitionManager::new(&root, part_meta.id, part_meta.ts_min)
-                    .chain_err(|| {
+                    .with_context(|_| {
                         format!(
                             "Unable to obtain data directory for partition {}",
                             &*part_meta
@@ -326,7 +326,7 @@ impl<'pg> PartitionGroup<'pg> {
                     })?;
 
                 let partition = Partition::with_data(path)
-                    .chain_err(|| format!("Unable to read partition {:?}", &*part_meta))?;
+                    .with_context(|_| format!("Unable to read partition {:?}", &*part_meta))?;
 
                 Ok((part_meta, partition))
             })
@@ -341,7 +341,7 @@ impl<'pg> PartitionGroup<'pg> {
         ids.into_iter()
             .map(|part_meta| {
                 let path = PartitionManager::new(&root, part_meta.id, part_meta.ts_min)
-                    .chain_err(|| {
+                    .with_context(|_| {
                         format!(
                             "Unable to obtain data directory for partition {}",
                             &*part_meta
@@ -349,7 +349,7 @@ impl<'pg> PartitionGroup<'pg> {
                     })?;
 
                 let partition = Partition::with_data(path)
-                    .chain_err(|| format!("Unable to read partition {:?}", &*part_meta))?;
+                    .with_context(|_| format!("Unable to read partition {:?}", &*part_meta))?;
 
                 Ok(partition)
             })
@@ -367,7 +367,9 @@ impl<'pg> PartitionGroup<'pg> {
 
         let data = (pg, im_partition_metas, mut_partition_metas);
 
-        serialize!(file meta, &data).chain_err(|| "Failed to serialize partition group metadata")
+        serialize!(file meta, &data)
+            .with_context(|_| "Failed to serialize partition group metadata")
+            .map_err(|e| e.into())
     }
 
     fn deserialize<P: AsRef<Path>, R: AsRef<Path>>(
@@ -385,14 +387,14 @@ impl<'pg> PartitionGroup<'pg> {
             Vec<PartitionMeta>,
             Vec<PartitionMeta>,
         ) = deserialize!(file meta)
-            .chain_err(|| "Failed to read catalog metadata")?;
+            .with_context(|_| "Failed to read catalog metadata")?;
 
         pg.immutable_partitions = PartitionGroup::prepare_partitions(&root, im_partition_metas)
-            .chain_err(|| "Failed to read immutable partitions data")?;
+            .with_context(|_| "Failed to read immutable partitions data")?;
 
         pg.mutable_partitions = locked!(rw PartitionGroup::prepare_mut_partitions(
             &root, mut_partition_metas)
-            .chain_err(|| "Failed to read mutable partitions data")?);
+            .with_context(|_| "Failed to read mutable partitions data")?);
 
         pg.data_root = root.as_ref().to_path_buf();
 
@@ -403,7 +405,7 @@ impl<'pg> PartitionGroup<'pg> {
 impl<'pg> Drop for PartitionGroup<'pg> {
     fn drop(&mut self) {
         self.flush()
-            .chain_err(|| "Failed to flush data during drop")
+            .with_context(|_| "Failed to flush data during drop")
             .unwrap();
     }
 }
@@ -595,10 +597,10 @@ impl<'cat> Catalog<'cat> {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
 
             if self.columns.contains_key(id) {
-                bail!(ErrorKind::ColumnIdAlreadyExists(*id));
+                bail!("Column Id already exists {}", *id);
             }
             if self.columns.values().any(|col| col.name == column.name) {
-                bail!(ErrorKind::ColumnNameAlreadyExists(column.name.clone()));
+                bail!("Column Name already exists {}", *id);
             }
         }
 
@@ -642,11 +644,11 @@ impl<'cat> Catalog<'cat> {
             // this shouldn't fail in general
 
             let root = PartitionGroupManager::new(data_root, source_id)
-                .chain_err(|| "Failed to create group manager")
+                .with_context(|_| "Failed to create group manager")
                 .unwrap();
 
             let mut pg = PartitionGroup::new(&root, source_id)
-                .chain_err(|| "Unable to create partition group")
+                .with_context(|_| "Unable to create partition group")
                 .unwrap();
 
             Catalog::create_single_partition(&mut pg);
@@ -666,7 +668,7 @@ impl<'cat> Catalog<'cat> {
 
     fn create_single_partition(pg: &mut PartitionGroup) {
         let part = pg.create_partition(MIN_TIMESTAMP)
-            .chain_err(|| "Unable to create partition")
+            .with_context(|_| "Unable to create partition")
             .unwrap();
 
         let mut vp = VecDeque::new();
@@ -683,7 +685,7 @@ impl<'cat> Catalog<'cat> {
     {
         ids.into_iter()
             .map(|source_id| {
-                let path = PartitionGroupManager::new(&root, source_id).chain_err(|| {
+                let path = PartitionGroupManager::new(&root, source_id).with_context(|_| {
                     format!(
                         "Unable to obtain data directory for partition group {}",
                         source_id
@@ -691,7 +693,7 @@ impl<'cat> Catalog<'cat> {
                 })?;
 
                 let partition_group = PartitionGroup::with_data(path)
-                    .chain_err(|| format!("Unable to read partition group {:?}", source_id))?;
+                    .with_context(|_| format!("Unable to read partition group {:?}", source_id))?;
 
                 Ok((source_id, partition_group))
             })
@@ -706,7 +708,9 @@ impl<'cat> Catalog<'cat> {
 
         let data = (catalog, group_metas);
 
-        serialize!(file meta, &data).chain_err(|| "Failed to serialize catalog metadata")
+        serialize!(file meta, &data)
+            .with_context(|_| "Failed to serialize catalog metadata")
+            .map_err(|e| e.into())
     }
 
     fn deserialize<P: AsRef<Path>, R: AsRef<Path>>(meta: P, root: R) -> Result<Catalog<'cat>> {
@@ -717,10 +721,10 @@ impl<'cat> Catalog<'cat> {
         }
 
         let (mut catalog, group_metas): (Catalog, Vec<SourceId>) = deserialize!(file meta)
-            .chain_err(|| "Failed to read catalog metadata")?;
+            .with_context(|_| "Failed to read catalog metadata")?;
 
         catalog.groups = Catalog::prepare_partition_groups(&root, group_metas)
-            .chain_err(|| "Failed to read partition data")?;
+            .with_context(|_| "Failed to read partition data")?;
 
         catalog.data_root = root.as_ref().to_path_buf();
 
@@ -731,7 +735,7 @@ impl<'cat> Catalog<'cat> {
 impl<'cat> Drop for Catalog<'cat> {
     fn drop(&mut self) {
         self.flush()
-            .chain_err(|| "Failed to flush data during drop")
+            .with_context(|_| "Failed to flush data during drop")
             .unwrap();
     }
 }
@@ -764,11 +768,11 @@ mod tests {
         let (imparts, mutparts): (Vec<_>, Vec<_>) = pts.iter()
             .map(|&(ref lo, ref hi)| {
                 let mut part = pg.create_partition(*lo)
-                    .chain_err(|| "Unable to create partition")
+                    .with_context(|_| "Unable to create partition")
                     .unwrap();
 
                 part.set_ts(None, Some(*hi))
-                    .chain_err(|| "Failed to set timestamp on partition")
+                    .with_context(|_| "Failed to set timestamp on partition")
                     .unwrap();
 
                 part
@@ -811,7 +815,7 @@ mod tests {
                 let root = tempdir!();
 
                 let mut cat = Catalog::new(&root)
-                    .chain_err(|| "Unable to create catalog")
+                    .with_context(|_| "Unable to create catalog")
                     .unwrap();
 
                 let columns = $columns;
@@ -823,11 +827,11 @@ mod tests {
                 for source_id in &source_ids {
 
                     let pg = cat.ensure_group(*source_id)
-                        .chain_err(|| "Unable to retrieve partition group")
+                        .with_context(|_| "Unable to retrieve partition group")
                         .unwrap();
 
                     let part = pg.create_partition(ts_min)
-                        .chain_err(|| "Unable to create partition")
+                        .with_context(|_| "Unable to create partition")
                         .unwrap();
 
                     let mut vp = VecDeque::new();
@@ -931,7 +935,7 @@ mod tests {
                 #[allow(unused)]
                 use block::BlockType as BlockTy;
                 use ty::block::BlockId;
-                use helpers::tempfile::tempdir_tools::TempDirExt;
+                use hyena_test::tempfile::TempDirExt;
                 use params::PARTITION_METADATA;
                 use ty::fragment::Fragment::*;
                 use std::mem::transmute;
@@ -982,11 +986,11 @@ mod tests {
                 };
 
                 let root = RootManager::new(&td)
-                    .chain_err(|| "unable to instantiate RootManager")
+                    .with_context(|_| "unable to instantiate RootManager")
                     .unwrap();
 
                 let pg_root = PartitionGroupManager::new(&root, 1)
-                    .chain_err(|| "unable to instantiate PartitionGroupManager")
+                    .with_context(|_| "unable to instantiate PartitionGroupManager")
                     .unwrap();
 
                     // assert catalog meta data
@@ -1006,7 +1010,7 @@ mod tests {
                         .unwrap();
 
                     let part_root = PartitionManager::new(&pg_root, part_id, now)
-                        .chain_err(|| "unable to instantiate PartitionManager")
+                        .with_context(|_| "unable to instantiate PartitionManager")
                         .unwrap();
 
                     // assert partition meta data
@@ -1045,7 +1049,7 @@ mod tests {
                                 let block = format!("block_{}.data", id);
 
                                 let bdata = td.read_vec(part_root.as_ref().join(block))
-                                    .chain_err(|| "unable to read block data")
+                                    .with_context(|_| "unable to read block data")
                                     .unwrap();
 
                                 let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
@@ -1063,7 +1067,7 @@ mod tests {
                                 let index = format!("block_{}.index", id);
 
                                 let bdata = td.read_vec(part_root.as_ref().join(block))
-                                    .chain_err(|| "unable to read block data")
+                                    .with_context(|_| "unable to read block data")
                                     .unwrap();
 
                                 let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
@@ -1078,7 +1082,7 @@ mod tests {
                                 );
 
                                 let bidx = td.read_vec(part_root.as_ref().join(index))
-                                    .chain_err(|| "unable to read index data")
+                                    .with_context(|_| "unable to read index data")
                                     .unwrap();
 
                                 let mapped = unsafe { transmute::<_, &[u8]>(idx.as_slice()) };
@@ -2030,7 +2034,7 @@ mod tests {
             let source_id = 5;
 
             let pg = PartitionGroup::new(&root, source_id)
-                .chain_err(|| "Unable to create partition group")
+                .with_context(|_| "Unable to create partition group")
                 .unwrap();
 
             assert!(pg.immutable_partitions.is_empty());
@@ -2048,14 +2052,14 @@ mod tests {
 
             {
                 let mut pg = PartitionGroup::new(&root, source_id)
-                    .chain_err(|| "Unable to create partition group")
+                    .with_context(|_| "Unable to create partition group")
                     .unwrap();
 
                 create_random_partitions(&mut pg, im_part_count, mut_part_count);
             }
 
             let pg = PartitionGroup::with_data(&root)
-                .chain_err(|| "Failed to open partition group")
+                .with_context(|_| "Failed to open partition group")
                 .unwrap();
 
             assert!(pg.immutable_partitions.len() == im_part_count);
@@ -2118,7 +2122,7 @@ mod tests {
                     );
 
                     let cat = Catalog::with_data(&td)
-                        .chain_err(|| "unable to open catalog")
+                        .with_context(|_| "unable to open catalog")
                         .unwrap();
 
                     (td, cat, now)
@@ -2178,7 +2182,7 @@ mod tests {
                     );
 
                     let cat = Catalog::with_data(&td)
-                        .chain_err(|| "unable to open catalog")
+                        .with_context(|_| "unable to open catalog")
                         .unwrap();
 
                     (td, cat, now)
@@ -2225,7 +2229,7 @@ mod tests {
                             None,
                         );
 
-                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                         let mut v = vec![Timestamp::from(0); record_count];
                         seqfill!(Timestamp, &mut v[..], now);
@@ -2295,7 +2299,7 @@ mod tests {
                             None,
                         );
 
-                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                         let mut v = vec![Timestamp::from(0); dense_count];
                         seqfill!(Timestamp, &mut v[..], now);
@@ -2363,7 +2367,7 @@ mod tests {
                     );
 
                     let cat = Catalog::with_data(&td)
-                        .chain_err(|| "unable to open catalog")
+                        .with_context(|_| "unable to open catalog")
                         .unwrap();
 
                     let pids = cat.groups
@@ -2403,7 +2407,7 @@ mod tests {
                         None,
                     );
 
-                    let result = cat.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -2766,7 +2770,7 @@ mod tests {
                     );
 
                     let cat = Catalog::with_data(&td)
-                        .chain_err(|| "unable to open catalog")
+                        .with_context(|_| "unable to open catalog")
                         .unwrap();
 
                     (td, cat, now)
@@ -3092,7 +3096,7 @@ mod tests {
                     None,
                 );
 
-                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                 assert_eq!(expected, result);
             }
@@ -3117,7 +3121,7 @@ mod tests {
                     None,
                 );
 
-                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                 assert_eq!(expected, result);
             }
@@ -3142,7 +3146,7 @@ mod tests {
                     None,
                 );
 
-                let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                 assert_eq!(expected, result);
             }
@@ -3181,7 +3185,7 @@ mod tests {
                         None,
                     );
 
-                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -3217,7 +3221,7 @@ mod tests {
                         None,
                     );
 
-                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -3251,7 +3255,7 @@ mod tests {
                         None,
                     );
 
-                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     assert_eq!(expected, result);
                 }
@@ -3312,7 +3316,7 @@ mod tests {
                         None,
                     );
 
-                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     scan_assert(result, expected_1, expected_2);
                 }
@@ -3347,7 +3351,7 @@ mod tests {
                         None,
                     );
 
-                    let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                    let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                     scan_assert(result, expected_1, expected_2);
                 }
@@ -3381,7 +3385,7 @@ mod tests {
                             None,
                         );
 
-                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                         scan_assert(result, expected_1, expected_2);
                     }
@@ -3410,7 +3414,7 @@ mod tests {
                             None,
                         );
 
-                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                         scan_assert(result, expected_1, expected_2);
                     }
@@ -3440,7 +3444,7 @@ mod tests {
                             None,
                         );
 
-                        let result = catalog.scan(&scan).chain_err(|| "scan failed").unwrap();
+                        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
                         scan_assert(result, expected_1, expected_2);
                     }
@@ -3470,7 +3474,7 @@ mod tests {
                             None,
                         );
 
-                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                        b.iter(|| catalog.scan(&scan).with_context(|_| "scan failed").unwrap());
                     }
                     )+
                 };
@@ -3491,7 +3495,7 @@ mod tests {
                             None,
                         );
 
-                        b.iter(|| catalog.scan(&scan).chain_err(|| "scan failed").unwrap());
+                        b.iter(|| catalog.scan(&scan).with_context(|_| "scan failed").unwrap());
                     }
                     )+
                 };
@@ -3523,13 +3527,13 @@ mod tests {
             let root = tempdir!();
 
             let mut cat = Catalog::new(&root)
-                .chain_err(|| "Unable to create catalog")
+                .with_context(|_| "Unable to create catalog")
                 .unwrap();
 
             for source_id in &source_ids {
 
                 let pg = cat.ensure_group(*source_id)
-                    .chain_err(|| "Unable to retrieve partition group")
+                    .with_context(|_| "Unable to retrieve partition group")
                     .unwrap();
 
                 create_random_partitions(pg, im_part_count, mut_part_count);
@@ -3541,7 +3545,7 @@ mod tests {
             let root = tempdir!();
 
             let mut cat = Catalog::new(&root)
-                .chain_err(|| "Unable to create catalog")
+                .with_context(|_| "Unable to create catalog")
                 .unwrap();
 
             const PG_ID: SourceId = 10;

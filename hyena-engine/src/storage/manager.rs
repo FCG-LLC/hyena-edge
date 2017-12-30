@@ -14,7 +14,7 @@ impl RootManager {
     #[allow(unused)]
     pub(crate) fn new<P: AsRef<Path>>(data_root: P) -> Result<RootManager> {
         let data = ensure_dir(data_root)
-            .chain_err(|| "Failed to manage root directory")?;
+            .with_context(|_| "Failed to manage root directory")?;
 
         Ok(RootManager { data })
     }
@@ -38,14 +38,14 @@ impl PartitionGroupManager {
     ) -> Result<PartitionGroupManager> {
 
         let root = ensure_dir(data_root)
-            .chain_err(|| "Failed to manage partition group root directory")?;
+            .with_context(|_| "Failed to manage partition group root directory")?;
 
         let mut partition_group_root = root.to_path_buf();
 
         partition_group_root.push(source_id.to_string());
 
         let partition_group_root = ensure_dir(partition_group_root)
-            .chain_err(|| "Failed to ensure partition root directory")?;
+            .with_context(|_| "Failed to ensure partition root directory")?;
 
         Ok(PartitionGroupManager {
             partition_group_root,
@@ -72,7 +72,7 @@ impl PartitionManager {
     ) -> Result<PartitionManager> {
 
         let root = ensure_dir(data_root)
-            .chain_err(|| "Failed to manage partition root directory")?;
+            .with_context(|_| "Failed to manage partition root directory")?;
 
         let ts: DateTime<Utc> = ts.into().into();
 
@@ -86,7 +86,7 @@ impl PartitionManager {
         partition_root.push(id.to_string());
 
         let partition_root = ensure_dir(partition_root)
-            .chain_err(|| "Failed to ensure partition root directory")?;
+            .with_context(|_| "Failed to ensure partition root directory")?;
 
         Ok(PartitionManager { partition_root })
     }
@@ -113,14 +113,14 @@ mod tests {
         assert!(!root.exists());
 
         let _manager = RootManager::new(&root)
-            .chain_err(|| "Failed to create manager")
+            .with_context(|_| "Failed to create manager")
             .unwrap();
 
         assert!(root.exists());
         assert!(root.is_dir());
 
         remove_dir(root)
-            .chain_err(|| "Failed to clean up temporary directory")
+            .with_context(|_| "Failed to clean up temporary directory")
             .unwrap();
     }
 
@@ -129,7 +129,7 @@ mod tests {
         let root = tempdir!();
 
         let _manager = RootManager::new(&root)
-            .chain_err(|| "Failed to create manager")
+            .with_context(|_| "Failed to create manager")
             .unwrap();
 
         let root_path = root.as_ref();
@@ -143,13 +143,13 @@ mod tests {
         let root = tempdir!();
 
         let pgman = PartitionGroupManager::new(&root, 1)
-            .chain_err(|| "Failed to create manager")
+            .with_context(|_| "Failed to create manager")
             .unwrap();
 
         let t = pgman
             .as_ref()
             .strip_prefix(root.as_ref())
-            .chain_err(|| "Produced path is not a subdirectory of root")
+            .with_context(|_| "Produced path is not a subdirectory of root")
             .unwrap()
             .components()
             .count();
@@ -165,12 +165,12 @@ mod tests {
         let ts = <Timestamp as Default>::default();
 
         let pman = PartitionManager::new(&root, &id, *ts)
-            .chain_err(|| "Failed to create manager")
+            .with_context(|_| "Failed to create manager")
             .unwrap();
 
         let t = pman.as_ref()
             .strip_prefix(root.as_ref())
-            .chain_err(|| "Produced path is not a subdirectory of root")
+            .with_context(|_| "Produced path is not a subdirectory of root")
             .unwrap()
             .components()
             .count();

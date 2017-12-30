@@ -110,7 +110,7 @@ impl ScanResult {
 
                 self_data
                     .merge(&mut other_data, offset)
-                    .chain_err(|| "unable to merge scan results")?;
+                    .with_context(|_| "unable to merge scan results")?;
             }
         }
 
@@ -322,7 +322,7 @@ mod tests {
 
             let (mut merged, b, expected) = prepare();
 
-            merged.merge(b).chain_err(|| "merge failed").unwrap();
+            merged.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(merged, expected);
         }
@@ -340,7 +340,7 @@ mod tests {
 
             let (b, expected) = (b, expected);
 
-            merged.merge(b).chain_err(|| "merge failed").unwrap();
+            merged.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(merged, expected);
         }
@@ -380,7 +380,7 @@ mod tests {
                 }),
             });
 
-            a.merge(b).chain_err(|| "merge failed").unwrap();
+            a.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(expected, a);
         }

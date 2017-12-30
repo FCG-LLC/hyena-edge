@@ -6,8 +6,6 @@ extern crate test;
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate cfg_if;
 extern crate rayon;
 extern crate chrono;
@@ -23,13 +21,17 @@ extern crate bincode;
 extern crate byteorder;
 
 #[cfg(test)]
-extern crate tempdir;
+#[macro_use]
+extern crate hyena_test;
+#[macro_use]
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
+
 #[cfg(test)]
 extern crate num;
 #[cfg(test)]
 extern crate rand;
-#[cfg(feature = "perf")]
-extern crate flame;
 #[cfg(test)]
 extern crate prettytable;
 #[cfg(test)]
@@ -39,6 +41,10 @@ extern crate term;
 #[macro_use]
 extern crate static_assertions;
 extern crate extprim;
+
+#[cfg(test)]
+#[macro_use]
+use hyena_test::tempfile;
 
 pub(crate) mod params;
 
@@ -60,10 +66,9 @@ mod partition;
 pub mod catalog;
 mod mutator;
 mod scanner;
-pub mod api;
 mod huuid;
 
-pub use self::error::{Error, Result, ResultExt};
+pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
     ScanFilter};
 pub use self::catalog::{Catalog, Column, ColumnMap};

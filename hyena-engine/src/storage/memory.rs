@@ -118,7 +118,7 @@ mod tests {
 
     fn create_block() -> PagedMemoryStorage {
         PagedMemoryStorage::new(BLOCK_SIZE)
-            .chain_err(|| "failed to create PagedMemoryStorage")
+            .with_context(|_| "failed to create PagedMemoryStorage")
             .unwrap()
     }
 

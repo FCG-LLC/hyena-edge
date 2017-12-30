@@ -1,20 +1,17 @@
 #[macro_use]
-pub(crate) mod perf;
-
-#[macro_use]
 pub(crate) mod lock;
 
 #[macro_use]
 #[cfg(test)]
 pub(crate) mod random;
 
-#[macro_use]
-#[cfg(test)]
-pub(crate) mod seq;
-
-#[macro_use]
-#[cfg(test)]
-pub(crate) mod tempfile;
+// #[macro_use]
+// #[cfg(test)]
+// pub(crate) use hyena_test::tempfile;
+//
+// #[macro_use]
+// #[cfg(test)]
+// pub(crate) use hyena_test::seq;
 
 #[macro_use]
 pub(crate) mod block;
@@ -127,7 +124,7 @@ pub(crate) mod tests {
     macro_rules! assert_file_size {
         ($file: expr, $size: expr) => {{
             let metadata = $file.metadata()
-                .chain_err(|| "failed to retrieve metadata")
+                .with_context(|_| "failed to retrieve metadata")
                 .unwrap();
 
             assert_eq!(metadata.len(), $size as u64);
@@ -158,11 +155,11 @@ pub(crate) mod tests {
 
             let mut buf = $buf;
             let mut file = ensure_file(&$file, $size)
-                .chain_err(|| "unable to create file")
+                .with_context(|_| "unable to create file")
                 .unwrap();
 
             file.read_exact(&mut buf)
-                .chain_err(|| "unable to read test data")
+                .with_context(|_| "unable to read test data")
                 .unwrap();
             buf
         }};
@@ -175,11 +172,11 @@ pub(crate) mod tests {
 
 
             let mut file = ensure_file(&$file, $size)
-                .chain_err(|| "unable to create file")
+                .with_context(|_| "unable to create file")
                 .unwrap();
 
             file.write(&$w)
-                .chain_err(|| "unable to write test data")
+                .with_context(|_| "unable to write test data")
                 .unwrap();
         }};
     }

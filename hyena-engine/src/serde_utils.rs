@@ -12,7 +12,9 @@ pub(crate) mod ser {
     where
         T: ?Sized + Serialize,
     {
-        bincode::serialize(value, bincode::Infinite).chain_err(|| "Serialization failed")
+        bincode::serialize(value, bincode::Infinite)
+            .with_context(|_| "Serialization failed")
+            .map_err(|e| e.into())
     }
 
     pub(crate) fn serialize_into<T, W>(value: &T, writer: &mut W) -> Result<()>
@@ -21,7 +23,8 @@ pub(crate) mod ser {
         W: ?Sized + Write,
     {
         bincode::serialize_into(writer, value, bincode::Infinite)
-            .chain_err(|| "Serialization failed")
+            .with_context(|_| "Serialization failed")
+            .map_err(|e| e.into())
     }
 }
 
@@ -35,7 +38,9 @@ pub(crate) mod de {
     where
         T: Deserialize<'de>,
     {
-        bincode::deserialize(data).chain_err(|| "Deserialization failed")
+        bincode::deserialize(data)
+            .with_context(|_| "Deserialization failed")
+            .map_err(|e| e.into())
     }
 
     pub(crate) fn deserialize_from<T, R>(reader: &mut R) -> Result<T>
@@ -43,7 +48,9 @@ pub(crate) mod de {
         for<'de> T: Deserialize<'de>,
         R: Read,
     {
-        bincode::deserialize_from(reader, bincode::Infinite).chain_err(|| "Deserialization failed")
+        bincode::deserialize_from(reader, bincode::Infinite)
+            .with_context(|_| "Deserialization failed")
+            .map_err(|e| e.into())
     }
 }
 
@@ -53,7 +60,7 @@ macro_rules! deserialize {
         use std::fs::File;
 
         let mut file = File::open($name)
-            .chain_err(|| "Failed to open file for deserialization")?;
+            .with_context(|_| "Failed to open file for deserialization")?;
 
         deserialize_from::<$T, _>(&mut file)
     }};
@@ -63,7 +70,7 @@ macro_rules! deserialize {
         use std::fs::File;
 
         let mut file = File::open($name)
-            .chain_err(|| "Failed to open file for deserialization")?;
+            .with_context(|_| "Failed to open file for deserialization")?;
 
         deserialize_from(&mut file)
     }};
@@ -92,7 +99,7 @@ macro_rules! serialize {
         use std::fs::File;
 
         let mut file = File::create($name)
-            .chain_err(|| "Failed to open file {:?} for serialization")?;
+            .with_context(|_| "Failed to open file {:?} for serialization")?;
 
         let value = $value;
 
