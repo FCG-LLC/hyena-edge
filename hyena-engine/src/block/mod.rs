@@ -2,6 +2,8 @@ use error::*;
 use std::fmt::Debug;
 use extprim::u128::u128;
 
+#[macro_use]
+mod macros;
 mod numeric;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};

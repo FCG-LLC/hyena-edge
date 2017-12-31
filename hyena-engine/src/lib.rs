@@ -17,8 +17,6 @@ extern crate uuid;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
-extern crate bincode;
-extern crate byteorder;
 #[macro_use]
 extern crate hyena_common;
 
@@ -27,17 +25,11 @@ extern crate hyena_common;
 extern crate hyena_test;
 #[macro_use]
 extern crate failure;
-#[macro_use]
-extern crate failure_derive;
 
 #[cfg(test)]
 extern crate num;
 #[cfg(test)]
 extern crate rand;
-#[cfg(test)]
-extern crate prettytable;
-#[cfg(test)]
-extern crate term;
 
 #[cfg(test)]
 #[macro_use]
@@ -47,11 +39,10 @@ extern crate extprim;
 pub(crate) mod params;
 
 mod error;
-#[macro_use]
-pub(crate) mod helpers;
 
 mod fs;
 mod storage;
+#[macro_use]
 mod block;
 
 #[macro_use]
