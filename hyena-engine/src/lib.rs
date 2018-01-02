@@ -63,11 +63,13 @@ mod scanner;
 
 pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
-    ScanFilter};
+    ScanFilter, ScanData};
 pub use self::catalog::{Catalog, Column, ColumnMap};
 pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
+pub use self::ty::block::memory::Block as MemoryBlock;
+pub use self::ty::block::mmap::Block as MemmapBlock;
 pub use hyena_common::ty::Value;
 pub use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
 

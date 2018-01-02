@@ -11,6 +11,7 @@ use extprim::i128::i128;
 use extprim::u128::u128;
 
 pub type ScanFilters = HashMap<ColumnId, Vec<ScanFilter>>;
+pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -77,7 +78,7 @@ impl<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> ScanFilterOp<T> {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScanResult {
-    pub(crate) data: HashMap<ColumnId, Option<Fragment>>,
+    pub(crate) data: ScanData,
 }
 
 impl ScanResult {
@@ -165,8 +166,8 @@ impl ScanResult {
     }
 }
 
-impl From<HashMap<ColumnId, Option<Fragment>>> for ScanResult {
-    fn from(data: HashMap<ColumnId, Option<Fragment>>) -> ScanResult {
+impl From<ScanData> for ScanResult {
+    fn from(data: ScanData) -> ScanResult {
         ScanResult { data }
     }
 }
@@ -177,10 +178,19 @@ pub trait ScanFilterApply<T> {
 }
 
 impl Deref for ScanResult {
-    type Target = HashMap<ColumnId, Option<Fragment>>;
+    type Target = ScanData;
 
     fn deref(&self) -> &Self::Target {
         &self.data
+    }
+}
+
+impl IntoIterator for ScanResult {
+    type Item = <ScanData as IntoIterator>::Item;
+    type IntoIter = <ScanData as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
     }
 }
 
