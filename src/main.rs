@@ -13,6 +13,7 @@ extern crate tokio_io;
 extern crate tokio_proto;
 extern crate tokio_service;
 extern crate hyena_engine;
+extern crate hyena_api;
 extern crate bincode;
 
 use dotenv::dotenv;
@@ -28,7 +29,8 @@ fn main() {
     flexi_logger::Logger::with_env()
         .format(colored_logger::formatter)
         .start()
-        .unwrap_or_else(|e| panic!("Logger initialization failed with {}", e));
+        .expect("Logger initialization failed");
+
     info!("Starting Hyena");
 
     let data_dir = options.value_of("data_dir").unwrap();

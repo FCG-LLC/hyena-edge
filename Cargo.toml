@@ -7,25 +7,40 @@ authors = [
 name = "hyena"
 version = "0.1.0"
 
+[workspace]
+
 [dependencies]
-clap = "2.24.2"
-flexi_logger = "0.6.8"
-log = "0.3.8"
+clap = "2.29.0"
+flexi_logger = "0.6.11"
+log = "0.4.1"
 dotenv = "0.10.1"
-futures = "0.1"
-tokio-core = "0.1"
-bytes = "0.4"
-tokio-io = "0.1"
-tokio-proto = "0.1"
-tokio-service = "0.1"
-bincode = "0.8.0"
+futures = "0.1.17"
+tokio-core = "0.1.11"
+bytes = "0.4.5"
+tokio-io = "0.1.4"
+tokio-proto = "0.1.1"
+tokio-service = "0.1.0"
+bincode = "0.9.2"
 
 [dependencies.hyena-engine]
 optional = false
 path = "hyena-engine"
 
+[dependencies.hyena-common]
+optional = false
+path = "hyena-common"
+
+[dependencies.hyena-test]
+optional = false
+path = "hyena-test"
+
+[dependencies.hyena-api]
+optional = false
+path = "hyena-api"
+
 [dependencies.colored_logger]
 git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
+rev = "flexi_0.6.11"
 optional = false
 
 [dependencies.nanomsg]
