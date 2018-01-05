@@ -2,6 +2,7 @@
 authors = [
     "Przemyslaw M. Maciolek <pmm@collective-sense.com>",
     "Jacek Całusiński <forger@forger.pl>",
+    "Tomasz Barański <tomasz.baranski@collective-sense.com>"
 ]
 name = "hyena-engine"
 version = "0.1.0"
