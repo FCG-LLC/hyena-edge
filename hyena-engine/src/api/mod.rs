@@ -119,7 +119,7 @@ pub struct ScanFilter {
 pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
-    pub partition_id: Uuid,
+    pub partition_ids: Option<HashSet<Uuid>>,
     pub projection: Vec<ColumnId>,
     pub filters: Vec<ScanFilter>,
 }
@@ -324,7 +324,6 @@ impl Reply {
         };
 
         let cm: &ColumnMap = catalog.as_ref();
-        println!("Data: {:?}", result);
 
         let srm = result.data
             .into_iter()
@@ -355,8 +354,12 @@ impl Reply {
             start: scan_request.min_ts,
             end:   scan_request.max_ts
         };
-        let mut partitions = HashSet::new();
-        partitions.insert(scan_request.partition_id.into());
+
+        let partitions = if let Some(partitions) = scan_request.partition_ids {
+            if !partitions.is_empty() {
+                Some(partitions.into_iter().map(|v| v.into()).collect())
+            } else { None }
+        } else { None };
 
         let filters = scan_request.filters
             .iter()
@@ -370,7 +373,7 @@ impl Reply {
         Scan::new(filters,
                   Some(scan_request.projection),
                   None,
-                  Some(partitions),
+                  partitions,
                   Some(scan_range))
     }
 
@@ -840,10 +843,13 @@ mod tests {
                     groups: Default::default(),
                     data_root: "".into(),
                 };
+                
+                let partition_ids = hashset! { Uuid::default() };
+
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_id: Uuid::default(),
+                    partition_ids: Some(partition_ids),
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -867,10 +873,13 @@ mod tests {
                     groups: Default::default(),
                     data_root: "".into(),
                 };
+
+                let partition_ids = hashset! { Uuid::default() };
+
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: Uuid::default(),
+                    partition_ids: Some(partition_ids),
                     projection: vec![1, 2, 3],
                     filters: vec![],
                 };
@@ -889,10 +898,13 @@ mod tests {
                     groups: Default::default(),
                     data_root: "".into(),
                 };
+
+                let partition_ids = hashset! { Uuid::default() };
+
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_id: Uuid::default(),
+                    partition_ids: Some(partition_ids),
                     projection: vec![],
                     filters: vec![ScanFilter {
                                       column: 1,

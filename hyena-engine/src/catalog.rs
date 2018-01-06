@@ -269,9 +269,9 @@ impl<'pg> PartitionGroup<'pg> {
 
         partitions
             .par_iter()
-            .filter(|partition| if let Some(ref partitions) = scan.partitions {
+            .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
                 // todo: benchmark Partition::get_id() -> &PartitionId
-                partitions.contains(&partition.get_id())
+                scan_partitions.contains(&partition.get_id())
             } else {
                 true
             })
