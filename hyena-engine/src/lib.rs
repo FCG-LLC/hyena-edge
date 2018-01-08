@@ -63,6 +63,18 @@ mod scanner;
 pub mod api;
 mod huuid;
 
+pub use self::error::{Error, Result, ResultExt};
+pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
+    ScanFilter};
+pub use self::catalog::{Catalog, Column, ColumnMap};
+pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
+pub use self::block::{BlockType, SparseIndex};
+pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
+pub use self::ty::Value;
+pub use self::ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
+
+pub use self::mutator::{Append, BlockData};
+
 #[cfg(test)]
 mod tests {
     #[test]

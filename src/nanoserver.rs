@@ -55,7 +55,7 @@ pub fn run(matches: &clap::ArgMatches) {
     let (writer, reader) = nano_socket.split();
     let dir = matches.value_of("data_dir").unwrap();
     fs::create_dir_all(dir).expect("Could not create data_dir");
-    let mut catalog = Catalog::open_or_create(dir);
+    let mut catalog = Catalog::open_or_create(dir).expect("Unable to initialize catalog");
 
     let server = reader.map(move |msg| {
         process_message(msg, &mut catalog)

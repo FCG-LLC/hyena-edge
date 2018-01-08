@@ -257,7 +257,8 @@ impl<'pg> PartitionGroup<'pg> {
                 .unwrap();
         }
 
-        Ok(0)
+        // todo: this is not very accurate, as the actual write could have failed
+        Ok(fragcount)
     }
 
     pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
@@ -479,7 +480,7 @@ impl Deref for PartitionMeta {
 }
 
 impl<'cat> Catalog<'cat> {
-    pub(crate) fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+    pub fn new<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         let root = root.as_ref().to_path_buf();
 
         let meta = root.join(CATALOG_METADATA);
@@ -501,7 +502,7 @@ impl<'cat> Catalog<'cat> {
 
     fn ensure_default_columns(&mut self) -> Result<()> {
         let ts_column = Column::new(TyBlockType::Memmap(BlockType::U64Dense), "timestamp");
-        let source_column = Column::new(TyBlockType::Memmap(BlockType::I32Dense), "source_id"); // will be String some day
+        let source_column = Column::new(TyBlockType::Memory(BlockType::I32Dense), "source_id");
         let mut map = HashMap::new();
         map.insert(0, ts_column);
         map.insert(1, source_column);
@@ -517,14 +518,8 @@ impl<'cat> Catalog<'cat> {
         Catalog::deserialize(&meta, &root)
     }
 
-    pub fn open_or_create<P: AsRef<Path> + Clone>(root: P) -> Catalog<'cat> {
-        match Catalog::with_data(root.clone()) {
-            Ok(catalog) => catalog,
-            Err(e) => {
-                debug!("Can't open data_dir: {:?}", e);
-                Catalog::new(root).unwrap()
-            }
-        }
+    pub fn open_or_create<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
+        Catalog::with_data(root.as_ref()).or_else(|_| Catalog::new(root.as_ref()))
     }
 
     pub fn append(&self, data: &Append) -> Result<usize> {
@@ -579,19 +574,26 @@ impl<'cat> Catalog<'cat> {
         Catalog::serialize(self, &meta)
     }
 
-    pub fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
+    /// Extend internal column map without any sanitization checks.
+    ///
+    /// This function uses `std::iter::Extend` internally,
+    /// so it allows redefinition of a column type.
+    /// Use this feature with great caution.
+    pub(crate) fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
         self.columns.extend(type_map);
 
         Ok(())
     }
 
-    // Adds the column to the catalog. It verifies that catalog does not already contain:
-    // a) column with the given id, or
-    // b) column with the given name.
-    // This function takes all-or-nothing approach: either all columns can are added, or none gets added.
+    /// Adds the column to the catalog. It verifies that catalog does not already contain:
+    /// a) column with the given id, or
+    /// b) column with the given name.
+    /// This function takes all-or-nothing approach:
+    /// either all columns can are added, or none gets added.
     pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
         for (id, column) in column_map.iter() {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
+
             if self.columns.contains_key(id) {
                 bail!(ErrorKind::ColumnIdAlreadyExists(*id));
             }
@@ -600,9 +602,12 @@ impl<'cat> Catalog<'cat> {
             }
         }
 
-        Ok(self.columns.extend(column_map))
+        self.ensure_columns(column_map)
     }
 
+    /// Fetch the first non-occupied column index
+    ///
+    /// todo: rethink this approach (max() every time)
     pub fn next_id(&self) -> usize {
         let default = 0;
         *self.columns.keys().max().unwrap_or(&default) + 1
@@ -627,43 +632,36 @@ impl<'cat> Catalog<'cat> {
             .unwrap_or_default()
     }
 
-    #[allow(unused)]
-    fn create_partition<'part, TS>(
-        &mut self,
-        source_id: SourceId,
-        ts: TS,
-    ) -> Result<Partition<'part>>
-    where
-        TS: Into<Timestamp> + Clone + Copy,
-    {
-        let pg = self.ensure_group(source_id)
-            .chain_err(|| {
-                format!("Unable to retrieve partition group for {}", source_id)
-            })?;
-        pg.create_partition(ts)
-    }
-
-    #[allow(unused)]
     pub(crate) fn ensure_group(
         &mut self,
         source_id: SourceId,
     ) -> Result<&mut PartitionGroup<'cat>> {
-        let root = self.data_root.clone();
+        let data_root = <_ as AsRef<Path>>::as_ref(&self.data_root);
 
         Ok(self.groups.entry(source_id).or_insert_with(|| {
             // this shouldn't fail in general
 
-            let root = PartitionGroupManager::new(root, source_id)
+            let root = PartitionGroupManager::new(data_root, source_id)
                 .chain_err(|| "Failed to create group manager")
                 .unwrap();
 
             let mut pg = PartitionGroup::new(&root, source_id)
                 .chain_err(|| "Unable to create partition group")
                 .unwrap();
+
             Catalog::create_single_partition(&mut pg);
             pg.flush().unwrap();
+
             pg
         }))
+    }
+
+    /// Add new partition group with given source id
+
+    pub fn add_partition_group(&mut self, source_id: SourceId) -> Result<()> {
+        let _ = self.ensure_group(source_id)?;
+
+        Ok(())
     }
 
     fn create_single_partition(pg: &mut PartitionGroup) {
@@ -3536,6 +3534,23 @@ mod tests {
 
                 create_random_partitions(pg, im_part_count, mut_part_count);
             }
+        }
+
+        #[test]
+        fn add_partition_group_idempotence() {
+            let root = tempdir!();
+
+            let mut cat = Catalog::new(&root)
+                .chain_err(|| "Unable to create catalog")
+                .unwrap();
+
+            const PG_ID: SourceId = 10;
+
+            cat.add_partition_group(PG_ID).unwrap();
+            cat.add_partition_group(PG_ID).unwrap();
+
+            assert_eq!(cat.groups.len(), 1);
+            assert_eq!(cat.groups.iter().nth(0).expect("partition group not found").0, &PG_ID);
         }
     }
 }

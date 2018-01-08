@@ -1,12 +1,11 @@
 use error::*;
-use std::collections::hash_map::HashMap;
 use std::fmt::Debug;
-use ty::block::BlockId;
 use extprim::u128::u128;
 
 mod numeric;
 
-pub(crate) use self::numeric::{DenseNumericBlock, SparseIndex, SparseIndexedNumericBlock};
+pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
+pub use self::numeric::SparseIndex;
 
 // This will probably get merged into BlockData
 
@@ -143,9 +142,6 @@ pub trait BlockData<'block, T: 'block, I: 'block>
         }
     }
 }
-
-#[allow(unused)]
-pub(crate) type BlockTypeMap = HashMap<BlockId, BlockType>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockType {
