@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-use partition::PartitionId;
+use datastore::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
 use extprim::i128::i128;

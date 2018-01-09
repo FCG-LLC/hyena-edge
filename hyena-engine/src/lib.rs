@@ -47,15 +47,14 @@ mod block;
 
 #[macro_use]
 mod ty;
-mod partition;
-pub mod catalog;
+pub mod datastore;
 mod mutator;
 mod scanner;
 
 pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
     ScanFilter, ScanData};
-pub use self::catalog::{Catalog, Column, ColumnMap};
+pub use self::datastore::{Catalog, Column, ColumnMap};
 pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
