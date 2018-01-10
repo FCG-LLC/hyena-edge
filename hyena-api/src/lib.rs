@@ -557,7 +557,10 @@ mod tests {
                     column_name: name.clone(),
                     column_type: BlockType::I32Dense,
                 };
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 let added = Reply::add_column(request, &mut catalog);
@@ -587,7 +590,10 @@ mod tests {
                     column_name: name,
                     column_type: BlockType::I32Dense,
                 };
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 let added = Reply::add_column(request, &mut catalog);
@@ -613,7 +619,10 @@ mod tests {
                     timestamps: vec![1],
                     columns: vec![hashmap!{0 => Fragment::I8Dense(vec![1])}],
                 };
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
 
                 Reply::insert(insert, &mut catalog);
@@ -640,7 +649,10 @@ mod tests {
                                                    vec![121, 221, 321, 421, 521, 621])
                     }],
                 };
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
                 catalog.add_columns(hashmap!{
                     1000 => Column::new(Memory(I8Dense),  "dense"),
@@ -696,7 +708,10 @@ mod tests {
             #[test]
             fn rejects_insert_with_no_data() {
                 let source = 100;
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
                 let insert = InsertMessage {
                     source: source,
@@ -734,7 +749,10 @@ mod tests {
                                                    vec![121, 221, 321, 421, 521, 621])
                     }],
                 };
-                let mut catalog = Catalog::new(tempdir!(persistent))
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
                 catalog.add_columns(hashmap!{
                     1000 => Column::new(Memory(I8Dense), "dense"),
@@ -807,7 +825,9 @@ mod tests {
 
             #[test]
             fn returns_mem_and_mmap_columns() {
-                let mut catalog = Catalog::new(tempdir!(persistent))
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
                     .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
                 catalog.add_columns(hashmap!{
                     1000 => Column::new(Memory(I8Dense), "dense"),
