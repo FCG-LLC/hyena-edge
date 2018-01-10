@@ -1,25 +1,20 @@
 use error::*;
-use ty::{BlockType as TyBlockType, ColumnId};
-use hyena_common::ty::{Timestamp, MIN_TIMESTAMP};
-use block::{BlockType, SparseIndex};
-use storage::manager::{PartitionGroupManager, PartitionManager};
+use ty::BlockType as TyBlockType;
+use hyena_common::ty::MIN_TIMESTAMP;
+use block::BlockType;
+use storage::manager::PartitionGroupManager;
 use std::collections::hash_map::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
-use std::fmt::{Display, Error as FmtError, Formatter};
 use std::default::Default;
-use std::ops::Deref;
-use std::result::Result as StdResult;
 use std::sync::RwLock;
-use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};
+use params::{SourceId, CATALOG_METADATA};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
-use ty::block::{BlockTypeMap, BlockTypeMapTy};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{PartitionGroupMap, ColumnMap};
-use super::partition::{Partition, PartitionId};
 use super::column::Column;
 use super::partition_group::PartitionGroup;
 
@@ -301,9 +296,6 @@ impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use storage::manager::RootManager;
-    use hyena_test::random::timestamp::RandomTimestampGen;
-    use params::BLOCK_SIZE;
 
     use datastore::tests::create_random_partitions;
 

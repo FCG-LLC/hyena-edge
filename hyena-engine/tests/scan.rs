@@ -1,9 +1,6 @@
 extern crate hyena_engine;
-#[macro_use]
 extern crate hyena_test;
 extern crate failure;
-
-use failure::ResultExt;
 
 use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
