@@ -55,7 +55,7 @@ pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
     ScanFilter, ScanData};
 pub use self::datastore::{Catalog, Column, ColumnMap};
-pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
+pub use self::ty::{RowId, ColumnId, BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
 pub use self::ty::block::memory::Block as MemoryBlock;

@@ -1,5 +1,5 @@
 use error::*;
-use ty::BlockType as TyBlockType;
+use ty::BlockStorageType;
 use hyena_common::ty::Timestamp;
 use block::SparseIndex;
 use storage::manager::{PartitionGroupManager, PartitionManager};

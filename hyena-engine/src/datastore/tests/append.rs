@@ -476,7 +476,7 @@ mod benches {
 
 mod dense {
     use super::*;
-    use ty::block::BlockType::Memmap;
+    use ty::block::BlockStorageType::Memmap;
 
     #[test]
     fn ts_only() {
@@ -1041,7 +1041,7 @@ mod dense {
 
 mod sparse {
     use super::*;
-    use ty::block::BlockType::Memmap;
+    use ty::block::BlockStorageType::Memmap;
 
     #[test]
     fn current_only() {

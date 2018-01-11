@@ -11,7 +11,7 @@ use std::sync::RwLock;
 use params::{SourceId, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
-use ty::block::{BlockTypeMap, BlockTypeMapTy};
+use ty::block::{BlockStorageTypeMap, BlockStorageTypeMapTy};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::partition::Partition;
@@ -87,14 +87,14 @@ impl<'pg> PartitionGroup<'pg> {
 
         let columns = catalog.as_ref();
 
-        let typemap: BlockTypeMap = colindices
+        let typemap: BlockStorageTypeMap = colindices
             .iter()
             .map(|colidx| if let Some(col) = columns.get(colidx) {
                 Ok((*colidx, **col))
             } else {
                 bail!("column {} not found", colidx)
             })
-            .collect::<Result<BlockTypeMapTy>>()
+            .collect::<Result<BlockStorageTypeMapTy>>()
             .with_context(|_| err_msg("failed to prepare all columns"))?
             .into();
 
