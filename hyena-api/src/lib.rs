@@ -222,10 +222,7 @@ impl Reply {
     fn list_columns(catalog: &Catalog) -> Reply {
         let cm: &ColumnMap = catalog.as_ref();
         let names = cm.iter()
-            .map(|(id, column)| match **column {
-                TyBlockType::Memory(typ) => ReplyColumn::new(typ, *id, format!("{}", column)),
-                TyBlockType::Memmap(typ) => ReplyColumn::new(typ, *id, format!("{}", column)),
-            })
+            .map(|(id, column)| ReplyColumn::new(column.block_type(), *id, format!("{}", column)))
             .collect();
         Reply::ListColumns(names)
     }
