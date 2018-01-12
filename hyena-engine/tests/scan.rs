@@ -2,7 +2,7 @@ extern crate hyena_engine;
 extern crate hyena_test;
 extern crate failure;
 
-use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
+use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
@@ -84,13 +84,13 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
     let mut column_map = ColumnMap::new();
 
     column_map.insert(2, Column::new(
-        BlockStorageType::Memmap(BlockType::U64Dense), "dense1"));
+        BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
     column_map.insert(3, Column::new(
-        BlockStorageType::Memmap(BlockType::I32Dense), "dense2"));
+        BlockStorage::Memmap(BlockType::I32Dense), "dense2"));
     column_map.insert(4, Column::new(
-        BlockStorageType::Memmap(BlockType::U64Sparse), "sparse1"));
+        BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
     column_map.insert(5, Column::new(
-        BlockStorageType::Memmap(BlockType::I64Sparse), "sparse2"));
+        BlockStorage::Memmap(BlockType::I64Sparse), "sparse2"));
 
     cat.add_columns(column_map)?;
 

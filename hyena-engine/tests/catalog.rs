@@ -3,7 +3,7 @@ extern crate failure;
 
 use failure::ResultExt;
 
-use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
+use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
                    Fragment, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
@@ -41,9 +41,9 @@ fn it_adds_new_column_catalog() {
         let mut column_map = ColumnMap::new();
 
         column_map.insert(2, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Dense), "dense1"));
+            BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
         column_map.insert(3, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Sparse), "sparse1"));
+            BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
 
         cat.add_columns(column_map)?;
 
@@ -107,9 +107,9 @@ fn it_appends_data() {
         let mut column_map = ColumnMap::new();
 
         column_map.insert(2, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Dense), "dense1"));
+            BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
         column_map.insert(3, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Sparse), "sparse1"));
+            BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
 
         cat.add_columns(column_map)?;
 
@@ -141,9 +141,9 @@ fn it_scans() {
         let mut column_map = ColumnMap::new();
 
         column_map.insert(2, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Dense), "dense1"));
+            BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
         column_map.insert(3, Column::new(
-            BlockStorageType::Memmap(BlockType::U64Sparse), "sparse1"));
+            BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
 
         cat.add_columns(column_map)?;
 

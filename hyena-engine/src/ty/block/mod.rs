@@ -17,31 +17,31 @@ pub type BlockMap<'block> = HashMap<BlockId, RwLock<Block<'block>>>;
 pub(crate) type BlockHeadMap = HashMap<BlockId, usize>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BlockStorageTypeMap(BlockStorageTypeMapTy);
-pub(crate) type BlockStorageTypeMapTy = HashMap<BlockId, BlockStorageType>;
+pub struct BlockStorageMap(BlockStorageMapType);
+pub(crate) type BlockStorageMapType = HashMap<BlockId, BlockStorage>;
 
 
-impl<'block> Deref for BlockStorageTypeMap {
-    type Target = BlockStorageTypeMapTy;
+impl<'block> Deref for BlockStorageMap {
+    type Target = BlockStorageMapType;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl<'block, 'a> From<&'a BlockMap<'block>> for BlockStorageTypeMap {
-    fn from(block_map: &BlockMap) -> BlockStorageTypeMap {
+impl<'block, 'a> From<&'a BlockMap<'block>> for BlockStorageMap {
+    fn from(block_map: &BlockMap) -> BlockStorageMap {
         block_map
             .iter()
             .map(|(block_id, block)| (*block_id, block.into()))
-            .collect::<BlockStorageTypeMapTy>()
+            .collect::<BlockStorageMapType>()
             .into()
     }
 }
 
-impl From<BlockStorageTypeMapTy> for BlockStorageTypeMap {
-    fn from(block_hmap: BlockStorageTypeMapTy) -> BlockStorageTypeMap {
-        BlockStorageTypeMap(block_hmap)
+impl From<BlockStorageMapType> for BlockStorageMap {
+    fn from(block_hmap: BlockStorageMapType) -> BlockStorageMap {
+        BlockStorageMap(block_hmap)
     }
 }
 
@@ -53,9 +53,9 @@ pub enum Block<'block> {
 }
 
 
-impl<'block> PartialEq<BlockStorageType> for Block<'block> {
-    fn eq(&self, rhs: &BlockStorageType) -> bool {
-        let self_ty: BlockStorageType = self.into();
+impl<'block> PartialEq<BlockStorage> for Block<'block> {
+    fn eq(&self, rhs: &BlockStorage) -> bool {
+        let self_ty: BlockStorage = self.into();
 
         self_ty == *rhs
     }
@@ -73,22 +73,45 @@ macro_rules! block_map_expr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum BlockStorageType {
+    Memory,
+    #[cfg(feature = "mmap")]
+    Memmap,
+}
+
+impl<'bs> From<&'bs BlockStorage> for BlockStorageType {
+    fn from(bs: &BlockStorage) -> BlockStorageType {
+        use self::BlockStorage::*;
+
+        match *bs {
+            Memory(_) => BlockStorageType::Memory,
+            #[cfg(feature = "mmap")]
+            Memmap(_) => BlockStorageType::Memmap,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum BlockStorage {
     Memory(block::BlockType),
     #[cfg(feature = "mmap")]
     Memmap(block::BlockType),
 }
 
-impl BlockStorageType {
+impl BlockStorage {
     pub fn size_of(&self) -> usize {
-        use self::BlockStorageType::*;
+        use self::BlockStorage::*;
 
         block_map_expr!(*self, block, { block.size_of() })
     }
 
     pub fn is_sparse(&self) -> bool {
-        use self::BlockStorageType::*;
+        use self::BlockStorage::*;
 
         block_map_expr!(*self, block, { block.is_sparse() })
+    }
+
+    pub fn storage_type(&self) -> BlockStorageType {
+        self.into()
     }
 }
 
@@ -123,27 +146,27 @@ impl<'block> Block<'block> {
     }
 }
 
-impl<'block, 'a> From<&'a Block<'block>> for BlockStorageType {
-    fn from(block: &Block) -> BlockStorageType {
+impl<'block, 'a> From<&'a Block<'block>> for BlockStorage {
+    fn from(block: &Block) -> BlockStorage {
         match *block {
-            Block::Memory(ref b) => BlockStorageType::Memory(b.into()),
+            Block::Memory(ref b) => BlockStorage::Memory(b.into()),
             #[cfg(feature = "mmap")]
-            Block::Memmap(ref b) => BlockStorageType::Memmap(b.into()),
+            Block::Memmap(ref b) => BlockStorage::Memmap(b.into()),
         }
     }
 }
 
-impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockStorageType {
-    fn from(block: &RwLock<Block>) -> BlockStorageType {
+impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockStorage {
+    fn from(block: &RwLock<Block>) -> BlockStorage {
         (acquire!(read block)).into()
     }
 }
 
-impl Deref for BlockStorageType {
+impl Deref for BlockStorage {
     type Target = block::BlockType;
 
     fn deref(&self) -> &Self::Target {
-        use self::BlockStorageType::*;
+        use self::BlockStorage::*;
 
         match *self {
             Memory(ref bt) | Memmap(ref bt) => bt,

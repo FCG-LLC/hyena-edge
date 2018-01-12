@@ -20,7 +20,7 @@ use error::*;
 
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
-ScanTsRange, BlockStorageType as TyBlockType, ColumnId, TimestampFragment, Fragment,
+ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment,
 ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter};
 
 use hyena_common::ty::Uuid;
@@ -232,7 +232,7 @@ impl Reply {
             return Reply::AddColumn(Err(Error::ColumnNameCannotBeEmpty));
         }
 
-        let column = Column::new(TyBlockType::Memmap(request.column_type),
+        let column = Column::new(BlockStorage::Memmap(request.column_type),
                                  request.column_name.as_str());
         let id = catalog.next_id();
         info!("Adding column {}:{:?} with id {}",
@@ -342,8 +342,8 @@ impl Reply {
                         Some(DataTriple {
                             column_id: column,
                             column_type: match **col {
-                                TyBlockType::Memory(t) => t,
-                                TyBlockType::Memmap(t) => t,
+                                BlockStorage::Memory(t) => t,
+                                BlockStorage::Memmap(t) => t,
                             },
                             data: fragment
                         })
@@ -389,8 +389,8 @@ impl Reply {
             .iter()
             .map(|(id, c)| {
                 let t = match **c {
-                    TyBlockType::Memory(t) => t,
-                    TyBlockType::Memmap(t) => t,
+                    BlockStorage::Memory(t) => t,
+                    BlockStorage::Memmap(t) => t,
                 };
                 ReplyColumn {
                     typ: t,
@@ -482,7 +482,7 @@ mod tests {
         mod list_columns {
             use super::*;
             use super::Reply::ListColumns;
-            use hyena_engine::BlockStorageType::*;
+            use hyena_engine::BlockStorage::*;
             use hyena_engine::BlockType;
 
             #[test]
@@ -605,7 +605,7 @@ mod tests {
             use super::*;
             use hyena_engine::Fragment;
             use hyena_engine::BlockType::{I8Dense, U8Sparse};
-            use hyena_engine::BlockStorageType::Memory;
+            use hyena_engine::BlockStorage::Memory;
 
             #[test]
             fn creates_source_group() {
@@ -802,7 +802,7 @@ mod tests {
             use super::Reply::RefreshCatalog;
             use hyena_engine::{BlockType, Fragment};
             use hyena_engine::BlockType::{I8Dense, U8Sparse};
-            use hyena_engine::BlockStorageType::Memory;
+            use hyena_engine::BlockStorage::Memory;
 
             #[test]
             fn handles_empty_catalog() {

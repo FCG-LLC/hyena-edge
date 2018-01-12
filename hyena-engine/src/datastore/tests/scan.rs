@@ -16,7 +16,7 @@ mod full {
 
         (init count $count: expr) => {{
             use block::BlockType;
-            use ty::block::BlockStorageType::Memmap;
+            use ty::block::BlockStorage::Memmap;
             use ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
@@ -62,7 +62,7 @@ mod full {
 
         (init sparse count $count: expr, $sparse_ratio: expr) => {{
             use block::BlockType;
-            use ty::block::BlockStorageType::Memmap;
+            use ty::block::BlockStorage::Memmap;
             use ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
@@ -267,7 +267,7 @@ mod full {
     mod pruning {
         use super::*;
         use block::BlockType;
-        use self::BlockStorageType::Memmap;
+        use self::BlockStorage::Memmap;
         use ty::fragment::Fragment;
         use scanner::{ScanResult, ScanFilter};
 
@@ -512,7 +512,7 @@ mod minimal {
     use super::*;
     use ty::fragment::Fragment;
     use scanner::ScanFilter;
-    use self::BlockStorageType::Memmap;
+    use self::BlockStorage::Memmap;
 
     /// Helper for 'minimal' scan tests
     ///
