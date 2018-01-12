@@ -1,4 +1,5 @@
 use ty::BlockStorageType;
+use block::BlockType;
 use std::fmt::{Display, Error as FmtError, Formatter};
 use std::ops::Deref;
 use std::result::Result as StdResult;
@@ -15,6 +16,10 @@ impl Column {
             ty,
             name: name.to_owned(),
         }
+    }
+
+    pub fn block_type(&self) -> BlockType {
+        *self.ty
     }
 }
 

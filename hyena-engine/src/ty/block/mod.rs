@@ -138,3 +138,15 @@ impl<'block, 'a> From<&'a RwLock<Block<'block>>> for BlockStorageType {
         (acquire!(read block)).into()
     }
 }
+
+impl Deref for BlockStorageType {
+    type Target = block::BlockType;
+
+    fn deref(&self) -> &Self::Target {
+        use self::BlockStorageType::*;
+
+        match *self {
+            Memory(ref bt) | Memmap(ref bt) => bt,
+        }
+    }
+}
