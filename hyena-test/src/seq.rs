@@ -1,4 +1,4 @@
-
+#[macro_export]
 macro_rules! seqfill {
     (vec $ty: ty as $asty: ty, $count: expr, $start: expr, $step: expr) => {{
         seqfill!(iter $ty as $asty, $count, $start, $step).collect::<Vec<$ty>>()
@@ -206,7 +206,7 @@ mod tests {
     }
 
     mod ts {
-        use ty::timestamp::Timestamp;
+        use hyena_common::ty::Timestamp;
 
         #[test]
         fn simple() {

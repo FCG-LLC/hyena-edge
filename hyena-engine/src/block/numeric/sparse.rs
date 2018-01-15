@@ -165,7 +165,7 @@ mod tests {
                 let index = $index;
 
                 let mut block = SparseIndexedNumericBlock::<$T, _, _>::new(data, index)
-                    .chain_err(|| "failed to create block")
+                    .with_context(|_| "failed to create block")
                     .unwrap();
 
                 let s = [!$T::zero(), $T::zero(), !$T::zero()];
@@ -232,7 +232,7 @@ mod tests {
         {
 
             let mut block = SparseIndexedNumericBlock::new(data, index)
-                .chain_err(|| "failed to create block")
+                .with_context(|_| "failed to create block")
                 .unwrap();
 
             let s = [!T::zero(), T::zero(), !T::zero()];
@@ -289,7 +289,7 @@ mod tests {
         {
 
             let mut block = SparseIndexedNumericBlock::new(data, index)
-                .chain_err(|| "failed to create block")
+                .with_context(|_| "failed to create block")
                 .unwrap();
 
             let s = [T::max_value(), T::zero(), T::max_value()];
@@ -351,10 +351,10 @@ mod tests {
         fn make_storage<T>() -> (PagedMemoryStorage, PagedMemoryStorage) {
             (
                 PagedMemoryStorage::new(BLOCK_SIZE)
-                    .chain_err(|| "failed to create memory storage")
+                    .with_context(|_| "failed to create memory storage")
                     .unwrap(),
                 PagedMemoryStorage::new(BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>())
-                    .chain_err(|| "failed to create memory storage")
+                    .with_context(|_| "failed to create memory storage")
                     .unwrap(),
             )
         }
@@ -457,12 +457,12 @@ mod tests {
 
             (
                 MemmapStorage::new(data, BLOCK_SIZE)
-                    .chain_err(|| "failed to create memory storage")
+                    .with_context(|_| "failed to create memory storage")
                     .unwrap(),
                 MemmapStorage::new(
                     index,
                     BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>(),
-                ).chain_err(|| "failed to create memory storage")
+                ).with_context(|_| "failed to create memory storage")
                     .unwrap(),
             )
         }

@@ -1,11 +1,12 @@
 use error::*;
 use block::SparseIndex;
-use ty::{Timestamp, RowId};
+use hyena_common::ty::Timestamp;
+use ty::RowId;
 use std::mem::transmute;
 use extprim::i128::i128;
 use extprim::u128::u128;
 use std::marker::PhantomData;
-use ty::value::Value;
+use hyena_common::ty::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Fragment {
@@ -79,7 +80,7 @@ macro_rules! frag_apply {
                     if let $dense_variants(ref mut $other_block) = $other {
                         Ok($dense)
                     } else {
-                        Err("incompatible source fragment variant in merge".into())
+                        Err(err_msg("incompatible source fragment variant in merge"))
                     }
                 }
             )+
@@ -89,7 +90,7 @@ macro_rules! frag_apply {
                     if let $sparse_variants(ref mut $other_block, ref mut $other_idx) = $other {
                         Ok($sparse)
                     } else {
-                        Err("incompatible source fragment variant in merge".into())
+                        Err(err_msg("incompatible source fragment variant in merge"))
                     }
                 }
             )+
@@ -213,7 +214,7 @@ impl Fragment {
                 )
             }))
         } else {
-            Err("split_at_idx called on a dense block".into())
+            Err(err_msg("split_at_idx called on a dense block"))
         }
     }
 
@@ -378,7 +379,7 @@ impl<'fragref> FragmentRef<'fragref> {
                 )
             }))
         } else {
-            Err("split_at_idx called on a dense block".into())
+            Err(err_msg("split_at_idx called on a dense block"))
         }
     }
 
@@ -653,7 +654,7 @@ mod tests {
                             let frag = Fragment::from((buf.clone(), idx.clone()));
 
                             let (left, right) = frag.split_at_idx(100)
-                                .chain_err(|| "failed to split sparse fragment")
+                                .with_context(|_| "failed to split sparse fragment")
                                 .unwrap();
 
                             assert_variant!(left, FragmentRef::$T(_, vidx),
@@ -676,7 +677,7 @@ mod tests {
                             let frag = Fragment::from((buf, idx));
 
                             let (left, right) = frag.split_at_idx(dense_count)
-                                .chain_err(|| "failed to split sparse fragment")
+                                .with_context(|_| "failed to split sparse fragment")
                                 .unwrap();
 
                             assert_eq!(left.len(), 10);
@@ -749,7 +750,7 @@ mod tests {
 
     mod timestamp {
         use super::*;
-        use helpers::random::timestamp::RandomTimestampGen;
+        use hyena_test::random::timestamp::RandomTimestampGen;
 
         #[test]
         fn is_eq() {

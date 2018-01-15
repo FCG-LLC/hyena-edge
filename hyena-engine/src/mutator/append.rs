@@ -32,12 +32,12 @@ impl Append {
 mod tests {
     use super::*;
     use error::*;
-    use helpers::random::timestamp::RandomTimestampGen;
+    use hyena_test::random::timestamp::RandomTimestampGen;
     use rand::{thread_rng, Rng};
     use block::SparseIndex;
     use std::iter::repeat;
     use ty::Fragment;
-    use ty::timestamp::Timestamp;
+    use hyena_common::ty::Timestamp;
 
     #[test]
     fn serialize() {

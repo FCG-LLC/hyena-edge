@@ -2,7 +2,6 @@ use std::ops::{Deref, DerefMut};
 use std::mem::{align_of, size_of};
 use std::marker::PhantomData;
 
-
 #[inline]
 pub fn map_type<'map, 'owner, D, M: Deref<Target = [D]>, T>(
     map: &'map M,
@@ -24,7 +23,7 @@ pub fn map_type_mut<'map, 'owner, D, M: DerefMut<Target = [D]>, T>(
 }
 
 #[inline]
-fn map_len<'map, D, M: Deref<Target = [D]>, T>(map: &'map M) -> usize {
+fn map_len<D, M: Deref<Target = [D]>, T>(map: &M) -> usize {
     let bytes_len = map.len() * size_of::<D>();
 
     // check pointer alignment

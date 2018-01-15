@@ -739,7 +739,7 @@ macro_rules! map_fragment {
                         if let $ty::$dense_var(ref $fid) = *$frag {
                             Ok($dense)
                         } else {
-                            Err::<_, Error>("Incompatible block and fragment types".into())
+                            Err::<_, Error>(err_msg("Incompatible block and fragment types"))
                         }
                     }
                     )+
@@ -751,7 +751,7 @@ macro_rules! map_fragment {
                         if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
                             Ok($sparse)
                         } else {
-                            Err("Incompatible block and fragment types".into())
+                            Err(err_msg("Incompatible block and fragment types"))
                         }
                     }
                     )+
@@ -798,7 +798,7 @@ macro_rules! map_fragment {
                         if let $ty::$dense_var(ref $fid) = *$frag {
                             Ok($dense)
                         } else {
-                            Err::<_, Error>("Incompatible block and fragment types".into())
+                            Err::<_, Error>(err_msg("Incompatible block and fragment types"))
                         }
                     }
                     )+
@@ -810,7 +810,7 @@ macro_rules! map_fragment {
                         if let $ty::$sparse_var(ref $fid, ref $fidx) = *$frag {
                             Ok($sparse)
                         } else {
-                            Err("Incompatible block and fragment types".into())
+                            Err(err_msg("Incompatible block and fragment types"))
                         }
                     }
                     )+

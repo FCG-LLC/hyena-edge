@@ -50,10 +50,10 @@ impl<'block> Block<'block> {
         let index_size = size / size_of::<T>() * size_of::<SparseIndex>();
 
         let data_stor = MemmapStorage::new(data, size)
-            .chain_err(|| "Failed to create data block for sparse storage")?;
+            .with_context(|_| "Failed to create data block for sparse storage")?;
 
         let index_stor = MemmapStorage::new(index, index_size)
-            .chain_err(|| "Failed to create index block for sparse storage")?;
+            .with_context(|_| "Failed to create index block for sparse storage")?;
 
         Ok((data_stor, index_stor))
     }
@@ -69,11 +69,11 @@ impl<'block> Block<'block> {
         macro_rules! prepare_mmap_dense {
             ($block: ty) => {{
                 let storage = Block::prepare_dense_storage(&root, block_id, BLOCK_SIZE)
-                                .chain_err(|| "Failed to create storage")
+                                .with_context(|_| "Failed to create storage")
                                 .unwrap();
 
                 <$block>::new(storage)
-                    .chain_err(|| "Failed to create block")?
+                    .with_context(|_| "Failed to create block")?
                     .into()
             }};
         }
@@ -83,11 +83,11 @@ impl<'block> Block<'block> {
                 let (data, index) = Block::prepare_sparse_storage::<$T, _>(&root,
                                                                         block_id,
                                                                         BLOCK_SIZE)
-                                .chain_err(|| "Failed to create storage")
+                                .with_context(|_| "Failed to create storage")
                                 .unwrap();
 
                 <$block>::new(data, index)
-                    .chain_err(|| "Failed to create block")?
+                    .with_context(|_| "Failed to create block")?
                     .into()
             }};
         }
@@ -141,7 +141,7 @@ mod tests {
         let path = root.as_ref().join(format!("block_{}.data", blockid));
 
         let storage = Block::prepare_dense_storage(&root, blockid, BLOCK_SIZE)
-            .chain_err(|| "Failed to prepare dense storage")
+            .with_context(|_| "Failed to prepare dense storage")
             .unwrap();
 
         assert_eq!(storage.file_path(), path);
@@ -149,7 +149,7 @@ mod tests {
         assert!(path.is_file());
         assert_eq!(
             path.metadata()
-                .chain_err(|| "Unable to get metadata for data file")
+                .with_context(|_| "Unable to get metadata for data file")
                 .unwrap()
                 .len() as usize,
             BLOCK_SIZE
@@ -164,7 +164,7 @@ mod tests {
 
         let (data_stor, index_stor) =
             Block::prepare_sparse_storage::<T, _>(&root, blockid, BLOCK_SIZE)
-                .chain_err(|| {
+                .with_context(|_| {
                     format!("Failed to prepare sparse storage for T={}", size_of::<T>())
                 })
                 .unwrap();
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(
             data_path
                 .metadata()
-                .chain_err(|| "Unable to get metadata for data file")
+                .with_context(|_| "Unable to get metadata for data file")
                 .unwrap()
                 .len() as usize,
             BLOCK_SIZE
@@ -187,7 +187,7 @@ mod tests {
         assert_eq!(
             index_path
                 .metadata()
-                .chain_err(|| "Unable to get metadata for index file")
+                .with_context(|_| "Unable to get metadata for index file")
                 .unwrap()
                 .len() as usize,
             BLOCK_SIZE / size_of::<T>() * size_of::<SparseIndex>()

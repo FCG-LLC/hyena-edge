@@ -22,10 +22,10 @@ impl<'block> Block<'block> {
         let index_size = size / size_of::<T>() * size_of::<SparseIndex>();
 
         let data_stor = PagedMemoryStorage::new(size)
-            .chain_err(|| "Failed to create data block for sparse storage")?;
+            .with_context(|_| "Failed to create data block for sparse storage")?;
 
         let index_stor = PagedMemoryStorage::new(index_size)
-            .chain_err(|| "Failed to create index block for sparse storage")?;
+            .with_context(|_| "Failed to create index block for sparse storage")?;
 
         Ok((data_stor, index_stor))
     }
@@ -37,11 +37,11 @@ impl<'block> Block<'block> {
         macro_rules! prepare_mem_dense {
             ($block: ty) => {{
                 let storage = Block::prepare_dense_storage(BLOCK_SIZE)
-                                .chain_err(|| "Failed to create storage")
+                                .with_context(|_| "Failed to create storage")
                                 .unwrap();
 
                 <$block>::new(storage)
-                    .chain_err(|| "Failed to create block")?
+                    .with_context(|_| "Failed to create block")?
                     .into()
             }};
         }
@@ -49,11 +49,11 @@ impl<'block> Block<'block> {
         macro_rules! prepare_mem_sparse {
             ($block: ty, $T: ty) => {{
                 let (data, index) = Block::prepare_sparse_storage::<$T>(BLOCK_SIZE)
-                                .chain_err(|| "Failed to create storage")
+                                .with_context(|_| "Failed to create storage")
                                 .unwrap();
 
                 <$block>::new(data, index)
-                    .chain_err(|| "Failed to create block")?
+                    .with_context(|_| "Failed to create block")?
                     .into()
             }};
         }
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn prepare_dense() {
         let storage = Block::prepare_dense_storage(BLOCK_SIZE)
-            .chain_err(|| "Failed to prepare dense storage")
+            .with_context(|_| "Failed to prepare dense storage")
             .unwrap();
 
         assert_eq!(storage.len(), BLOCK_SIZE);
@@ -109,7 +109,7 @@ mod tests {
 
     fn prepare_sparse<T>() {
         let (data_stor, index_stor) = Block::prepare_sparse_storage::<T>(BLOCK_SIZE)
-            .chain_err(|| {
+            .with_context(|_| {
                 format!("Failed to prepare sparse storage for T={}", size_of::<T>())
             })
             .unwrap();

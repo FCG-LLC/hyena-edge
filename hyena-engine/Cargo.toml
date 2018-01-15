@@ -2,29 +2,27 @@
 authors = [
     "Przemyslaw M. Maciolek <pmm@collective-sense.com>",
     "Jacek Całusiński <forger@forger.pl>",
+    "Tomasz Barański <tomasz.baranski@collective-sense.com>"
 ]
 name = "hyena-engine"
 version = "0.1.0"
 
 [dependencies]
-bincode = "0.8.0"
 cfg-if = "0.1.2"
 chrono = "0.4.0"
-error-chain = "0.11.0"
-log = "0.3.8"
-rayon = "0.8.2"
-serde = "1.0.9"
-serde_derive = "1.0.9"
-static_assertions = "0.2.2"
+log = "0.4.1"
+rayon = "0.9.0"
+serde = "1.0.27"
+serde_derive = "1.0.27"
+static_assertions = "0.2.5"
 extprim = "1.4.0"
-byteorder = "1.1.0"
-
-[dependencies.flame]
-git = "https://github.com/TyOverby/flame.git"
+failure = "0.1.1"
+failure_derive = "0.1.1"
+hyena-common = { path = "../hyena-common" }
 
 [dependencies.libc]
 optional = true
-version = "0.2.24"
+version = "0.2.34"
 
 [dependencies.memmap]
 version = "0.6.1"
@@ -39,11 +37,9 @@ optional = false
 version = "0.5.1"
 
 [dev-dependencies]
-num = "0.1.39"
-prettytable-rs = "0.6.7"
-rand = "0.3.15"
-tempdir = "0.3.5"
-term = "0.4.6"
+num = "0.1.41"
+rand = "0.4.1"
+hyena-test = { path = "../hyena-test" }
 
 [features]
 default = [

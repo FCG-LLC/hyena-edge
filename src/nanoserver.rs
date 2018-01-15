@@ -6,8 +6,8 @@ use nanomsg_tokio::Socket as NanoSocket;
 use nanomsg::Protocol;
 use bincode::{serialize, Infinite};
 
-use hyena_engine::api::{Request, Reply, run_request};
-use hyena_engine::catalog::Catalog;
+use hyena_api::{Request, Reply, run_request};
+use hyena_engine::Catalog;
 
 fn get_address(matches: &clap::ArgMatches) -> String {
     let transport = matches.value_of("transport").unwrap();

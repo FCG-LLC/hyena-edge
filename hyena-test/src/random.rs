@@ -1,3 +1,4 @@
+#[macro_export]
 macro_rules! random {
     ($ty: ty) => {{
         use rand::random;
@@ -38,11 +39,9 @@ mod tests {
     }
 }
 
-
-pub(crate) mod timestamp {
-    use rand::{random, thread_rng, Rand, Rng};
-    use ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
-    use chrono::prelude::*;
+pub mod timestamp {
+    use rand::{thread_rng, Rng};
+    use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
     use std::iter::repeat;
 
     // these should be moved associated when consts stabilize
@@ -53,7 +52,7 @@ pub(crate) mod timestamp {
     // arbitrary upper bound, chrono::naive::MAX_DATE, ty::Timestamp::MAX_TIMESTAMP
     pub const TS_MAX: u64 = MAX_TIMESTAMP_VALUE;
 
-    pub(crate) trait RandomTimestamp {
+    pub trait RandomTimestamp {
         fn random<T>() -> T
         where
             T: From<Timestamp>,
@@ -105,10 +104,10 @@ pub(crate) mod timestamp {
     }
 
     #[derive(Debug, Clone, Copy, PartialEq)]
-    pub(crate) struct RandomTimestampGen;
+    pub struct RandomTimestampGen;
 
     impl RandomTimestampGen {
-        pub(crate) fn iter<T>() -> Box<Iterator<Item = T>>
+        pub fn iter<T>() -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T>,
@@ -116,7 +115,7 @@ pub(crate) mod timestamp {
             Box::new(repeat(RandomTimestampGen).map(|_| Self::random()))
         }
 
-        pub(crate) fn iter_range<T, TS>(from: TS, to: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range<T, TS>(from: TS, to: TS) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,
@@ -128,8 +127,7 @@ pub(crate) mod timestamp {
             )
         }
 
-        #[allow(unused)]
-        pub(crate) fn iter_range_from<T, TS>(from: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range_from<T, TS>(from: TS) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,
@@ -140,20 +138,16 @@ pub(crate) mod timestamp {
             }))
         }
 
-        #[allow(unused)]
-        pub(crate) fn iter_rng<T, R>(rng: R) -> Box<Iterator<Item = T>>
+        pub fn iter_rng<T, R>(rng: R) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T>,
             R: Rng + Sized + Clone + 'static,
         {
-            Box::new(
-                repeat(RandomTimestampGen).map(move |_| Self::random_rng(&mut rng.clone())),
-            )
+            Box::new(repeat(RandomTimestampGen).map(move |_| Self::random_rng(&mut rng.clone())))
         }
 
-        #[allow(unused)]
-        pub(crate) fn iter_range_rng<T, TS, R>(rng: R, from: TS, to: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range_rng<T, TS, R>(rng: R, from: TS, to: TS) -> Box<Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,
@@ -161,12 +155,14 @@ pub(crate) mod timestamp {
             Timestamp: From<&'static TS>,
             R: Rng + Sized + Clone + 'static,
         {
-            Box::new(repeat(RandomTimestampGen).map(move |_| {
-                Self::random_range_rng(&mut rng.clone(), from.clone(), to.clone())
-            }))
+            Box::new(
+                repeat(RandomTimestampGen).map(move |_| {
+                    Self::random_range_rng(&mut rng.clone(), from.clone(), to.clone())
+                }),
+            )
         }
 
-        pub(crate) fn pairs<T>(count: usize) -> Vec<(T, T)>
+        pub fn pairs<T>(count: usize) -> Vec<(T, T)>
         where
             T: From<Timestamp> + Ord + Clone,
             Timestamp: From<T>,
@@ -174,8 +170,7 @@ pub(crate) mod timestamp {
             Self::range_pairs::<T, u64>(TS_MIN, TS_MAX, count)
         }
 
-        #[allow(unused)]
-        pub(crate) fn pairs_rng<T, R>(rng: R, count: usize) -> Vec<(T, T)>
+        pub fn pairs_rng<T, R>(rng: &R, count: usize) -> Vec<(T, T)>
         where
             T: From<Timestamp> + Ord + Clone,
             Timestamp: From<T>,
@@ -184,21 +179,16 @@ pub(crate) mod timestamp {
             Self::range_pairs_rng::<T, u64, _>(rng, TS_MIN, TS_MAX, count)
         }
 
-        pub(crate) fn range_pairs<T, TS>(from: TS, to: TS, count: usize) -> Vec<(T, T)>
+        pub fn range_pairs<T, TS>(from: TS, to: TS, count: usize) -> Vec<(T, T)>
         where
             T: From<Timestamp> + Ord + Clone,
             Timestamp: From<T> + From<TS>,
             TS: Clone + 'static,
         {
-            Self::range_pairs_rng(thread_rng(), from, to, count)
+            Self::range_pairs_rng(&thread_rng(), from, to, count)
         }
 
-        pub(crate) fn range_pairs_rng<T, TS, R>(
-            rng: R,
-            from: TS,
-            to: TS,
-            count: usize,
-        ) -> Vec<(T, T)>
+        pub fn range_pairs_rng<T, TS, R>(rng: &R, from: TS, to: TS, count: usize) -> Vec<(T, T)>
         where
             T: From<Timestamp> + Ord + Clone,
             Timestamp: From<T> + From<TS>,
@@ -226,16 +216,11 @@ pub(crate) mod timestamp {
     impl RandomTimestamp for RandomTimestampGen {}
     impl RandomTimestamp for Timestamp {}
 
-    impl Rand for Timestamp {
-        fn rand<R: Rng>(rng: &mut R) -> Self {
-            Self::random_rng(rng)
-        }
-    }
-
-
     #[cfg(test)]
     mod tests {
         use super::*;
+        use chrono::prelude::*;
+        use rand::random;
 
         #[test]
         fn ts_timestamp() {

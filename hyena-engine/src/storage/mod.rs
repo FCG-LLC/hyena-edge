@@ -6,7 +6,6 @@ use std::fmt::Debug;
 pub(crate) mod mmap;
 pub(crate) mod memory;
 
-mod map_type;
 pub(crate) mod manager;
 
 

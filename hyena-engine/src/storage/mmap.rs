@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 
 use super::Storage;
 
-use super::map_type::{map_type, map_type_mut};
+use hyena_common::map_type::{map_type, map_type_mut};
 
 
 pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
@@ -17,7 +17,8 @@ pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
     unsafe {
         MmapOptions::new()
             .map_mut(&file)
-            .chain_err(|| "memmap failed")
+            .with_context(|_| "memmap failed")
+            .map_err(|e| e.into())
     }
 }
 
@@ -31,7 +32,7 @@ impl MemmapStorage {
     pub fn new<P: AsRef<Path>>(file: P, size: usize) -> Result<MemmapStorage> {
         let path = file.as_ref().to_path_buf();
 
-        let mmap = map_file(&path, size).chain_err(|| "unable to mmap file")?;
+        let mmap = map_file(&path, size).with_context(|_| "unable to mmap file")?;
 
         Ok(Self { mmap, path })
     }
@@ -45,7 +46,8 @@ impl<'stor, T: 'stor> Storage<'stor, T> for MemmapStorage {
     fn sync(&mut self) -> Result<()> {
         self.mmap
             .flush_async()
-            .chain_err(|| "memmap::flush_asyc failed")
+            .with_context(|_| "memmap::flush_asyc failed")
+            .map_err(|e| e.into())
     }
 }
 
@@ -75,7 +77,7 @@ mod tests {
         let (_dir, file) = tempfile!(prefix TEMPDIR_PREFIX);
 
         let _storage = MemmapStorage::new(&file, FILE_SIZE)
-            .chain_err(|| "unable to create MemmapStorage")
+            .with_context(|_| "unable to create MemmapStorage")
             .unwrap();
 
         // verify that the file was in fact created
@@ -93,7 +95,7 @@ mod tests {
         ensure_write!(file, TEST_BYTES, FILE_SIZE);
 
         let storage = MemmapStorage::new(&file, FILE_SIZE)
-            .chain_err(|| "unable to create MemmapStorage")
+            .with_context(|_| "unable to create MemmapStorage")
             .unwrap();
 
         assert_file_size!(file, FILE_SIZE);
@@ -109,7 +111,7 @@ mod tests {
 
         {
             let mut storage = MemmapStorage::new(&file, FILE_SIZE)
-                .chain_err(|| "unable to create MemmapStorage")
+                .with_context(|_| "unable to create MemmapStorage")
                 .unwrap();
 
             &mut storage.as_mut()[..TEST_BYTES_LEN].copy_from_slice(&TEST_BYTES[..]);
@@ -130,7 +132,7 @@ mod tests {
 
         {
             let mut storage = MemmapStorage::new(&file, FILE_SIZE)
-                .chain_err(|| "unable to create MemmapStorage")
+                .with_context(|_| "unable to create MemmapStorage")
                 .unwrap();
 
             &mut storage.as_mut()[TEST_BYTES_LEN..TEST_BYTES_LEN * 2]

@@ -1,11 +1,12 @@
 extern crate hyena_engine;
-extern crate tempdir;
+extern crate hyena_test;
+extern crate failure;
 
 use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
-use tempdir::TempDir;
+use hyena_test::tempfile::VolatileTempDir as TempDir;
 
 use std::iter::repeat;
 use std::collections::HashMap;

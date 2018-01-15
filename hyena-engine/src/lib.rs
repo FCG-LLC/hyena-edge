@@ -6,8 +6,6 @@ extern crate test;
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate error_chain;
-#[macro_use]
 extern crate cfg_if;
 extern crate rayon;
 extern crate chrono;
@@ -19,21 +17,19 @@ extern crate uuid;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
-extern crate bincode;
-extern crate byteorder;
+#[macro_use]
+extern crate hyena_common;
 
 #[cfg(test)]
-extern crate tempdir;
+#[macro_use]
+extern crate hyena_test;
+#[macro_use]
+extern crate failure;
+
 #[cfg(test)]
 extern crate num;
 #[cfg(test)]
 extern crate rand;
-#[cfg(feature = "perf")]
-extern crate flame;
-#[cfg(test)]
-extern crate prettytable;
-#[cfg(test)]
-extern crate term;
 
 #[cfg(test)]
 #[macro_use]
@@ -43,35 +39,29 @@ extern crate extprim;
 pub(crate) mod params;
 
 mod error;
-#[macro_use]
-pub(crate) mod helpers;
-#[macro_use]
-pub(crate) mod serde_utils;
 
 mod fs;
 mod storage;
-#[cfg(feature = "hole_punching")]
-mod libc_utils;
+#[macro_use]
 mod block;
 
 #[macro_use]
 mod ty;
-mod partition;
-pub mod catalog;
+pub mod datastore;
 mod mutator;
 mod scanner;
-pub mod api;
-mod huuid;
 
-pub use self::error::{Error, Result, ResultExt};
+pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
-    ScanFilter};
-pub use self::catalog::{Catalog, Column, ColumnMap};
+    ScanFilter, ScanData};
+pub use self::datastore::{Catalog, Column, ColumnMap};
 pub use self::ty::{RowId, ColumnId, BlockType as BlockStorageType};
 pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
-pub use self::ty::Value;
-pub use self::ty::timestamp::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
+pub use self::ty::block::memory::Block as MemoryBlock;
+pub use self::ty::block::mmap::Block as MemmapBlock;
+pub use hyena_common::ty::Value;
+pub use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
 
 pub use self::mutator::{Append, BlockData};
 

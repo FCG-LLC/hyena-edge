@@ -4,13 +4,14 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;
-use partition::PartitionId;
+use datastore::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
 use extprim::i128::i128;
 use extprim::u128::u128;
 
 pub type ScanFilters = HashMap<ColumnId, Vec<ScanFilter>>;
+pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -77,7 +78,7 @@ impl<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> ScanFilterOp<T> {
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScanResult {
-    pub(crate) data: HashMap<ColumnId, Option<Fragment>>,
+    pub(crate) data: ScanData,
 }
 
 impl ScanResult {
@@ -110,7 +111,7 @@ impl ScanResult {
 
                 self_data
                     .merge(&mut other_data, offset)
-                    .chain_err(|| "unable to merge scan results")?;
+                    .with_context(|_| "unable to merge scan results")?;
             }
         }
 
@@ -165,8 +166,8 @@ impl ScanResult {
     }
 }
 
-impl From<HashMap<ColumnId, Option<Fragment>>> for ScanResult {
-    fn from(data: HashMap<ColumnId, Option<Fragment>>) -> ScanResult {
+impl From<ScanData> for ScanResult {
+    fn from(data: ScanData) -> ScanResult {
         ScanResult { data }
     }
 }
@@ -177,10 +178,19 @@ pub trait ScanFilterApply<T> {
 }
 
 impl Deref for ScanResult {
-    type Target = HashMap<ColumnId, Option<Fragment>>;
+    type Target = ScanData;
 
     fn deref(&self) -> &Self::Target {
         &self.data
+    }
+}
+
+impl IntoIterator for ScanResult {
+    type Item = <ScanData as IntoIterator>::Item;
+    type IntoIter = <ScanData as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
     }
 }
 
@@ -322,7 +332,7 @@ mod tests {
 
             let (mut merged, b, expected) = prepare();
 
-            merged.merge(b).chain_err(|| "merge failed").unwrap();
+            merged.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(merged, expected);
         }
@@ -340,7 +350,7 @@ mod tests {
 
             let (b, expected) = (b, expected);
 
-            merged.merge(b).chain_err(|| "merge failed").unwrap();
+            merged.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(merged, expected);
         }
@@ -380,7 +390,7 @@ mod tests {
                 }),
             });
 
-            a.merge(b).chain_err(|| "merge failed").unwrap();
+            a.merge(b).with_context(|_| "merge failed").unwrap();
 
             assert_eq!(expected, a);
         }

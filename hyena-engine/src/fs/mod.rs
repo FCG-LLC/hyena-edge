@@ -35,10 +35,10 @@ pub fn ensure_dir<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
         info!("Directory {} doesn't exist, creating...", path.display());
 
         create_dir_all(&path)
-            .chain_err(|| "Unable to create directory")?;
+            .with_context(|_| "Unable to create directory")?;
     } else if path.is_dir() {
         let meta = path.metadata()
-            .chain_err(|| "Failed to retrieve metadata for the path")?;
+            .with_context(|_| "Failed to retrieve metadata for the path")?;
 
         if meta.permissions().readonly() {
             bail!("The directory is read only");
@@ -48,7 +48,7 @@ pub fn ensure_dir<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     }
 
     let path = path.canonicalize()
-        .chain_err(|| "Unable to acquire canonical path")?;
+        .with_context(|_| "Unable to acquire canonical path")?;
 
     Ok(path.to_path_buf())
 }

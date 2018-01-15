@@ -1,15 +1,22 @@
 extern crate hyena_engine;
-extern crate tempdir;
-use tempdir::TempDir;
+extern crate hyena_test;
+extern crate failure;
 
-use hyena_engine::{Catalog, Result, ResultExt};
+use self::failure::ResultExt;
+
+use self::hyena_test::tempfile;
+use self::tempfile::VolatileTempDir as TempDir;
+
+use hyena_engine::{Catalog, Result};
 
 
 const TEMPDIR_PREFIX: &str = "hyena-int-test";
 
 /// Create temporary directory helper for test code
 pub fn catalog_dir() -> Result<TempDir> {
-    TempDir::new(TEMPDIR_PREFIX).chain_err(|| "unable to create temporary directory")
+    TempDir::new(TEMPDIR_PREFIX)
+        .with_context(|_| "unable to create temporary directory")
+        .map_err(|e| e.into())
 }
 
 /// A helper that allows facilitates try (?) operator use within test functions
@@ -17,7 +24,7 @@ pub fn wrap_result<F>(cl: F)
 where
     F: Fn() -> Result<()>,
 {
-    cl().chain_err(|| "test execution failed").unwrap()
+    cl().with_context(|_| "test execution failed").unwrap()
 }
 
 macro_rules! wrap_result {

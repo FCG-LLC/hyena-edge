@@ -1,13 +1,15 @@
 use chrono::prelude::*;
 use std::fmt::{Display, Error as FmtError, Formatter};
 use std::ops::Deref;
+use num::{NumCast, One, ToPrimitive, Zero};
+use std::ops::{Add, Mul};
+use std::i64;
+use rand::{Rand, Rng};
 
 pub const MIN_TIMESTAMP_VALUE: u64 = 1_u64;
 pub const MAX_TIMESTAMP_VALUE: u64 = 8_210_298_326_400_000_000_u64;
 
-#[allow(unused)]
 pub const MIN_TIMESTAMP: Timestamp = Timestamp(MIN_TIMESTAMP_VALUE);
-#[allow(unused)]
 pub const MAX_TIMESTAMP: Timestamp = Timestamp(MAX_TIMESTAMP_VALUE);
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize)]
@@ -79,7 +81,8 @@ pub trait ToTimestampMicros {
 
 impl<T: TimeZone> ToTimestampMicros for DateTime<T> {
     fn to_timestamp_micros(&self) -> u64 {
-        (self.timestamp() * 1_000_000 + self.timestamp_subsec_micros() as i64) as u64
+        (self.timestamp() * 1_000_000
+            + <i64 as ::std::convert::From<_>>::from(self.timestamp_subsec_micros())) as u64
     }
 }
 
@@ -92,7 +95,8 @@ impl ToTimestampMicros for NaiveDate {
 
 impl ToTimestampMicros for NaiveDateTime {
     fn to_timestamp_micros(&self) -> u64 {
-        (self.timestamp() * 1_000_000 + self.timestamp_subsec_micros() as i64) as u64
+        (self.timestamp() * 1_000_000
+            + <i64 as ::std::convert::From<_>>::from(self.timestamp_subsec_micros())) as u64
     }
 }
 
@@ -118,70 +122,71 @@ impl Deref for Timestamp {
     }
 }
 
-cfg_if! {
-    if #[cfg(test)] {
-        use num::{ToPrimitive, NumCast, Zero, One};
-        use std::ops::{Add, Mul};
+impl ToPrimitive for Timestamp {
+    fn to_i64(&self) -> Option<i64> {
+        self.0.to_i64()
+    }
 
-        impl ToPrimitive for Timestamp {
-            fn to_i64(&self) -> Option<i64> {
-                self.0.to_i64()
-            }
+    fn to_u64(&self) -> Option<u64> {
+        Some(self.0)
+    }
+}
 
-            fn to_u64(&self) -> Option<u64> {
-                Some(self.0)
-            }
-        }
-
-        impl NumCast for Timestamp {
-            fn from<T>(n: T) -> Option<Self>
-            where T: ToPrimitive {
-                if let Some(v) = n.to_u64() {
-                    Some(Timestamp(v))
-                } else {
-                    None
-                }
-            }
-        }
-
-        impl Zero for Timestamp {
-            fn zero() -> Timestamp {
-                0.into()
-            }
-
-            fn is_zero(&self) -> bool {
-                self.0 == 0
-            }
-        }
-
-        impl One for Timestamp {
-            fn one() -> Timestamp {
-                MIN_TIMESTAMP
-            }
-        }
-
-        impl Add<Timestamp> for Timestamp {
-            type Output = Timestamp;
-
-            fn add(self, rhs: Timestamp) -> Self::Output {
-                (self.0 + rhs.0).into()
-            }
-        }
-
-        impl Mul<Timestamp> for Timestamp {
-            type Output = Timestamp;
-
-            fn mul(self, rhs: Timestamp) -> Self::Output {
-                (self.0 * rhs.0).into()
-            }
+impl NumCast for Timestamp {
+    fn from<T>(n: T) -> Option<Self>
+    where
+        T: ToPrimitive,
+    {
+        if let Some(v) = n.to_u64() {
+            Some(Timestamp(v))
+        } else {
+            None
         }
     }
 }
 
+impl Zero for Timestamp {
+    fn zero() -> Timestamp {
+        0.into()
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl One for Timestamp {
+    fn one() -> Timestamp {
+        MIN_TIMESTAMP
+    }
+}
+
+impl Add<Timestamp> for Timestamp {
+    type Output = Timestamp;
+
+    fn add(self, rhs: Timestamp) -> Self::Output {
+        (self.0 + rhs.0).into()
+    }
+}
+
+impl Mul<Timestamp> for Timestamp {
+    type Output = Timestamp;
+
+    fn mul(self, rhs: Timestamp) -> Self::Output {
+        (self.0 * rhs.0).into()
+    }
+}
 
 impl Timestamp {
     pub fn as_micros(&self) -> u64 {
         self.0
+    }
+}
+
+impl Rand for Timestamp {
+    fn rand<R: Rng>(rng: &mut R) -> Self {
+        rng.gen_range(MIN_TIMESTAMP_VALUE, MAX_TIMESTAMP_VALUE)
+            .into()
     }
 }
 

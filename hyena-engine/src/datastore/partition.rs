@@ -2,8 +2,9 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap, Timestamp,
+use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap,
 ColumnId, RowId};
+use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
@@ -87,7 +88,7 @@ impl<'part> Partition<'part> {
         offset: SparseIndex,
     ) -> Result<usize> {
         self.ensure_blocks(&blockmap)
-            .chain_err(|| "Unable to create block map")
+            .with_context(|_| "Unable to create block map")
             .unwrap();
         let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
             if let Some(block) = self.blocks.get(blk_idx) {
@@ -114,7 +115,7 @@ impl<'part> Partition<'part> {
                     &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
-                blk.set_written(slen).chain_err(|| "set_written failed")?;
+                blk.set_written(slen).with_context(|_| "set_written failed")?;
 
                 slen
             }, {
@@ -140,12 +141,12 @@ impl<'part> Partition<'part> {
                     });
                 }
 
-                blk.set_written(slen).chain_err(|| "set_written failed")?;
+                blk.set_written(slen).with_context(|_| "set_written failed")?;
 
                 slen
             });
 
-            written = written.saturating_add(r.chain_err(|| "map_fragment failed")?);
+            written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
         }
 
         // todo: fix this (should be slen)
@@ -240,7 +241,7 @@ impl<'part> Partition<'part> {
                     }
                 },
             )
-            .ok_or_else(|| "scan error".into())
+            .ok_or_else(|| err_msg("scan error"))
     }
 
     /// Materialize scan results with given projection
@@ -345,7 +346,7 @@ impl<'part> Partition<'part> {
     pub(crate) fn scan_ts(&self) -> Result<(Timestamp, Timestamp)> {
         let ts_block = self.blocks
             .get(&0)
-            .ok_or_else(|| "Failed to get timestamp block")?;
+            .ok_or_else(|| err_msg("Failed to get timestamp block"))?;
 
         block_apply!(expect physical U64Dense, ts_block, block, pb, {
             let (ts_min, ts_max) = pb.as_slice().iter().fold((None, None), |mut acc, &x| {
@@ -364,8 +365,8 @@ impl<'part> Partition<'part> {
                 acc
             });
 
-            Ok((ts_min.ok_or_else(|| "Failed to get min timestamp")?.into(),
-                ts_max.ok_or_else(|| "Failed to get max timestamp")?.into()))
+            Ok((ts_min.ok_or_else(|| err_msg("Failed to get min timestamp"))?.into(),
+                ts_max.ok_or_else(|| err_msg("Failed to get max timestamp"))?.into()))
         })
     }
 
@@ -400,7 +401,7 @@ impl<'part> Partition<'part> {
         // TODO: handle ts_min changes -> partition path
 
         let (ts_min, ts_max) = self.scan_ts()
-            .chain_err(|| "Unable to perform ts scan for metadata update")?;
+            .with_context(|_| "Unable to perform ts scan for metadata update")?;
 
         if ts_min != self.ts_min {
             warn!(
@@ -458,7 +459,7 @@ impl<'part> Partition<'part> {
             .collect::<HashMap<_, _>>();
 
         let blocks = Partition::prepare_blocks(&self.data_root, &fmap)
-            .chain_err(|| "Unable to create block map")?;
+            .with_context(|_| "Unable to create block map")?;
 
         self.blocks.extend(blocks);
 
@@ -489,14 +490,16 @@ impl<'part> Partition<'part> {
 
                     Block::create(bty)
                         .map(|block| (*block_id, locked!(rw block.into())))
-                        .chain_err(|| "Unable to create in-memory block")
+                        .with_context(|_| "Unable to create in-memory block")
+                        .map_err(|e| e.into())
                 }
                 TyBlockType::Memmap(bty) => {
                     use ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
                         .map(|block| (*block_id, locked!(rw block.into())))
-                        .chain_err(|| "Unable to create mmap block")
+                        .with_context(|_| "Unable to create mmap block")
+                        .map_err(|e| e.into())
                 }
             })
             .collect()
@@ -528,7 +531,9 @@ impl<'part> Partition<'part> {
 
         let data = (partition, blocks, heads);
 
-        serialize!(file meta, &data).chain_err(|| "Failed to serialize partition metadata")
+        serialize!(file meta, &data)
+            .with_context(|_| "Failed to serialize partition metadata")
+            .map_err(|e| e.into())
     }
 
     fn deserialize<P: AsRef<Path>, R: AsRef<Path> + Sync>(
@@ -543,10 +548,10 @@ impl<'part> Partition<'part> {
 
         let (mut partition, blocks, heads): (Partition, BlockTypeMap, BlockHeadMap) =
             deserialize!(file meta)
-                .chain_err(|| "Failed to read partition metadata")?;
+                .with_context(|_| "Failed to read partition metadata")?;
 
         partition.blocks = Partition::prepare_blocks(&root, &*blocks)
-            .chain_err(|| "Failed to read block data")?;
+            .with_context(|_| "Failed to read block data")?;
 
         let partid = partition.id;
 
@@ -554,7 +559,7 @@ impl<'part> Partition<'part> {
             block_apply!(mut map physical block, blk, pb, {
                 let head = heads.get(blockid)
                     .ok_or_else(||
-                        format!("Unable to read block head ptr of partition {}", partid))?;
+                        format_err!("Unable to read block head ptr of partition {}", partid))?;
                 *(pb.mut_head()) = *head;
             })
         }
@@ -569,7 +574,7 @@ impl<'part> Partition<'part> {
 impl<'part> Drop for Partition<'part> {
     fn drop(&mut self) {
         self.flush()
-            .chain_err(|| "Failed to flush data during drop")
+            .with_context(|_| "Failed to flush data during drop")
             .unwrap();
     }
 }
@@ -582,7 +587,7 @@ mod tests {
     use ty::BlockId;
     use ty::block::{Block, BlockType as TyBlockType};
     use std::fmt::Debug;
-    use helpers::random::timestamp::{RandomTimestamp, RandomTimestampGen};
+    use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
     use block::BlockData;
     use ty::fragment::Fragment;
 
@@ -668,11 +673,11 @@ mod tests {
         let ts = RandomTimestampGen::random::<u64>();
 
         let mut part = Partition::new(&root, Partition::gen_id(), ts)
-            .chain_err(|| "Failed to create partition")
+            .with_context(|_| "Failed to create partition")
             .unwrap();
 
         part.ensure_blocks(short_map)
-            .chain_err(|| "Unable to create block map")
+            .with_context(|_| "Unable to create block map")
             .unwrap();
 
         // write some data
@@ -716,7 +721,7 @@ mod tests {
         }
 
         part.ensure_blocks(long_map)
-            .chain_err(|| "Unable to create block map")
+            .with_context(|_| "Unable to create block map")
             .unwrap();
 
         // verify the data is still there
@@ -752,11 +757,11 @@ mod tests {
             .unwrap();
 
         let mut part = Partition::new(&root, Partition::gen_id(), *ts_min)
-            .chain_err(|| "Failed to create partition")
+            .with_context(|_| "Failed to create partition")
             .unwrap();
 
         part.ensure_blocks(&(hashmap! { 0 => ts_ty }).into())
-            .chain_err(|| "Failed to create blocks")
+            .with_context(|_| "Failed to create blocks")
             .unwrap();
 
         {
@@ -776,7 +781,7 @@ mod tests {
                 }
 
                 pb.set_written(count)
-                    .chain_err(|| "Unable to move head ptr")
+                    .with_context(|_| "Unable to move head ptr")
                     .unwrap();
             });
         }
@@ -791,7 +796,7 @@ mod tests {
         let (part, ts_min, ts_max) = ts_init(&root, ts_ty, 100);
 
         let (ret_ts_min, ret_ts_max) = part.scan_ts()
-            .chain_err(|| "Failed to scan timestamps")
+            .with_context(|_| "Failed to scan timestamps")
             .unwrap();
 
         assert_eq!(ret_ts_min, ts_min);
@@ -805,7 +810,7 @@ mod tests {
         let (mut part, ts_min, ts_max) = ts_init(&root, ts_ty, 100);
 
         part.update_meta()
-            .chain_err(|| "Unable to update metadata")
+            .with_context(|_| "Unable to update metadata")
             .unwrap();
 
         assert_eq!(part.ts_min, ts_min);
@@ -821,7 +826,7 @@ mod tests {
             let frags = $frags;
 
             part.ensure_blocks(&blockmap)
-                .chain_err(|| "Unable to create block map")
+                .with_context(|_| "Unable to create block map")
                 .unwrap();
 
             {
@@ -896,7 +901,7 @@ mod tests {
                     let ts = 0;
 
                     let mut part = Partition::new(&root, Partition::gen_id(), ts)
-                        .chain_err(|| "Failed to create partition")
+                        .with_context(|_| "Failed to create partition")
                         .unwrap();
 
                     let blocks = hashmap! {
@@ -982,7 +987,7 @@ mod tests {
         let ts = RandomTimestampGen::random::<u64>();
 
         let mut part = Partition::new(&root, Partition::gen_id(), ts)
-            .chain_err(|| "Failed to create partition")
+            .with_context(|_| "Failed to create partition")
             .unwrap();
 
         let blocks = hashmap! {
@@ -1026,7 +1031,7 @@ mod tests {
         let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
 
         let mut part = Partition::new(&root, Partition::gen_id(), ts_min)
-            .chain_err(|| "Failed to create partition")
+            .with_context(|_| "Failed to create partition")
             .unwrap();
 
         part.ts_max = ts_max;
@@ -1049,11 +1054,11 @@ mod tests {
         assert_ne!(ts_min, start_ts);
 
         let mut part = Partition::new(&root, Partition::gen_id(), start_ts)
-            .chain_err(|| "Failed to create partition")
+            .with_context(|_| "Failed to create partition")
             .unwrap();
 
         part.set_ts(Some(ts_min), Some(ts_max))
-            .chain_err(|| "Unable to set timestamps")
+            .with_context(|_| "Unable to set timestamps")
             .unwrap();
 
         assert_eq!(part.ts_min, ts_min);
@@ -1074,14 +1079,14 @@ mod tests {
             let ts = <Timestamp as Default>::default();
 
             let mut part = Partition::new(&root, Partition::gen_id(), *ts)
-                .chain_err(|| "Failed to create partition")
+                .with_context(|_| "Failed to create partition")
                 .unwrap();
 
             part.ensure_blocks(&(type_map.clone().into()))
-                .chain_err(|| "Failed to create blocks")
+                .with_context(|_| "Failed to create blocks")
                 .unwrap();
 
-            part.flush().chain_err(|| "Partition flush failed").unwrap();
+            part.flush().with_context(|_| "Partition flush failed").unwrap();
 
             assert_eq!(part.ts_min, ts);
             assert_eq!(part.ts_max, ts);
@@ -1103,20 +1108,20 @@ mod tests {
             let (mut part, _, _) = ts_init(&root, ts_ty, count);
 
             part.ensure_blocks(&(type_map.into()))
-                .chain_err(|| "Failed to create blocks")
+                .with_context(|_| "Failed to create blocks")
                 .unwrap();
 
             for (blockid, block) in part.mut_blocks() {
                 if *blockid != 0 {
                     block_apply!(mut map physical block, blk, pb, {
                         pb.set_written(count)
-                            .chain_err(|| "Unable to move head ptr")
+                            .with_context(|_| "Unable to move head ptr")
                             .unwrap();
                     });
                 }
             }
 
-            part.flush().chain_err(|| "Partition flush failed").unwrap();
+            part.flush().with_context(|_| "Partition flush failed").unwrap();
         }
 
         #[test]
@@ -1126,7 +1131,7 @@ mod tests {
 
             {
                 Partition::new(&root, Partition::gen_id(), *ts)
-                    .chain_err(|| "Failed to create partition")
+                    .with_context(|_| "Failed to create partition")
                     .unwrap();
             }
 
@@ -1151,16 +1156,16 @@ mod tests {
 
             {
                 let mut part = Partition::new(&root, Partition::gen_id(), *ts)
-                    .chain_err(|| "Failed to create partition")
+                    .with_context(|_| "Failed to create partition")
                     .unwrap();
 
                 part.ensure_blocks(&(type_map.clone().into()))
-                    .chain_err(|| "Failed to create blocks")
+                    .with_context(|_| "Failed to create blocks")
                     .unwrap();
             }
 
             let part = Partition::with_data(&root)
-                .chain_err(|| "Failed to read partition data")
+                .with_context(|_| "Failed to read partition data")
                 .unwrap();
 
             assert_eq!(part.blocks.len(), type_map.len());
@@ -1181,7 +1186,7 @@ mod tests {
             super::serialize::heads(&root, type_map.clone(), ts_ty, count);
 
             let part = Partition::with_data(&root)
-                .chain_err(|| "Failed to read partition data")
+                .with_context(|_| "Failed to read partition data")
                 .unwrap();
 
             for (_blockid, block) in &part.blocks {
@@ -1198,14 +1203,14 @@ mod tests {
 
             let id = {
                 let part = Partition::new(&root, Partition::gen_id(), *ts)
-                    .chain_err(|| "Failed to create partition")
+                    .with_context(|_| "Failed to create partition")
                     .unwrap();
 
                 part.id
             };
 
             let part = Partition::with_data(&root)
-                .chain_err(|| "Failed to read partition data")
+                .with_context(|_| "Failed to read partition data")
                 .unwrap();
 
             assert_eq!(part.id, id);

@@ -1,8 +1,12 @@
-pub(crate) const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
-pub(crate) const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
+pub const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
+pub const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
+
+pub use self::tempdir_tools::TempDirExt;
+pub use self::persistent_tempdir::TempDir as PersistentTempDir;
+pub use tempdir::TempDir as VolatileTempDir;
 
 pub(crate) mod tempdir_tools {
-    use error::*;
+    use failure::{err_msg, Error, ResultExt};
     use std::path::{Path, PathBuf};
     use std::fs::File;
     use std::io::Read;
@@ -25,19 +29,18 @@ pub(crate) mod tempdir_tools {
             p.exists() && p.is_dir()
         }
 
-        fn read_vec<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>> {
+        fn read_vec<P: AsRef<Path>>(&self, path: P) -> Result<Vec<u8>, Error> {
             let p = self.relative_path(path);
 
             if p.exists() && p.is_file() {
-                let mut f = File::open(p).chain_err(|| "unable to open file")?;
+                let mut f = File::open(p).context("unable to open file")?;
                 let mut buf = Vec::new();
 
-                f.read_to_end(&mut buf)
-                    .chain_err(|| "unable to read from file")?;
+                f.read_to_end(&mut buf).context("unable to read from file")?;
 
                 Ok(buf)
             } else {
-                Err("file doesn't exist or is not a file".into())
+                Err(err_msg("file doesn't exist or is not a file"))
             }
         }
 
@@ -90,31 +93,31 @@ pub(crate) mod persistent_tempdir {
     }
 }
 
+#[macro_export]
 macro_rules! tempdir {
     (@ $tdir: expr) => {
         $tdir
-            .chain_err(|| "unable to create temporary directory")
-            .unwrap()
+            .expect("unable to create temporary directory");
     };
 
     (persistent $prefix: expr) => {{
-        use ::helpers::tempfile::persistent_tempdir::TempDir;
+        use $crate::tempfile::PersistentTempDir as TempDir;
 
         tempdir!(@ TempDir::new($prefix))
     }};
 
     (persistent) => {
-        tempdir!(persistent ::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX)
+        tempdir!(persistent $crate::tempfile::DEFAULT_TEMPDIR_PREFIX)
     };
 
     ($prefix: expr) => {{
-        use tempdir::TempDir;
+        use $crate::tempfile::VolatileTempDir as TempDir;
 
         tempdir!(@ TempDir::new($prefix))
     }};
 
     () => {
-        tempdir!(::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX)
+        tempdir!($crate::tempfile::DEFAULT_TEMPDIR_PREFIX)
     };
 }
 
@@ -124,6 +127,7 @@ macro_rules! tempdir {
 /// add prefix as first (after persistent) keyword to use prefix other
 /// than default system temp
 
+#[macro_export]
 macro_rules! tempfile {
     (@ $tdir: expr, $($name: expr,)* ) => {{
         let dir = $tdir;
@@ -139,15 +143,15 @@ macro_rules! tempfile {
     };
 
     (persistent prefix $prefix: expr) => {
-        tempfile!(persistent prefix $prefix, ::helpers::tempfile::DEFAULT_TEMPFILE_NAME)
+        tempfile!(persistent prefix $prefix, $crate::tempfile::DEFAULT_TEMPFILE_NAME)
     };
 
     (persistent $($name: expr),+ $(,)*) => {
-        tempfile!(persistent prefix ::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX, $($name,)*)
+        tempfile!(persistent prefix $crate::tempfile::DEFAULT_TEMPDIR_PREFIX, $($name,)*)
     };
 
     (persistent) => {
-        tempfile!(persistent ::helpers::tempfile::DEFAULT_TEMPFILE_NAME)
+        tempfile!(persistent $crate::tempfile::DEFAULT_TEMPFILE_NAME)
     };
 
     (prefix $prefix: expr, $($name: expr),+ $(,)*) => {
@@ -155,25 +159,23 @@ macro_rules! tempfile {
     };
 
     (prefix $prefix: expr) => {
-        tempfile!(prefix $prefix, ::helpers::tempfile::DEFAULT_TEMPFILE_NAME)
+        tempfile!(prefix $prefix, $crate::tempfile::DEFAULT_TEMPFILE_NAME)
     };
 
     ($($name: expr),+ $(,)*) => {
-        tempfile!(prefix ::helpers::tempfile::DEFAULT_TEMPDIR_PREFIX, $($name,)*)
+        tempfile!(prefix $crate::tempfile::DEFAULT_TEMPDIR_PREFIX, $($name,)*)
     };
 
     () => {
-        tempfile!(::helpers::tempfile::DEFAULT_TEMPFILE_NAME)
+        tempfile!($crate::tempfile::DEFAULT_TEMPFILE_NAME)
     };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error::*;
     use std::path::Path;
     use std::fs::remove_dir;
-
 
     macro_rules! path_name {
         ($path: expr) => {
@@ -290,7 +292,6 @@ mod tests {
     }
 
     mod tempdir_tools {
-        use super::*;
         use super::super::tempdir_tools::TempDirExt;
         use std::fs::{create_dir, remove_dir, remove_file, File};
         use std::io::Write;
@@ -299,9 +300,7 @@ mod tests {
             assert!(td.exists(""));
 
             if cleanup {
-                remove_dir(td)
-                    .chain_err(|| "unable to remove directory")
-                    .unwrap();
+                remove_dir(td).expect("unable to remove directory");
             }
         }
 
@@ -309,21 +308,15 @@ mod tests {
             let p = td.as_ref().join("testfile");
 
             {
-                let _f = File::create(&p)
-                    .chain_err(|| "unable to create file")
-                    .unwrap();
+                let _f = File::create(&p).expect("unable to create file");
             }
 
             assert!(td.exists_file("testfile"));
             assert!(!td.exists_dir("testfile"));
 
             if cleanup {
-                remove_file(p)
-                    .chain_err(|| "unable to remove file")
-                    .unwrap();
-                remove_dir(td)
-                    .chain_err(|| "unable to remove directory")
-                    .unwrap();
+                remove_file(p).expect("unable to remove file");
+                remove_dir(td).expect("unable to remove directory");
             }
         }
 
@@ -331,23 +324,16 @@ mod tests {
             let p = td.as_ref().join("testdir");
 
             {
-                create_dir(&p)
-                    .chain_err(|| "unable to create directory")
-                    .unwrap();
+                create_dir(&p).expect("unable to create directory");
             }
 
             assert!(td.exists_dir("testdir"));
             assert!(!td.exists_file("testdir"));
 
             if cleanup {
-                remove_dir(p)
-                    .chain_err(|| "unable to remove directory")
-                    .unwrap();
-                remove_dir(td)
-                    .chain_err(|| "unable to remove directory")
-                    .unwrap();
+                remove_dir(p).expect("unable to remove directory");
+                remove_dir(td).expect("unable to remove directory");
             }
-
         }
 
         fn read_vec<T: TempDirExt>(td: T, cleanup: bool) {
@@ -355,34 +341,22 @@ mod tests {
             let testdata = (1..100).collect::<Vec<u8>>();
 
             {
-                let mut f = File::create(&p)
-                    .chain_err(|| "unable to create file")
-                    .unwrap();
+                let mut f = File::create(&p).expect("unable to create file");
 
-                f.write_all(&testdata)
-                    .chain_err(|| "unable to write test data")
-                    .unwrap();
+                f.write_all(&testdata).expect("unable to write test data");
             }
 
-            let _rdata = td.read_vec(&p)
-                .chain_err(|| "unable to read test data")
-                .unwrap();
+            let _rdata = td.read_vec(&p).expect("unable to read test data");
 
             assert_eq!(&testdata[..], &testdata[..]);
 
             if cleanup {
-                remove_file(p)
-                    .chain_err(|| "unable to remove file")
-                    .unwrap();
-                remove_dir(td)
-                    .chain_err(|| "unable to remove directory")
-                    .unwrap();
+                remove_file(p).expect("unable to remove file");
+                remove_dir(td).expect("unable to remove directory");
             }
         }
 
         mod volatile {
-            use super::*;
-
             #[test]
             fn exists() {
                 super::exists(tempdir!(), false)
@@ -405,8 +379,6 @@ mod tests {
         }
 
         mod persistent {
-            use super::*;
-
             #[test]
             fn exists() {
                 super::exists(tempdir!(persistent), true)
