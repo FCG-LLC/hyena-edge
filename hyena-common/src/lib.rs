@@ -1,5 +1,4 @@
 extern crate bincode;
-extern crate byteorder;
 extern crate chrono;
 extern crate extprim;
 extern crate failure;
