@@ -147,7 +147,7 @@ impl<'cat> Catalog<'cat> {
                 bail!("Column Id already exists {}", *id);
             }
             if self.columns.values().any(|col| col.name == column.name) {
-                bail!("Column Name already exists {}", *id);
+                bail!("Column Name already exists '{}'", column.name);
             }
         }
 

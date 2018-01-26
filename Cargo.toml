@@ -40,7 +40,6 @@ path = "hyena-api"
 
 [dependencies.colored_logger]
 git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
-rev = "flexi_0.6.11"
 optional = false
 
 [dependencies.nanomsg]

@@ -133,7 +133,7 @@ pub struct ScanFilter {
 pub struct ScanRequest {
     pub min_ts: u64,
     pub max_ts: u64,
-    pub partition_ids: Option<HashSet<Uuid>>,
+    pub partition_ids: HashSet<Uuid>,
     pub projection: Vec<ColumnId>,
     pub filters: Vec<ScanFilter>,
 }
@@ -366,11 +366,10 @@ impl Reply {
             end:   scan_request.max_ts
         };
 
-        let partitions = if let Some(partitions) = scan_request.partition_ids {
-            if !partitions.is_empty() {
-                Some(partitions.into_iter().map(|v| v.into()).collect())
-            } else { None }
-        } else { None };
+        let partitions = 
+            if !scan_request.partition_ids.is_empty() {
+                Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
+            } else { None };
 
         let filters = scan_request.filters
             .iter()
