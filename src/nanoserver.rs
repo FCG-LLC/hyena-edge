@@ -32,8 +32,8 @@ fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
     } else {
         run_request(operation.unwrap(), catalog)
     };
-    debug!("Returning: {:?}", reply);
-    trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
+    // debug!("Returning: {:?}", reply);
+    // trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
 
     serialize(&reply, Infinite).unwrap()
 }
