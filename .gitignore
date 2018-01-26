@@ -1,5 +1,5 @@
-hyena-engine/Cargo.lock
-Cargo.lock
+**/Cargo.lock
+!Cargo.lock
 target/
 **/*.rs.bk
 Session.vim
