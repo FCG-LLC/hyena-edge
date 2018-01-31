@@ -256,7 +256,6 @@ impl Reply {
 
     fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply {
         let timestamps: TimestampFragment = insert.timestamps.into();
-        let mut inserted = 0;
         let source = insert.source;
 
         if timestamps.is_empty() {
@@ -296,24 +295,34 @@ impl Reply {
             }
         }
 
-        for block in insert.columns.iter() {
-            let append = Append::new(
-                timestamps.clone(),
-                insert.source,
-                block.clone()
-            );
-            let result = catalog.append(&append);
-            match result {
-                Ok(number) => inserted += number,
-                Err(e) => return Reply::Insert(Err(Error::Unknown(e.to_string()))),
+        let mut merged_data = BlockData::new();
+        for block in insert.columns.into_iter() {
+            for (id, fragment) in block {
+                if !merged_data.contains_key(&id) {
+                    merged_data.insert(id, fragment);
+                } else {
+                    let err_msg = format!("Data for column number {} apears more than once", id);
+                    return Reply::Insert(Err(Error::InconsistentData(err_msg)));
+                }
             }
-        }
-        let flushed = catalog.flush()
-            .with_context(|_| "Cannot flush catalog after inserting");
-        if flushed.is_err() {
-            Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
-        } else {
-            Reply::Insert(Ok(inserted))
+        };
+        let append = Append::new(
+            timestamps.clone(),
+            insert.source,
+            merged_data
+        );
+        let result = catalog.append(&append);
+        match result {
+            Err(e) => return Reply::Insert(Err(Error::Unknown(e.to_string()))),
+            Ok(inserted) => {
+                let flushed = catalog.flush()
+                    .with_context(|_| "Cannot flush catalog after inserting");
+                if flushed.is_err() {
+                    Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
+                } else {
+                    Reply::Insert(Ok(inserted))
+                }
+            }
         }
     }
 
