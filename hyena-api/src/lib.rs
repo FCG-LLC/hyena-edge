@@ -366,7 +366,7 @@ impl Reply {
             end:   scan_request.max_ts
         };
 
-        let partitions = 
+        let partitions =
             if !scan_request.partition_ids.is_empty() {
                 Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
             } else { None };
@@ -892,7 +892,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 10,
                     max_ts: 1,
-                    partition_ids: Some(partition_ids),
+                    partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![ScanFilter {
                                       column: 1,
@@ -920,7 +920,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_ids: Some(partition_ids),
+                    partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
                     filters: vec![],
                 };
@@ -943,7 +943,7 @@ mod tests {
                 let request = ScanRequest {
                     min_ts: 1,
                     max_ts: 10,
-                    partition_ids: Some(partition_ids),
+                    partition_ids: partition_ids,
                     projection: vec![],
                     filters: vec![ScanFilter {
                                       column: 1,
