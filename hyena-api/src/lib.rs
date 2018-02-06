@@ -295,25 +295,20 @@ impl Reply {
             }
         }
 
-        let mut merged_data = BlockData::new();
-        for block in insert.columns.into_iter() {
-            for (id, fragment) in block {
-                if !merged_data.contains_key(&id) {
-                    merged_data.insert(id, fragment);
-                } else {
-                    let err_msg = format!("Data for column number {} apears more than once", id);
-                    return Reply::Insert(Err(Error::InconsistentData(err_msg)));
-                }
-            }
-        };
+        let col_len = insert.columns.len();
+        let merged_data = insert.columns.into_iter().flat_map(|block| block.into_iter()).collect::<BlockData>();
+        if merged_data.len() != col_len {
+            // At least one of the columns were repeated.
+            return Reply::Insert(Err(Error::InconsistentData("At least one of the colums is repeated.".into())));
+        }
         let append = Append::new(
-            timestamps.clone(),
+            timestamps,
             insert.source,
             merged_data
         );
         let result = catalog.append(&append);
         match result {
-            Err(e) => return Reply::Insert(Err(Error::Unknown(e.to_string()))),
+            Err(e) => Reply::Insert(Err(Error::Unknown(e.to_string()))),
             Ok(inserted) => {
                 let flushed = catalog.flush()
                     .with_context(|_| "Cannot flush catalog after inserting");
