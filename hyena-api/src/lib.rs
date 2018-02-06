@@ -253,7 +253,6 @@ impl Reply {
 
     fn insert(insert: InsertMessage, catalog: &mut Catalog) -> Reply {
         let timestamps: TimestampFragment = insert.timestamps.into();
-        let mut inserted = 0;
         let source = insert.source;
 
         if timestamps.is_empty() {
@@ -293,24 +292,29 @@ impl Reply {
             }
         }
 
-        for block in insert.columns.iter() {
-            let append = Append::new(
-                timestamps.clone(),
-                insert.source,
-                block.clone()
-            );
-            let result = catalog.append(&append);
-            match result {
-                Ok(number) => inserted += number,
-                Err(e) => return Reply::Insert(Err(Error::Unknown(e.to_string()))),
-            }
+        let col_len = insert.columns.len();
+        let merged_data = insert.columns.into_iter().flat_map(|block| block.into_iter()).collect::<BlockData>();
+        if merged_data.len() != col_len {
+            // At least one of the columns were repeated.
+            return Reply::Insert(Err(Error::InconsistentData("At least one of the colums is repeated.".into())));
         }
-        let flushed = catalog.flush()
-            .with_context(|_| "Cannot flush catalog after inserting");
-        if flushed.is_err() {
-            Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
-        } else {
-            Reply::Insert(Ok(inserted))
+        let append = Append::new(
+            timestamps,
+            insert.source,
+            merged_data
+        );
+        let result = catalog.append(&append);
+        match result {
+            Err(e) => Reply::Insert(Err(Error::Unknown(e.to_string()))),
+            Ok(inserted) => {
+                let flushed = catalog.flush()
+                    .with_context(|_| "Cannot flush catalog after inserting");
+                if flushed.is_err() {
+                    Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
+                } else {
+                    Reply::Insert(Ok(inserted))
+                }
+            }
         }
     }
 
