@@ -2,8 +2,8 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockId, BlockMap, BlockType as TyBlockType, BlockTypeMap,
-ColumnId, RowId};
+use ty::{BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType, ColumnId,
+RowId};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -83,7 +83,7 @@ impl<'part> Partition<'part> {
 
     pub(crate) fn append<'frag>(
         &mut self,
-        blockmap: &BlockTypeMap,
+        blockmap: &BlockStorageMap,
         frags: &BlockRefData<'frag>,
         offset: SparseIndex,
     ) -> Result<usize> {
@@ -446,8 +446,8 @@ impl<'part> Partition<'part> {
     }
 
     #[inline]
-    pub fn ensure_blocks(&mut self, type_map: &BlockTypeMap) -> Result<()> {
-        let fmap = type_map
+    pub fn ensure_blocks(&mut self, storage_map: &BlockStorageMap) -> Result<()> {
+        let fmap = storage_map
             .iter()
             .filter_map(|(block_id, block_type)| {
                 if self.blocks.contains_key(block_id) {
@@ -474,7 +474,7 @@ impl<'part> Partition<'part> {
     // TODO: to be benched
     fn prepare_blocks<'i, P>(
         root: P,
-        type_map: &'i HashMap<BlockId, TyBlockType>,
+        storage_map: &'i BlockStorageMapType,
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
@@ -482,10 +482,10 @@ impl<'part> Partition<'part> {
 //         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
     {
 
-        type_map
+        storage_map
             .iter()
             .map(|(block_id, block_type)| match *block_type {
-                TyBlockType::Memory(bty) => {
+                BlockStorage::Memory(bty) => {
                     use ty::block::memory::Block;
 
                     Block::create(bty)
@@ -493,7 +493,7 @@ impl<'part> Partition<'part> {
                         .with_context(|_| "Unable to create in-memory block")
                         .map_err(|e| e.into())
                 }
-                TyBlockType::Memmap(bty) => {
+                BlockStorage::Memmap(bty) => {
                     use ty::block::mmap::Block;
 
                     Block::create(&root, bty, *block_id)
@@ -515,7 +515,7 @@ impl<'part> Partition<'part> {
     fn serialize<P: AsRef<Path>>(partition: &Partition<'part>, meta: P) -> Result<()> {
         let meta = meta.as_ref();
 
-        let blocks: BlockTypeMap = (&partition.blocks).into();
+        let blocks: BlockStorageMap = (&partition.blocks).into();
         let heads = partition
             .blocks
             .iter()
@@ -546,7 +546,7 @@ impl<'part> Partition<'part> {
             bail!("Cannot find partition metadata {:?}", meta);
         }
 
-        let (mut partition, blocks, heads): (Partition, BlockTypeMap, BlockHeadMap) =
+        let (mut partition, blocks, heads): (Partition, BlockStorageMap, BlockHeadMap) =
             deserialize!(file meta)
                 .with_context(|_| "Failed to read partition metadata")?;
 
@@ -584,8 +584,7 @@ impl<'part> Drop for Partition<'part> {
 mod tests {
     use super::*;
     use std::collections::hash_map::HashMap;
-    use ty::BlockId;
-    use ty::block::{Block, BlockType as TyBlockType};
+    use ty::block::{Block, BlockStorage, BlockId};
     use std::fmt::Debug;
     use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};
     use block::BlockData;
@@ -594,7 +593,7 @@ mod tests {
 
     macro_rules! block_test_impl_mem {
         ($base: ident, $($variant: ident),* $(,)*) => {{
-            use self::TyBlockType::Memory;
+            use self::BlockStorage::Memory;
             let mut idx = 0;
 
             hashmap! {
@@ -607,7 +606,7 @@ mod tests {
 
     macro_rules! block_test_impl_mmap {
         ($base: ident, $($variant: ident),* $(,)*) => {{
-            use self::TyBlockType::Memmap;
+            use self::BlockStorage::Memmap;
             let mut idx = 0;
 
             hashmap! {
@@ -632,7 +631,7 @@ mod tests {
         (mem {$($key:expr => $value:expr),+}) => {{
             hashmap! {
                 $(
-                    $key => TyBlockType::Memory($value),
+                    $key => BlockStorage::Memory($value),
                  )+
             }
         }};
@@ -640,7 +639,7 @@ mod tests {
         (mmap {$($key:expr => $value:expr),+}) => {{
             hashmap! {
                 $(
-                    $key => TyBlockType::Memmap($value),
+                    $key => BlockStorage::Memmap($value),
                  )+
             }
         }}
@@ -662,7 +661,7 @@ mod tests {
         };
     }
 
-    fn block_write_test_impl(short_map: &BlockTypeMap, long_map: &BlockTypeMap) {
+    fn block_write_test_impl(short_map: &BlockStorageMap, long_map: &BlockStorageMap) {
         use rayon::iter::IntoParallelRefMutIterator;
         use block::BlockData;
 
@@ -738,7 +737,7 @@ mod tests {
 
     fn ts_init<'part, P>(
         root: P,
-        ts_ty: TyBlockType,
+        ts_ty: BlockStorage,
         count: usize,
     ) -> (Partition<'part>, Timestamp, Timestamp)
     where
@@ -789,7 +788,7 @@ mod tests {
         (part, (*ts_min).into(), (*ts_max).into())
     }
 
-    fn scan_ts(ts_ty: TyBlockType) {
+    fn scan_ts(ts_ty: BlockStorage) {
 
         let root = tempdir!();
 
@@ -803,7 +802,7 @@ mod tests {
         assert_eq!(ret_ts_max, ts_max);
     }
 
-    fn update_meta(ts_ty: TyBlockType) {
+    fn update_meta(ts_ty: BlockStorage) {
 
         let root = tempdir!();
 
@@ -893,7 +892,7 @@ mod tests {
             macro_rules! materialize_test_init {
                 () => {{
                     use block::BlockType;
-                    use self::TyBlockType::Memory;
+                    use self::BlockStorage::Memory;
                     use ty::fragment::FragmentRef;
 
                     let root = tempdir!();
@@ -977,7 +976,7 @@ mod tests {
         use std::mem::size_of;
         use params::BLOCK_SIZE;
         use std::iter::FromIterator;
-        use self::TyBlockType::Memory;
+        use self::BlockStorage::Memory;
 
         // reserve 20 records on timestamp
         let count = BLOCK_SIZE / size_of::<u64>() - 20;
@@ -1073,7 +1072,7 @@ mod tests {
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
-            BlockTypeMap: From<HashMap<BlockId, T>>,
+            BlockStorageMap: From<HashMap<BlockId, T>>,
         {
             let root = tempdir!();
             let ts = <Timestamp as Default>::default();
@@ -1098,8 +1097,8 @@ mod tests {
 
         pub(super) fn heads<'part, 'block, P>(
             root: P,
-            type_map: HashMap<BlockId, TyBlockType>,
-            ts_ty: TyBlockType,
+            type_map: HashMap<BlockId, BlockStorage>,
+            ts_ty: BlockStorage,
             count: usize,
         ) where
             'part: 'block,
@@ -1149,7 +1148,7 @@ mod tests {
         where
             T: Debug + Clone,
             Block<'block>: PartialEq<T>,
-            BlockTypeMap: From<HashMap<BlockId, T>>,
+            BlockStorageMap: From<HashMap<BlockId, T>>,
         {
             let root = tempdir!();
             let ts = <Timestamp as Default>::default();
@@ -1176,8 +1175,8 @@ mod tests {
 
         pub(super) fn heads<'part, 'block, P>(
             root: P,
-            type_map: HashMap<BlockId, TyBlockType>,
-            ts_ty: TyBlockType,
+            type_map: HashMap<BlockId, BlockStorage>,
+            ts_ty: BlockStorage,
             count: usize,
         ) where
             'part: 'block,
@@ -1222,7 +1221,7 @@ mod tests {
     mod memory {
         use super::*;
         use block::BlockType;
-        use self::TyBlockType::Memory;
+        use self::BlockStorage::Memory;
 
         #[test]
         fn scan_ts() {
@@ -1252,7 +1251,7 @@ mod tests {
 
         mod serialize {
             use super::*;
-            use self::TyBlockType::Memory;
+            use self::BlockStorage::Memory;
 
             #[test]
             fn blocks() {
@@ -1274,7 +1273,7 @@ mod tests {
 
         mod deserialize {
             use super::*;
-            use self::TyBlockType::Memory;
+            use self::BlockStorage::Memory;
 
             #[test]
             fn blocks() {
@@ -1300,7 +1299,7 @@ mod tests {
     mod mmap {
         use super::*;
         use block::BlockType;
-        use self::TyBlockType::Memory;
+        use self::BlockStorage::Memory;
 
         #[test]
         fn scan_ts() {
@@ -1330,7 +1329,7 @@ mod tests {
 
         mod serialize {
             use super::*;
-            use self::TyBlockType::Memory;
+            use self::BlockStorage::Memory;
 
             #[test]
             fn blocks() {
@@ -1352,7 +1351,7 @@ mod tests {
 
         mod deserialize {
             use super::*;
-            use self::TyBlockType::Memory;
+            use self::BlockStorage::Memory;
 
             #[test]
             fn blocks() {

@@ -1,6 +1,6 @@
 extern crate hyena_engine;
 
-use hyena_engine::{Append, BlockData, BlockStorageType, BlockType, Catalog, Column, ColumnMap,
+use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
                    Fragment, SparseIndex, Timestamp, TimestampFragment};
 use std::iter::{once, repeat};
 
@@ -14,11 +14,11 @@ use common::{catalog_dir, get_columns, wrap_result};
 fn build_schema() -> ColumnMap {
     (2..102).map(|idx| {
         let name = format!("dense{}", idx);
-        (idx, Column::new(BlockStorageType::Memmap(BlockType::U64Dense), &name))
+        (idx, Column::new(BlockStorage::Memmap(BlockType::U64Dense), &name))
     }).chain(
         (102..1102).map(|idx| {
             let name = format!("sparse{}", idx);
-            (idx, Column::new(BlockStorageType::Memmap(BlockType::U64Sparse), &name))
+            (idx, Column::new(BlockStorage::Memmap(BlockType::U64Sparse), &name))
         })
     ).collect()
 }

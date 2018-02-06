@@ -15,8 +15,8 @@ mod full {
         };
 
         (init count $count: expr) => {{
-            use block::BlockType as BlockTy;
-            use ty::block::BlockType::Memmap;
+            use block::BlockType;
+            use ty::block::BlockStorage::Memmap;
             use ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
@@ -35,12 +35,12 @@ mod full {
 
             let td = append_test_impl!(
                 hashmap! {
-                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
-                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
-                    2 => Column::new(Memmap(BlockTy::U8Dense), "col1"),
-                    3 => Column::new(Memmap(BlockTy::U16Dense), "col2"),
-                    4 => Column::new(Memmap(BlockTy::U32Dense), "col3"),
-                    5 => Column::new(Memmap(BlockTy::U64Dense), "col4"),
+                    0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockType::U32Dense), "source"),
+                    2 => Column::new(Memmap(BlockType::U8Dense), "col1"),
+                    3 => Column::new(Memmap(BlockType::U16Dense), "col2"),
+                    4 => Column::new(Memmap(BlockType::U32Dense), "col3"),
+                    5 => Column::new(Memmap(BlockType::U64Dense), "col4"),
                 },
                 now,
                 [
@@ -61,8 +61,8 @@ mod full {
         };
 
         (init sparse count $count: expr, $sparse_ratio: expr) => {{
-            use block::BlockType as BlockTy;
-            use ty::block::BlockType::Memmap;
+            use block::BlockType;
+            use ty::block::BlockStorage::Memmap;
             use ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
@@ -95,12 +95,12 @@ mod full {
 
             let td = append_test_impl!(
                 hashmap! {
-                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
-                    1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
-                    2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
-                    3 => Column::new(Memmap(BlockTy::U16Sparse), "col2"),
-                    4 => Column::new(Memmap(BlockTy::U32Sparse), "col3"),
-                    5 => Column::new(Memmap(BlockTy::U64Sparse), "col4"),
+                    0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockType::U32Dense), "source"),
+                    2 => Column::new(Memmap(BlockType::U8Sparse), "col1"),
+                    3 => Column::new(Memmap(BlockType::U16Sparse), "col2"),
+                    4 => Column::new(Memmap(BlockType::U32Sparse), "col3"),
+                    5 => Column::new(Memmap(BlockType::U64Sparse), "col4"),
                 },
                 now,
                 [
@@ -266,8 +266,8 @@ mod full {
 
     mod pruning {
         use super::*;
-        use block::BlockType as BlockTy;
-        use self::TyBlockType::Memmap;
+        use block::BlockType;
+        use self::BlockStorage::Memmap;
         use ty::fragment::Fragment;
         use scanner::{ScanResult, ScanFilter};
 
@@ -284,8 +284,8 @@ mod full {
             let td = append_test_impl!(
                 [1],
                 hashmap! {
-                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
-                    1 => Column::new(Memmap(BlockTy::U32Dense), "source_id"),
+                    0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockType::U32Dense), "source_id"),
                 },
                 now,
                 [
@@ -512,7 +512,7 @@ mod minimal {
     use super::*;
     use ty::fragment::Fragment;
     use scanner::ScanFilter;
-    use self::TyBlockType::Memmap;
+    use self::BlockStorage::Memmap;
 
     /// Helper for 'minimal' scan tests
     ///
@@ -644,7 +644,7 @@ mod minimal {
                 ]
             ),* $(,)* ]
         ) => {{
-            use block::BlockType as BlockTy;
+            use block::BlockType;
 
             let now = $ts;
 
@@ -653,19 +653,19 @@ mod minimal {
 
             // ts column is awlays present
             let mut schema = hashmap! {
-                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
             };
 
             // adjust schema first
 
             $(
                 schema.insert($dense_schema_idx,
-                    Column::new(Memmap(BlockTy::$dense_ty), $dense_name));
+                    Column::new(Memmap(BlockType::$dense_ty), $dense_name));
             )*
 
             $(
                 schema.insert($sparse_schema_idx,
-                    Column::new(Memmap(BlockTy::$sparse_ty), $sparse_name));
+                    Column::new(Memmap(BlockType::$sparse_ty), $sparse_name));
 
             )*
 
