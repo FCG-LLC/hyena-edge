@@ -10,13 +10,13 @@ version = "0.1.0"
 [workspace]
 
 [dependencies]
-clap = "2.29.0"
+clap = "2.29.4"
 flexi_logger = "0.6.11"
 log = "0.4.1"
 dotenv = "0.10.1"
-futures = "0.1.17"
-tokio-core = "0.1.11"
-bytes = "0.4.5"
+futures = "0.1.18"
+tokio-core = "0.1.12"
+bytes = "0.4.6"
 tokio-io = "0.1.4"
 tokio-proto = "0.1.1"
 tokio-service = "0.1.0"
