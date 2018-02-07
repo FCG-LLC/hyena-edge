@@ -39,12 +39,13 @@ optional = false
 path = "hyena-api"
 
 [dependencies.colored_logger]
-git = "ssh://git@github.com/FCG-LLC/colored_logger.git"
+git = "ssh://git@gitlab.cs.int/rust/colored-logger.git"
 optional = false
 
 [dependencies.nanomsg]
-git = "ssh://git@github.com/FCG-LLC/nanomsg-rs.git"
+git = "ssh://git@gitlab.cs.int/rust/nanomsg-rs.git"
 
 [dependencies.nanomsg-tokio]
-git = "ssh://git@github.com/FCG-LLC/nanomsg-tokio.git"
+git = "ssh://git@gitlab.cs.int/rust/nanomsg-tokio.git"
 optional = false
+
