@@ -7,6 +7,10 @@ authors = [
 name = "hyena-engine"
 version = "0.1.0"
 
+[[bench]]
+name = "scan"
+harness = false
+
 [dependencies]
 cfg-if = "0.1.2"
 chrono = "0.4.0"
@@ -51,6 +55,7 @@ version = "0.5.1"
 num = "0.1.41"
 rand = "0.4.1"
 hyena-test = { path = "../hyena-test" }
+criterion = "0.2.0"
 
 [features]
 default = [
