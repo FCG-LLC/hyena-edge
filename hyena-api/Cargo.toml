@@ -15,6 +15,14 @@ hyena-engine = { path = "../hyena-engine" }
 serde = "1.0.27"
 serde_derive = "1.0.27"
 log = "0.4.1"
+regex = {version = "0.2", optional = true}
 
 [dev-dependencies]
 hyena-test = { path = "../hyena-test" }
+
+[features]
+parse_msg = ["regex"]
+
+[[bin]]
+name = "parse_msg"
+required-features = ["parse_msg"]

@@ -36,9 +36,9 @@ use extprim::u128::u128;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
-    timestamps: Vec<u64>,
-    source: u32,
-    columns: Vec<BlockData>,
+    pub timestamps: Vec<u64>,
+    pub source: u32,
+    pub columns: Vec<BlockData>,
 }
 
 #[derive(Serialize, Debug)]
