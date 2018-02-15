@@ -39,10 +39,10 @@ impl TestPrinter for Request {
                 println!("{} ]}}", columns);
             },
             Request::Scan(ref req) => {
-                println!("Scan {{min_ts: {}, max_ts: {}, partition_ids: {:?}, projection: {:?}, filters: {:?}}}", 
+                println!("Scan {{min_ts: {}, max_ts: {}, partition_ids: #{}, projection: {:?}, filters: {:?}}}",
                          req.min_ts,
                          req.max_ts,
-                         req.partition_ids,
+                         req.partition_ids.len(),
                          req.projection,
                          req.filters
                          );
