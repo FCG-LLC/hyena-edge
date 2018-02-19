@@ -1,30 +1,13 @@
-#[macro_use]
-extern crate criterion;
-extern crate hyena_engine;
-extern crate hyena_test;
-extern crate failure;
-
-use self::failure::ResultExt;
-
 use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, ColumnMap,
-                   Fragment, Result, Scan, ScanFilter, ScanFilterOp,
-                   SparseIndex, Timestamp, TimestampFragment};
-
-use hyena_test::tempfile::VolatileTempDir as TempDir;
+                   Fragment, Result, Scan, ScanFilter, ScanFilterOp, SparseIndex, Timestamp,
+                   TimestampFragment};
 
 use std::iter::repeat;
-use std::collections::HashMap;
+use hyena_common::collections::HashMap;
 
 use criterion::Criterion;
 
-const TEMPDIR_PREFIX: &str = "hyena-criterion-bench";
-
-/// Create temporary directory helper for test code
-pub fn catalog_dir() -> Result<TempDir> {
-    TempDir::new(TEMPDIR_PREFIX)
-        .with_context(|_| "unable to create temporary directory")
-        .map_err(|e| e.into())
-}
+use config::{catalog_dir, TempDir};
 
 fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(
@@ -93,14 +76,22 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
 
     let mut column_map = ColumnMap::new();
 
-    column_map.insert(2, Column::new(
-        BlockStorage::Memmap(BlockType::U64Dense), "dense1"));
-    column_map.insert(3, Column::new(
-        BlockStorage::Memmap(BlockType::I32Dense), "dense2"));
-    column_map.insert(4, Column::new(
-        BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"));
-    column_map.insert(5, Column::new(
-        BlockStorage::Memmap(BlockType::I64Sparse), "sparse2"));
+    column_map.insert(
+        2,
+        Column::new(BlockStorage::Memmap(BlockType::U64Dense), "dense1"),
+    );
+    column_map.insert(
+        3,
+        Column::new(BlockStorage::Memmap(BlockType::I32Dense), "dense2"),
+    );
+    column_map.insert(
+        4,
+        Column::new(BlockStorage::Memmap(BlockType::U64Sparse), "sparse1"),
+    );
+    column_map.insert(
+        5,
+        Column::new(BlockStorage::Memmap(BlockType::I64Sparse), "sparse2"),
+    );
 
     cat.add_columns(column_map)?;
 
@@ -121,19 +112,24 @@ fn prepare_data<'cat>(record_count: usize) -> Result<(Timestamp, TempDir, Catalo
     Ok((now, dir, cat))
 }
 
-fn filter_benchmark(c: &mut Criterion) {
+fn filter_bench(c: &mut Criterion) {
     let (_now, _dir, cat) = prepare_data(10_000).unwrap();
 
     let scan = Scan::new(
         {
             let mut filters = HashMap::new();
 
-            filters.insert(2, vec![
-                ScanFilter::U64(ScanFilterOp::Gt(10)),
-                ScanFilter::U64(ScanFilterOp::LtEq(25)),
-            ]);
+            filters.insert(
+                2,
+                vec![
+                    vec![
+                        ScanFilter::U64(ScanFilterOp::Gt(10)),
+                        ScanFilter::U64(ScanFilterOp::LtEq(25)),
+                    ]
+                ],
+            );
 
-            filters
+            Some(filters)
         },
         None,
         None,
@@ -141,11 +137,80 @@ fn filter_benchmark(c: &mut Criterion) {
         None,
     );
 
-    c.bench_function("filter 10k", move |b| b.iter(|| {
-        cat.scan(&scan).unwrap();
-    }));
-
+    c.bench_function("filter 10k", move |b| {
+        b.iter(|| {
+            cat.scan(&scan).unwrap();
+        })
+    });
 }
 
-criterion_group!(benches, filter_benchmark);
-criterion_main!(benches);
+fn filter_materialize_dense_bench(c: &mut Criterion) {
+    let (_now, _dir, cat) = prepare_data(10_000).unwrap();
+
+    let scan = Scan::new(
+        {
+            let mut filters = HashMap::new();
+
+            filters.insert(
+                2,
+                vec![
+                    vec![
+                        ScanFilter::U64(ScanFilterOp::Gt(10)),
+                        ScanFilter::U64(ScanFilterOp::LtEq(25)),
+                    ]
+                ],
+            );
+
+            Some(filters)
+        },
+        Some(vec![0]),
+        None,
+        None,
+        None,
+    );
+
+    c.bench_function("filter and materialize dense(u64) 10k", move |b| {
+        b.iter(|| {
+            cat.scan(&scan).unwrap();
+        })
+    });
+}
+
+fn filter_materialize_sparse_bench(c: &mut Criterion) {
+    let (_now, _dir, cat) = prepare_data(10_000).unwrap();
+
+    let scan = Scan::new(
+        {
+            let mut filters = HashMap::new();
+
+            filters.insert(
+                2,
+                vec![
+                    vec![
+                        ScanFilter::U64(ScanFilterOp::Gt(10)),
+                        ScanFilter::U64(ScanFilterOp::LtEq(25)),
+                    ]
+                ],
+            );
+
+            Some(filters)
+        },
+        Some(vec![4]),
+        None,
+        None,
+        None,
+    );
+
+    c.bench_function("filter and materialize sparse(u64) 10k", move |b| {
+        b.iter(|| {
+            cat.scan(&scan).unwrap();
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    filter_bench,
+    filter_materialize_dense_bench,
+    filter_materialize_sparse_bench
+);
