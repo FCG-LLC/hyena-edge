@@ -36,9 +36,23 @@ use extprim::u128::u128;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
-    pub timestamps: Vec<u64>,
-    pub source: u32,
-    pub columns: Vec<BlockData>,
+    timestamps: Vec<u64>,
+    source: u32,
+    columns: Vec<BlockData>,
+}
+
+impl InsertMessage {
+    pub fn timestamps(&self) -> &Vec<u64> {
+        &self.timestamps
+    }
+
+    pub fn source(&self) -> u32 {
+        self.source
+    }
+
+    pub fn columns(&self) -> &Vec<BlockData> {
+        &self.columns
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -643,11 +657,10 @@ mod tests {
                 let insert = InsertMessage {
                     source: source,
                     timestamps: vec![1, 2, 3, 4, 5, 6],
-                    columns: vec![hashmap!{
-                        1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106]),
-                        2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
-                                                   vec![121, 221, 321, 421, 521, 621])
-                    }],
+                    columns: vec![hashmap!{ 1000 => Fragment::I8Dense(vec![101, 102, 103, 104, 105, 106])},
+                                  hashmap!{ 2000 => Fragment::U8Sparse(vec![201, 202, 203, 204, 205, 206],
+                                                                       vec![121, 221, 321, 421, 521, 621])}
+                    ],
                 };
 
                 let td = tempdir!();
