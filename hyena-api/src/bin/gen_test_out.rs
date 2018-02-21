@@ -26,6 +26,7 @@ struct Options {
     column_types: Vec<BlockType>,
     partitions: u32,
     error: Option<Error>,
+    rows: Option<usize>,
 }
 
 fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
@@ -38,37 +39,30 @@ fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
 }
 
 fn parse_error(args: &ArgMatches) -> Option<Error> {
-    match args.value_of("error type") {
-        None => None,
-        Some(type_string) => {
-            Some(match type_string {
-                "ColumnNameAlreadyExists" => {
-                    Error::ColumnNameAlreadyExists(args.value_of("error param").unwrap().into())
-                }
-                "ColumnIdAlreadyExists" => {
-                    Error::ColumnIdAlreadyExists(args.value_of("error param")
-                        .unwrap()
-                        .parse()
-                        .unwrap())
-                }
-                "ColumnNameCannotBeEmpty" => Error::ColumnNameCannotBeEmpty,
-                "NoData" => Error::NoData(args.value_of("error param").unwrap().into()),
-                "InconsistentData" => {
-                    Error::InconsistentData(args.value_of("error param").unwrap().into())
-                }
-                "InvalidScanRequest" => {
-                    Error::InvalidScanRequest(args.value_of("error param").unwrap().into())
-                }
-                "CatalogError" => Error::CatalogError(args.value_of("error param").unwrap().into()),
-                "ScanError" => Error::ScanError(args.value_of("error param").unwrap().into()),
-                "Unknown" => Error::Unknown(args.value_of("error param").unwrap().into()),
-                _ => {
-                    println!("Unknown error type {}", type_string);
-                    std::process::exit(1);
-                }
-            })
+    args.value_of("error type").map(|type_string| match type_string {
+        "ColumnNameAlreadyExists" => {
+            Error::ColumnNameAlreadyExists(args.value_of("error param").unwrap().into())
         }
-    }
+        "ColumnIdAlreadyExists" => {
+            Error::ColumnIdAlreadyExists(args.value_of("error param")
+                .unwrap()
+                .parse()
+                .unwrap())
+        }
+        "ColumnNameCannotBeEmpty" => Error::ColumnNameCannotBeEmpty,
+        "NoData" => Error::NoData(args.value_of("error param").unwrap().into()),
+        "InconsistentData" => Error::InconsistentData(args.value_of("error param").unwrap().into()),
+        "InvalidScanRequest" => {
+            Error::InvalidScanRequest(args.value_of("error param").unwrap().into())
+        }
+        "CatalogError" => Error::CatalogError(args.value_of("error param").unwrap().into()),
+        "ScanError" => Error::ScanError(args.value_of("error param").unwrap().into()),
+        "Unknown" => Error::Unknown(args.value_of("error param").unwrap().into()),
+        _ => {
+            println!("Unknown error type {}", type_string);
+            std::process::exit(1);
+        }
+    })
 }
 
 impl Options {
@@ -80,6 +74,7 @@ impl Options {
             column_types: match_args(args, "column type", |x| x.parse().unwrap()),
             partitions: args.value_of("partitions").unwrap().parse().unwrap(),
             error: parse_error(args),
+            rows: args.value_of("rows").map(|str| str.parse().unwrap()),
         }
     }
 }
@@ -134,6 +129,11 @@ fn get_args() -> App<'static, 'static> {
             .help("Error parameter")
             .short("w")
             .long("error-param")
+            .takes_value(true))
+        .arg(Arg::with_name("rows")
+            .help("Number of inserted rows")
+            .short("r")
+            .long("rows")
             .takes_value(true))
 }
 
@@ -210,6 +210,21 @@ fn gen_add_column(options: Options) {
     write(&options.output, &serialized);
 }
 
+fn gen_insert(options: Options) {
+    if options.rows.is_none() && options.error.is_none() {
+        println!("insert requires a numeric value (-r) or an error (-e & -w)");
+        std::process::exit(1);
+    }
+    let reply = Reply::Insert(if options.rows.is_some() {
+        Ok(options.rows.unwrap())
+    } else {
+        Err(options.error.unwrap())
+    });
+    let serialized = serialize(&reply, Infinite).unwrap();
+
+    write(&options.output, &serialized);
+}
+
 fn main() {
     let args = get_args().get_matches();
     let command = args.value_of("command").unwrap();
@@ -219,6 +234,7 @@ fn main() {
         "columns" => gen_columns(options),
         "catalog" => gen_catalog(options),
         "addcolumn" => gen_add_column(options),
+        "insert" => gen_insert(options),
         _ => {}
     }
 }
