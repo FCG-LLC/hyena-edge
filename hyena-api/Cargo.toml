@@ -17,13 +17,23 @@ serde = "1.0.27"
 serde_derive = "1.0.27"
 log = "0.4.1"
 regex = {version = "0.2", optional = true}
+rand = {version = "0.4", optional = true}
+
+[dependencies.uuid]
+features = [
+    "serde",
+    "v4",
+]
+optional = true
+version = "0.5.1"
+
 
 [dev-dependencies]
 hyena-test = { path = "../hyena-test" }
 
 [features]
 parse_msg = ["regex", "clap"]
-gen_test_out = ["clap"]
+gen_test_out = ["clap", "rand", "uuid"]
 
 [[bin]]
 name = "parse_msg"

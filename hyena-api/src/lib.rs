@@ -167,7 +167,11 @@ pub struct PartitionInfo {
     location: String,
 }
 
-// impl<'a> PartitionInfo {
+impl PartitionInfo {
+    pub fn new(min_ts: u64, max_ts: u64, id: Uuid, location: String) -> Self {
+        PartitionInfo { min_ts, max_ts, id, location }
+    }
+
 //     fn from(partition: &Partition<'a>) -> PartitionInfo {
 //         PartitionInfo {
 //             min_ts: partition.ts_min.into(),
@@ -176,7 +180,7 @@ pub struct PartitionInfo {
 //             location: String::new(),
 //         }
 //     }
-// }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct RefreshCatalogResponse {
