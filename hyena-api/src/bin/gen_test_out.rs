@@ -12,7 +12,7 @@ extern crate uuid;
 
 use bincode::{serialize, Infinite};
 use clap::{App, Arg, ArgMatches};
-use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo};
+use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo, Error};
 use hyena_engine::BlockType;
 use rand::Rng;
 use std::fs::File;
@@ -24,7 +24,8 @@ struct Options {
     column_names: Vec<String>,
     column_ids: Vec<usize>,
     column_types: Vec<BlockType>,
-    partitions: u32
+    partitions: u32,
+    error: Option<Error>,
 }
 
 fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
@@ -36,6 +37,40 @@ fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
     }
 }
 
+fn parse_error(args: &ArgMatches) -> Option<Error> {
+    match args.value_of("error type") {
+        None => None,
+        Some(type_string) => {
+            Some(match type_string {
+                "ColumnNameAlreadyExists" => {
+                    Error::ColumnNameAlreadyExists(args.value_of("error param").unwrap().into())
+                }
+                "ColumnIdAlreadyExists" => {
+                    Error::ColumnIdAlreadyExists(args.value_of("error param")
+                        .unwrap()
+                        .parse()
+                        .unwrap())
+                }
+                "ColumnNameCannotBeEmpty" => Error::ColumnNameCannotBeEmpty,
+                "NoData" => Error::NoData(args.value_of("error param").unwrap().into()),
+                "InconsistentData" => {
+                    Error::InconsistentData(args.value_of("error param").unwrap().into())
+                }
+                "InvalidScanRequest" => {
+                    Error::InvalidScanRequest(args.value_of("error param").unwrap().into())
+                }
+                "CatalogError" => Error::CatalogError(args.value_of("error param").unwrap().into()),
+                "ScanError" => Error::ScanError(args.value_of("error param").unwrap().into()),
+                "Unknown" => Error::Unknown(args.value_of("error param").unwrap().into()),
+                _ => {
+                    println!("Unknown error type {}", type_string);
+                    std::process::exit(1);
+                }
+            })
+        }
+    }
+}
+
 impl Options {
     fn new(args: &ArgMatches) -> Self {
         Options {
@@ -44,6 +79,7 @@ impl Options {
             column_ids: match_args(args, "column id", |x| x.parse().unwrap()),
             column_types: match_args(args, "column type", |x| x.parse().unwrap()),
             partitions: args.value_of("partitions").unwrap().parse().unwrap(),
+            error: parse_error(args),
         }
     }
 }
@@ -84,11 +120,21 @@ fn get_args() -> App<'static, 'static> {
             .takes_value(true)
             .multiple(true))
         .arg(Arg::with_name("partitions")
-             .help("Number of partitions")
-             .short("p")
-             .long("partition")
-             .takes_value(true)
-             .default_value("0"))
+            .help("Number of partitions")
+            .short("p")
+            .long("partition")
+            .takes_value(true)
+            .default_value("0"))
+        .arg(Arg::with_name("error type")
+            .help("Error type")
+            .short("e")
+            .long("error-type")
+            .takes_value(true))
+        .arg(Arg::with_name("error param")
+            .help("Error parameter")
+            .short("w")
+            .long("error-param")
+            .takes_value(true))
 }
 
 fn write(filename: &String, data: &Vec<u8>) {
@@ -114,9 +160,9 @@ fn gen_columns_vec(options: &Options) -> Vec<ReplyColumn> {
         .collect()
 }
 
-fn gen_columns(options: &Options) {
-    verify_columns(options);
-    let columns = gen_columns_vec(options);
+fn gen_columns(options: Options) {
+    verify_columns(&options);
+    let columns = gen_columns_vec(&options);
     let reply = Reply::ListColumns(columns);
     let serialized = serialize(&reply, Infinite).unwrap();
 
@@ -129,23 +175,36 @@ fn gen_partition_vec(options: &Options) -> Vec<PartitionInfo> {
     (0..options.partitions)
         .map(|_| {
             let string_length = rng.gen_range(0, 1024);
-            PartitionInfo::new(
-                rand::random(),
-                rand::random(),
-                Uuid::new_v4().into(),
-                rng.gen_ascii_chars().take(string_length).collect()
-            )
+            PartitionInfo::new(rand::random(),
+                               rand::random(),
+                               Uuid::new_v4().into(),
+                               rng.gen_ascii_chars().take(string_length).collect())
         })
         .collect()
 }
 
-fn gen_catalog(options: &Options) {
-    verify_columns(options);
-    let response = RefreshCatalogResponse { 
-        columns: gen_columns_vec(options), 
-        available_partitions: gen_partition_vec(options),
+fn gen_catalog(options: Options) {
+    verify_columns(&options);
+    let response = RefreshCatalogResponse {
+        columns: gen_columns_vec(&options),
+        available_partitions: gen_partition_vec(&options),
     };
     let reply = Reply::RefreshCatalog(response);
+    let serialized = serialize(&reply, Infinite).unwrap();
+
+    write(&options.output, &serialized);
+}
+
+fn gen_add_column(options: Options) {
+    if options.column_ids.len() != 1 && options.error.is_none() {
+        println!("addcolumn requires exactly one column id (-i) or an error (-e & -w)");
+        std::process::exit(1);
+    }
+    let reply = Reply::AddColumn(if options.column_ids.len() == 0 {
+        Err(options.error.unwrap())
+    } else {
+        Ok(options.column_ids[0])
+    });
     let serialized = serialize(&reply, Infinite).unwrap();
 
     write(&options.output, &serialized);
@@ -157,8 +216,9 @@ fn main() {
     let options = Options::new(&args);
 
     match command {
-        "columns" => gen_columns(&options),
-        "catalog" => gen_catalog(&options),
+        "columns" => gen_columns(options),
+        "catalog" => gen_catalog(options),
+        "addcolumn" => gen_add_column(options),
         _ => {}
     }
 }
