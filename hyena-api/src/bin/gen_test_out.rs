@@ -27,6 +27,7 @@ struct Options {
     partitions: u32,
     error: Option<Error>,
     rows: Option<usize>,
+    error_text: Option<String>,
 }
 
 fn match_args<F, T>(args: &ArgMatches, arg_name: &str, convert: F) -> Vec<T>
@@ -75,6 +76,7 @@ impl Options {
             partitions: args.value_of("partitions").unwrap().parse().unwrap(),
             error: parse_error(args),
             rows: args.value_of("rows").map(|str| str.parse().unwrap()),
+            error_text: args.value_of("error param").map(|x| x.into()),
         }
     }
 }
@@ -94,7 +96,7 @@ fn get_args() -> App<'static, 'static> {
             .short("c")
             .long("command")
             .takes_value(true)
-            .possible_values(&["columns", "catalog", "addcolumn", "insert", "scan", "error"])
+            .possible_values(&["columns", "catalog", "addcolumn", "insert", "scan", "serializeerror"])
             .required(true))
         .arg(Arg::with_name("column name")
             .help("Column name")
@@ -225,6 +227,17 @@ fn gen_insert(options: Options) {
     write(&options.output, &serialized);
 }
 
+fn gen_serialize_error(options: Options) {
+    if options.error_text.is_none() {
+        println!("serializerror requires error string (-w)");
+        std::process::exit(1);
+    }
+    let reply = Reply::SerializeError(options.error_text.unwrap());
+    let serialized = serialize(&reply, Infinite).unwrap();
+
+    write(&options.output, &serialized);
+}
+
 fn main() {
     let args = get_args().get_matches();
     let command = args.value_of("command").unwrap();
@@ -235,6 +248,8 @@ fn main() {
         "catalog" => gen_catalog(options),
         "addcolumn" => gen_add_column(options),
         "insert" => gen_insert(options),
+        "scan" => {},
+        "serializeerror" => gen_serialize_error(options),
         _ => {}
     }
 }
