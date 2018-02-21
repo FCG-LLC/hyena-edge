@@ -145,7 +145,7 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, EnumString)]
 pub enum BlockType {
     I8Dense,
     I16Dense,

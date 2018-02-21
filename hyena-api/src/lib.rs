@@ -210,7 +210,7 @@ pub struct ReplyColumn {
 }
 
 impl ReplyColumn {
-    fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
+    pub fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
         ReplyColumn {
             typ: typ,
             id: id,

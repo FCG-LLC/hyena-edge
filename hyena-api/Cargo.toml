@@ -23,7 +23,12 @@ hyena-test = { path = "../hyena-test" }
 
 [features]
 parse_msg = ["regex", "clap"]
+gen_test_out = ["clap"]
 
 [[bin]]
 name = "parse_msg"
 required-features = ["parse_msg"]
+
+[[bin]]
+name = "gen_test_out"
+required-features = ["gen_test_out"]
