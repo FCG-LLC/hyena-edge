@@ -1,7 +1,7 @@
 /// This is a binary used by automatic protocol tests. Its job is to generate a Hyena reply,
 /// serialize it and put into a file
 ///
-/// More info at https://github.com/FCG-LLC/hyena-proto-test#hyena-verifier.
+/// More info at https://github.com/FCG-LLC/hyena-proto-test#hyena-generator.
 ///
 extern crate bincode;
 extern crate clap;
