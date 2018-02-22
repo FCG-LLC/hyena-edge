@@ -62,6 +62,16 @@ pub struct DataTriple {
     data: Option<Fragment>
 }
 
+impl DataTriple {
+    pub fn new(id: ColumnId, block_type: BlockType, data: Option<Fragment>) -> Self {
+        DataTriple {
+            column_id: id, 
+            column_type: block_type, 
+            data: data
+        }
+    }
+}
+
 #[derive(Serialize, Debug, Default)]
 pub struct ScanResultMessage {
     data: Vec<DataTriple>
@@ -70,6 +80,14 @@ pub struct ScanResultMessage {
 impl ScanResultMessage {
     pub fn new() -> ScanResultMessage {
         Default::default()
+    }
+
+    pub fn add(&mut self, data: DataTriple) {
+        self.data.push(data);
+    }
+
+    pub fn add_all(&mut self, data: &mut Vec<DataTriple>) {
+        self.data.append(data);
     }
 }
 

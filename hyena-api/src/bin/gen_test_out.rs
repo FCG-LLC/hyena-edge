@@ -12,8 +12,9 @@ extern crate uuid;
 
 use bincode::{serialize, Infinite};
 use clap::{App, Arg, ArgMatches};
-use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo, Error};
-use hyena_engine::BlockType;
+use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo, Error, DataTriple,
+                ScanResultMessage};
+use hyena_engine::{BlockType, Fragment};
 use rand::Rng;
 use std::fs::File;
 use std::io::Write;
@@ -24,6 +25,7 @@ struct Options {
     column_names: Vec<String>,
     column_ids: Vec<usize>,
     column_types: Vec<BlockType>,
+    column_data: Vec<usize>,
     partitions: u32,
     error: Option<Error>,
     rows: Option<usize>,
@@ -73,6 +75,7 @@ impl Options {
             column_names: match_args(args, "column name", |x| x.into()),
             column_ids: match_args(args, "column id", |x| x.parse().unwrap()),
             column_types: match_args(args, "column type", |x| x.parse().unwrap()),
+            column_data: match_args(args, "column data", |x| x.parse().unwrap()),
             partitions: args.value_of("partitions").unwrap().parse().unwrap(),
             error: parse_error(args),
             rows: args.value_of("rows").map(|str| str.parse().unwrap()),
@@ -85,6 +88,7 @@ fn get_args() -> App<'static, 'static> {
     App::new("Protocol test generator")
         .version("0.1")
         .about("Generates serialized messages for automated protocol tests.")
+        .set_term_width(100)
         .arg(Arg::with_name("output")
             .help("The file to put the serialized message to")
             .short("o")
@@ -96,7 +100,12 @@ fn get_args() -> App<'static, 'static> {
             .short("c")
             .long("command")
             .takes_value(true)
-            .possible_values(&["columns", "catalog", "addcolumn", "insert", "scan", "serializeerror"])
+            .possible_values(&["columns",
+                               "catalog",
+                               "addcolumn",
+                               "insert",
+                               "scan",
+                               "serializeerror"])
             .required(true))
         .arg(Arg::with_name("column name")
             .help("Column name")
@@ -114,6 +123,12 @@ fn get_args() -> App<'static, 'static> {
             .help("Column type")
             .short("t")
             .long("column-type")
+            .takes_value(true)
+            .multiple(true))
+        .arg(Arg::with_name("column data")
+            .help("Number of data rows returned from scan for the column")
+            .short("d")
+            .long("column-data")
             .takes_value(true)
             .multiple(true))
         .arg(Arg::with_name("partitions")
@@ -148,6 +163,14 @@ fn verify_columns(options: &Options) {
     if options.column_names.len() != options.column_ids.len() ||
        options.column_names.len() != options.column_types.len() {
         println!{"Number of -n, -i and -t options must be the same!"};
+        std::process::exit(1);
+    }
+}
+
+fn verify_column_data(options: &Options) {
+    if options.column_data.len() != options.column_ids.len() ||
+       options.column_data.len() != options.column_types.len() {
+        println!{"Number of -d, -i and -t options must be the same!"};
         std::process::exit(1);
     }
 }
@@ -238,6 +261,67 @@ fn gen_serialize_error(options: Options) {
     write(&options.output, &serialized);
 }
 
+fn gen_vec<T: rand::Rand>(rows: usize) -> Vec<T> {
+    (0..rows).map(|_| rand::thread_rng().gen()).collect()
+}
+
+fn gen_fragment(rows: usize, block_type: BlockType) -> Fragment {
+
+    match block_type {
+        BlockType::I8Dense => Fragment::I8Dense(gen_vec(rows)),
+        BlockType::I16Dense => Fragment::I16Dense(gen_vec(rows)),
+        BlockType::I32Dense => Fragment::I32Dense(gen_vec(rows)),
+        BlockType::I64Dense => Fragment::I64Dense(gen_vec(rows)),
+        BlockType::I128Dense => Fragment::I128Dense(gen_vec(rows)),
+        BlockType::U8Dense => Fragment::U8Dense(gen_vec(rows)),
+        BlockType::U16Dense => Fragment::U16Dense(gen_vec(rows)),
+        BlockType::U32Dense => Fragment::U32Dense(gen_vec(rows)),
+        BlockType::U64Dense => Fragment::U64Dense(gen_vec(rows)),
+        BlockType::U128Dense => Fragment::U128Dense(gen_vec(rows)),
+        BlockType::I8Sparse => Fragment::I8Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::I16Sparse => Fragment::I16Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::I32Sparse => Fragment::I32Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::I64Sparse => Fragment::I64Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::I128Sparse => Fragment::I128Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::U8Sparse => Fragment::U8Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::U16Sparse => Fragment::U16Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::U32Sparse => Fragment::U32Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::U64Sparse => Fragment::U64Sparse(gen_vec(rows), gen_vec(rows)),
+        BlockType::U128Sparse => Fragment::U128Sparse(gen_vec(rows), gen_vec(rows)),
+    }
+}
+
+fn gen_scan_result(options: &Options) -> ScanResultMessage {
+    let mut result = ScanResultMessage::new();
+    let mut data = (0..options.column_data.len())
+        .map(|index| {
+            let data = if options.column_data[index] == 0 {
+                None
+            } else {
+                Some(gen_fragment(options.column_data[index], options.column_types[index]))
+            };
+
+            DataTriple::new(options.column_ids[index], options.column_types[index], data)
+        })
+        .collect();
+
+    result.add_all(&mut data);
+    result
+}
+
+fn gen_scan(options: Options) {
+    verify_column_data(&options);
+
+    let reply = Reply::Scan(if options.error.is_some() {
+        Err(options.error.unwrap())
+    } else {
+        Ok(gen_scan_result(&options))
+    });
+    let serialized = serialize(&reply, Infinite).unwrap();
+
+    write(&options.output, &serialized);
+}
+
 fn main() {
     let args = get_args().get_matches();
     let command = args.value_of("command").unwrap();
@@ -248,7 +332,7 @@ fn main() {
         "catalog" => gen_catalog(options),
         "addcolumn" => gen_add_column(options),
         "insert" => gen_insert(options),
-        "scan" => {},
+        "scan" => gen_scan(options),
         "serializeerror" => gen_serialize_error(options),
         _ => {}
     }
