@@ -1,5 +1,8 @@
 image: "gitlab-docker-rust:latest"
 
+variables:
+  RUST_COMPILER: "stable"
+
 before_script:
   ##
   ## Run ssh-agent (inside the build environment)
@@ -37,6 +40,7 @@ before_script:
 stages:
   - test
   - build
+  - package
   - bench
 
 cache:
@@ -44,7 +48,7 @@ cache:
     - .cargo
     - target
 
-build:release:
+build:master-release:
   stage: build
   tags:
   - rust
@@ -84,6 +88,27 @@ build:docs:
   artifacts:
     paths:
     - target/doc/**
+    expire_in: 1 week
+
+package:master-deb:
+  stage: package
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  script:
+  - mkdir -p build/source
+  - mv debian build/source/debian
+  - cp -rvf target/release/hyena build/source/hyena
+  - cp -rvf README.md build/source/
+  - pushd build/source
+  - >
+    debuild --no-tgz-check -i -I -us -uc -b
+  - popd
+  artifacts:
+    paths:
+    - build/*.deb
     expire_in: 1 week
 
 test:clippy:
