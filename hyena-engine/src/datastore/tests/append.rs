@@ -322,7 +322,7 @@ mod benches {
     #[bench]
     fn tiny(b: &mut Bencher) {
         use block::BlockType as BlockTy;
-        use ty::block::BlockType::Memmap;
+        use ty::block::BlockStorage::Memmap;
 
         let record_count = 1;
 
@@ -360,7 +360,7 @@ mod benches {
     #[bench]
     fn small(b: &mut Bencher) {
         use block::BlockType as BlockTy;
-        use ty::block::BlockType::Memmap;
+        use ty::block::BlockStorage::Memmap;
 
         let record_count = 100;
 
@@ -397,7 +397,7 @@ mod benches {
     #[bench]
     fn lots_columns(b: &mut Bencher) {
         use block::BlockType as BlockTy;
-        use ty::block::BlockType::Memmap;
+        use ty::block::BlockStorage::Memmap;
 
         let record_count = 100;
         let column_count = 10000;
@@ -438,7 +438,7 @@ mod benches {
     #[bench]
     fn big_data(b: &mut Bencher) {
         use block::BlockType as BlockTy;
-        use ty::block::BlockType::Memmap;
+        use ty::block::BlockStorage::Memmap;
 
         let record_count = MAX_RECORDS;
 
