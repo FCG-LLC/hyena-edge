@@ -62,6 +62,16 @@ pub struct DataTriple {
     data: Option<Fragment>
 }
 
+impl DataTriple {
+    pub fn new(id: ColumnId, block_type: BlockType, data: Option<Fragment>) -> Self {
+        DataTriple {
+            column_id: id, 
+            column_type: block_type, 
+            data: data
+        }
+    }
+}
+
 #[derive(Serialize, Debug, Default)]
 pub struct ScanResultMessage {
     data: Vec<DataTriple>
@@ -70,6 +80,14 @@ pub struct ScanResultMessage {
 impl ScanResultMessage {
     pub fn new() -> ScanResultMessage {
         Default::default()
+    }
+
+    pub fn add(&mut self, data: DataTriple) {
+        self.data.push(data);
+    }
+
+    pub fn append(&mut self, data: &mut Vec<DataTriple>) {
+        self.data.append(data);
     }
 }
 
@@ -167,7 +185,11 @@ pub struct PartitionInfo {
     location: String,
 }
 
-// impl<'a> PartitionInfo {
+impl PartitionInfo {
+    pub fn new(min_ts: u64, max_ts: u64, id: Uuid, location: String) -> Self {
+        PartitionInfo { min_ts, max_ts, id, location }
+    }
+
 //     fn from(partition: &Partition<'a>) -> PartitionInfo {
 //         PartitionInfo {
 //             min_ts: partition.ts_min.into(),
@@ -176,7 +198,7 @@ pub struct PartitionInfo {
 //             location: String::new(),
 //         }
 //     }
-// }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct RefreshCatalogResponse {
@@ -210,7 +232,7 @@ pub struct ReplyColumn {
 }
 
 impl ReplyColumn {
-    fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
+    pub fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
         ReplyColumn {
             typ: typ,
             id: id,
