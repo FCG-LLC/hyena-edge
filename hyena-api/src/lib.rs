@@ -86,7 +86,7 @@ impl ScanResultMessage {
         self.data.push(data);
     }
 
-    pub fn add_all(&mut self, data: &mut Vec<DataTriple>) {
+    pub fn append(&mut self, data: &mut Vec<DataTriple>) {
         self.data.append(data);
     }
 }

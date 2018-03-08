@@ -305,7 +305,7 @@ fn gen_scan_result(options: &Options) -> ScanResultMessage {
         })
         .collect();
 
-    result.add_all(&mut data);
+    result.append(&mut data);
     result
 }
 
