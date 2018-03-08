@@ -5,7 +5,11 @@ extern crate failure;
 use self::failure::ResultExt;
 
 use self::hyena_test::tempfile;
-use self::tempfile::VolatileTempDir as TempDir;
+
+// change this to PersistentTempDir for int easy tests debugging
+
+pub use self::tempfile::VolatileTempDir as TempDir;
+// pub use self::tempfile::PersistentTempDir as TempDir;
 
 use hyena_engine::{Catalog, Result};
 

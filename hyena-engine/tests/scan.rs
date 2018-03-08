@@ -6,15 +6,13 @@ use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, 
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, ScanResult,
                    SparseIndex, Timestamp, TimestampFragment};
 
-use hyena_test::tempfile::VolatileTempDir as TempDir;
-
 use std::iter::repeat;
 use std::collections::HashMap;
 
 #[macro_use]
 mod common;
 
-use common::{catalog_dir, wrap_result};
+use common::{catalog_dir, wrap_result, TempDir};
 
 fn create_append_data(now: Timestamp, record_count: usize) -> (TimestampFragment, BlockData) {
     let tsfrag = TimestampFragment::from(
