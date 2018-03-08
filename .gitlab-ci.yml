@@ -1,0 +1,208 @@
+image: "gitlab-docker-rust:latest"
+
+variables:
+  RUST_COMPILER: "stable"
+
+before_script:
+  ##
+  ## Run ssh-agent (inside the build environment)
+  ##
+  - eval $(ssh-agent -s)
+
+  ##
+  ## Add the SSH key stored in SSH_PRIVATE_KEY variable to the agent store
+  ## We're using tr to fix line endings which makes ed25519 keys work
+  ## without extra base64 encoding.
+  ## https://gitlab.com/gitlab-examples/ssh-private-key/issues/1#note_48526556
+  ##
+  - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add - > /dev/null
+
+  ##
+  ## Create the SSH directory and give it the right permissions
+  ##
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+
+  ##
+  ## Move cargo home directory inside project dir
+  ## so it can be cached
+  ##
+
+  - export CARGO_HOME="$(realpath ./.cargo)"
+  - mkdir -p $CARGO_HOME
+
+  ## Install build prerequisites
+  - sudo add-apt-repository "deb http://aptly.cs.int/public xenial int"
+  - wget http://aptly.cs.int/public/cs-repo.key -O - | sudo apt-key add -
+  - sudo apt-get update
+  - sudo apt-get install -y libnanomsg5 libnanomsg-dev
+
+stages:
+  - test
+  - build
+  - package
+  - bench
+
+cache:
+    paths:
+    - .cargo
+    - target
+
+build:master-release:
+  stage: build
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  script:
+  - cargo build --release
+  artifacts:
+    paths:
+    - target/debug/hyena
+    expire_in: 1 month
+
+build:master-docs:
+  stage: build
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  script:
+  - cargo doc
+  artifacts:
+    paths:
+    - target/doc/**
+    expire_in: 1 month
+
+build:docs:
+  stage: build
+  tags:
+  - rust
+  - hyena
+  except:
+  - master
+  script:
+  - cargo doc
+  artifacts:
+    paths:
+    - target/doc/**
+    expire_in: 1 week
+
+package:master-deb:
+  stage: package
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  script:
+  - mkdir -p build/source
+  - mv debian build/source/debian
+  - cp -rvf target/release/hyena build/source/hyena
+  - cp -rvf README.md build/source/
+  - pushd build/source
+  - >
+    debuild --no-tgz-check -i -I -us -uc -b
+  - popd
+  artifacts:
+    paths:
+    - build/*.deb
+    expire_in: 1 week
+
+test:clippy:
+  stage: test
+  allow_failure: true
+  tags:
+  - rust
+  - hyena
+  script:
+  # treat all warnings as errors
+  - cargo +nightly clippy -- --all -D clippy
+
+test:fmt:
+  stage: test
+  allow_failure: true
+  tags:
+  - rust
+  - hyena
+  script:
+  - cargo +nightly fmt -- --write-mode=diff --color=always
+
+test:tests:
+  stage: test
+  tags:
+  - rust
+  - hyena
+  script:
+  - cargo test --all
+
+#bench:criterion:
+    #stage: bench
+    #tags:
+    #- hyena-bench
+    #script:
+    #- cargo bench --all
+
+bench:master-std:
+  stage: bench
+  cache:
+    paths:
+    - .cargo
+    - target
+    - hyena-engine/.bench
+  tags:
+  - hyena-bench
+  only:
+  - master
+  script:
+  # currently we only have such benchmarks in hyena-engine
+  - cd hyena-engine
+  - mkdir -p .bench
+  - >
+    [[ -f .bench/master ]] && cp .bench/master .bench/prev-master
+  - cargo +nightly bench --features=nightly | tee .bench/master
+  - >
+    if [[ -f .bench/prev-master ]];
+    then
+        echo "This change compared to previous run";
+        cargo benchcmp .bench/prev-master .bench/master;
+    else
+        echo "No previous run found; cannot compare.";
+    fi
+  artifacts:
+    paths:
+    - hyena-engine/.bench/prev-master
+    - hyena-engine/.bench/master
+
+bench:std:
+  stage: bench
+  cache:
+    paths:
+    - .cargo
+    - target
+    - hyena-engine/.bench
+  tags:
+  - hyena-bench
+  except:
+  - master
+  script:
+  # currently we only have such benchmarks in hyena-engine
+  - cd hyena-engine
+  - mkdir -p .bench
+  - >
+    [[ -f ".bench/${CI_COMMIT_REF_NAME}" ]] && cp ".bench/${CI_COMMIT_REF_NAME}" ".bench/prev-${CI_COMMIT_REF_NAME}"
+  - cargo +nightly bench --features=nightly | tee ".bench/${CI_COMMIT_REF_NAME}"
+  - >
+    [[ -f .bench/master ]] && echo "This change compared to master"
+  - >
+    [[ -f .bench/master ]] && cargo benchcmp .bench/master ".bench/${CI_COMMIT_REF_NAME}"
+  - >
+    if [[ -f ".bench/prev-${CI_COMMIT_REF_NAME}" ]];
+    then
+        echo "This change compared to previous run";
+        cargo benchcmp ".bench/prev-${CI_COMMIT_REF_NAME}" ".bench/${CI_COMMIT_REF_NAME}";
+    else
+        echo "No previous run found; cannot compare.";
+    fi

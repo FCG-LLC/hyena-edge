@@ -1,0 +1,9 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: hyena
+Source: https://gitlab.cs.int/hyena/hyena
+
+Files: *
+Copyright: 2017-2018 Collective Sense LLC
+
+License: Collective Sense License
+

@@ -1,0 +1,16 @@
+Source: hyena
+Section: net
+Priority: optional
+Maintainer: Jacek Całusiński <forger@collective-sense.com>
+Build-Depends: debhelper (>= 9.0.0), libnanomsg5 (>= 1.1.0)
+Standards-Version: 3.9.8
+Homepage: https://gitlab.cs.int/hyena/hyena
+Vcs-Browser: https://gitlab.cs.int/hyena/hyena
+Vcs-Git: https://gitlab.cs.int/hyena/hyena.git
+
+Package: hyena
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Hyena
+ Hyena is a data store specifically optimized for big data.
+
