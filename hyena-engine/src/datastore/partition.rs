@@ -107,11 +107,14 @@ impl<'part> Partition<'part> {
             let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                 // dense block handler
 
-                // destination bounds checking intentionally left out
+                // destination bounds checking intentionally left out in release builds
                 let slen = frg.len();
 
                 {
                     let blkslice = blk.as_mut_slice_append();
+
+                    debug_assert!(slen <= blkslice.len(), "bounds check failed for dense block");
+
                     &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
@@ -120,7 +123,7 @@ impl<'part> Partition<'part> {
                 slen
             }, {
                 // sparse block handler
-                // destination bounds checking intentionally left out
+                // destination bounds checking intentionally left out in release builds
                 let slen = frg.len();
 
                 let block_offset = if let Some(offset) = blk.as_index_slice().last() {
@@ -131,6 +134,8 @@ impl<'part> Partition<'part> {
 
                 {
                     let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
+
+                    debug_assert!(slen <= blkslice.len(), "bounds check failed for sparse block");
 
                     &mut blkslice[..slen].copy_from_slice(&frg[..]);
                     &mut blkindex[..slen].copy_from_slice(&fidx[..]);
