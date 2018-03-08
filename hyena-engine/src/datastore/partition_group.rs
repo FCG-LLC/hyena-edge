@@ -108,7 +108,12 @@ impl<'pg> PartitionGroup<'pg> {
                 .ok_or_else(|| err_msg("Mutable partitions pool is empty"))?;
 
             // empty partition capacity for this append
+            //
+            // the row count we can store depends on a specific sparse columns being present
+            // in the append data, so it varies between appends
             let emptycap = catalog.space_for_blocks(&colindices);
+            // the remaining capacity of the current partition
+            // calculated for this specific append
             let currentcap = curpart.space_for_blocks(&colindices);
 
             (
@@ -124,8 +129,16 @@ impl<'pg> PartitionGroup<'pg> {
 
         // check if we can fit the data within current partition
         // or additional ones are needed
+        //
+        // in case we're writing exactly `emptycap` fragments
+        // we should create new partition for future writes
 
-        let (curfrags, reqparts, current_is_full) = if fragcount > currentcap {
+        // curfrags - the number of fragments we can write to the current partition
+        // reqparts - required number of partitions to create
+        // current_will_be_full - will the next current partition be in a fully written state after
+        // this append completes
+        // single_write - we're writing to single partition only
+        let (curfrags, reqparts, current_will_be_full, single_write) = if fragcount > currentcap {
             let emptyfrags = fragcount - currentcap;
             let lastfull = emptyfrags % emptycap == 0;
 
@@ -133,9 +146,10 @@ impl<'pg> PartitionGroup<'pg> {
                 currentcap,
                 (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1,
                 lastfull,
+                false,
             )
         } else {
-            (fragcount, 0, fragcount == currentcap)
+            (fragcount, 0, fragcount == currentcap, true)
         };
 
         // prepare source slices
@@ -222,7 +236,9 @@ impl<'pg> PartitionGroup<'pg> {
 
         let newparts = ts_idx
             .iter()
-            .skip(if current_is_full { 0 } else { 1 })
+            // always create additional partition if the current one will be end being full after
+            // this append, to have at least one available for writing on the next append operation
+            .skip(if current_will_be_full { 0 } else { 1 })
             .map(|ts| self.create_partition(**ts))
             .collect::<Result<Vec<_>>>()
             .with_context(|_| "Unable to create partition for writing")?;
@@ -233,7 +249,8 @@ impl<'pg> PartitionGroup<'pg> {
 
         for ((partition, fragment), offset) in partitions
             .iter_mut()
-            .skip(curidx - if current_is_full { 0 } else { 1 })
+            // do not skip current partition if it's the only one
+            .skip(if current_will_be_full && !single_write { curidx } else { curidx - 1 })
             .zip(fragments.iter())
             .zip(offsets.iter())
         {

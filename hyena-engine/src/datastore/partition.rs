@@ -573,14 +573,36 @@ impl<'part> Partition<'part> {
 
         Ok(partition)
     }
+
+    /// Close all mappings and delete all files
+    ///
+    /// This method is used only in tests, to ensure clean environment
+    #[cfg(test)]
+    pub(crate) fn remove(self) -> Result<()> {
+        use std::fs::remove_dir_all;
+
+        debug!("Removing partition {:?} data in path {:?}", self.id, self.data_root);
+        remove_dir_all(&self.data_root)?;
+
+        Ok(())
+    }
 }
 
 
 impl<'part> Drop for Partition<'part> {
     fn drop(&mut self) {
-        self.flush()
-            .with_context(|_| "Failed to flush data during drop")
-            .unwrap();
+        // check if the underlying data root exists
+        if self.data_root.exists() {
+            self.flush()
+                .with_context(|_| "Failed to flush data during drop")
+                .unwrap();
+        } else {
+            warn!(
+                "Skipping flush for partition {:?} due to missing data dir {:?} \
+                (was the partition removed?)",
+                self.id, self.data_root
+            );
+        }
     }
 }
 
