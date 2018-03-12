@@ -99,6 +99,14 @@ pub fn run(matches: &clap::ArgMatches) {
 
                         Ok(PeerReply::Response(msgid, Ok(None)))
                     }
+                    KeepAlive => {
+                        debug!(
+                            "[{connid}] Keepalive Request",
+                            connid=connid
+                        );
+
+                        Ok(PeerReply::KeepAlive)
+                    }
                     _ => Err(PeerError::BadMessage),
                 }
             })

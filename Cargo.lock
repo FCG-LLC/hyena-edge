@@ -330,7 +330,7 @@ dependencies = [
  "hyena-test 0.1.0",
  "log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "nanomsg 0.6.2 (git+ssh://git@gitlab.cs.int/rust/nanomsg-rs.git)",
- "nanomsg-multi-server 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git?branch=initial_impl)",
+ "nanomsg-multi-server 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git)",
  "nanomsg-tokio 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-tokio.git)",
  "tokio-core 0.1.15 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -530,7 +530,7 @@ dependencies = [
 [[package]]
 name = "nanomsg-multi-server"
 version = "0.1.0"
-source = "git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git?branch=initial_impl#1db7249b336e3e4bac8489ed4d85ee506e549584"
+source = "git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git#ce820c77337993d5587ac711d79cec56e1f4579b"
 dependencies = [
  "bincode 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1196,7 +1196,7 @@ dependencies = [
 "checksum mio 0.6.14 (registry+https://github.com/rust-lang/crates.io-index)" = "6d771e3ef92d58a8da8df7d6976bfca9371ed1de6619d9d5a5ce5b1f29b85bfe"
 "checksum miow 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "8c1f2f3b1cf331de6896aabf6e9d55dca90356cc9960cca7eaaf408a355ae919"
 "checksum nanomsg 0.6.2 (git+ssh://git@gitlab.cs.int/rust/nanomsg-rs.git)" = "<none>"
-"checksum nanomsg-multi-server 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git?branch=initial_impl)" = "<none>"
+"checksum nanomsg-multi-server 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git)" = "<none>"
 "checksum nanomsg-sys 0.6.2 (git+ssh://git@gitlab.cs.int/rust/nanomsg-rs.git)" = "<none>"
 "checksum nanomsg-tokio 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-tokio.git)" = "<none>"
 "checksum net2 0.2.32 (registry+https://github.com/rust-lang/crates.io-index)" = "9044faf1413a1057267be51b5afba8eb1090bd2231c693664aa1db716fe1eae0"
