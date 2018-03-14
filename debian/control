@@ -13,4 +13,3 @@ Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Hyena
  Hyena is a data store specifically optimized for big data.
-

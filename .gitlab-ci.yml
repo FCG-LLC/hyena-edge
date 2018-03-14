@@ -41,6 +41,7 @@ stages:
   - test
   - build
   - package
+  - docker-image
   - bench
 
 cache:
@@ -98,6 +99,13 @@ package:master-deb:
   only:
   - master
   script:
+  - >
+    export SHORT_COMMIT=${CI_COMMIT_SHA:0:8}
+  - >
+    export VERSION="$(date -u +"%Y%m%d%H%M%S")-$SHORT_COMMIT"
+  - >
+    .ci-utils/prepare-deb-package.sh ${VERSION}
+  - cat debian/changelog
   - mkdir -p build/source
   - mv debian build/source/debian
   - cp -rvf target/release/hyena build/source/hyena
@@ -110,6 +118,19 @@ package:master-deb:
     paths:
     - build/*.deb
     expire_in: 1 week
+
+docker-image:master-portus:
+  stage: docker-image
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  script:
+  - >
+    sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
+  - >
+    .ci-utils/build.hyena-gitlab.sh
 
 test:clippy:
   stage: test
