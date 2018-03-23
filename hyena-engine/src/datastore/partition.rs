@@ -66,6 +66,7 @@ impl<'part> Partition<'part> {
         Partition::deserialize(&meta, &root)
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         if !self.blocks.is_empty() {
             if let Some(block) = self.blocks.get(&0) {
@@ -77,6 +78,7 @@ impl<'part> Partition<'part> {
         0
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty() || self.len() == 0
     }

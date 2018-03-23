@@ -212,18 +212,6 @@ impl<'cat> Catalog<'cat> {
         Ok(())
     }
 
-    fn create_single_partition(pg: &mut PartitionGroup) {
-        let part = pg.create_partition(MIN_TIMESTAMP)
-            .with_context(|_| "Unable to create partition")
-            .unwrap();
-
-        let mut vp = VecDeque::new();
-        vp.push_front(part);
-
-        pg.mutable_partitions = locked!(rw vp);
-    }
-
-
     fn prepare_partition_groups<P, I>(root: P, ids: I) -> Result<PartitionGroupMap<'cat>>
     where
         P: AsRef<Path>,
