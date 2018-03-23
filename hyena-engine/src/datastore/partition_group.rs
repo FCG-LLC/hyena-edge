@@ -350,34 +350,38 @@ impl<'pg> PartitionGroup<'pg> {
 
         let partitions = acquire!(read carry self.mutable_partitions);
 
-        partitions
-            .par_iter()
-            .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
-                // todo: benchmark Partition::get_id() -> &PartitionId
-                scan_partitions.contains(&partition.get_id())
-            } else {
-                true
-            })
-            .map(|partition| {
-                partition
-                    .scan(&scan)
-                    .with_context(|_| "partition scan failed")
-                    .ok()
-            })
-            .reduce(
-                || None,
-                |a, b| if a.is_none() {
-                    b
-                } else if b.is_none() {
-                    a
+        if partitions.is_empty() {
+            Ok(Default::default())
+        } else {
+            partitions
+                .par_iter()
+                .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
+                    // todo: benchmark Partition::get_id() -> &PartitionId
+                    scan_partitions.contains(&partition.get_id())
                 } else {
-                    let mut a = a.unwrap();
-                    let b = b.unwrap();
-                    a.merge(b).unwrap();
-                    Some(a)
-                },
-            )
-            .ok_or_else(|| err_msg("partition scan failed"))
+                    true
+                })
+                .map(|partition| {
+                    partition
+                        .scan(&scan)
+                        .with_context(|_| "partition scan failed")
+                        .ok()
+                })
+                .reduce(
+                    || None,
+                    |a, b| if a.is_none() {
+                        b
+                    } else if b.is_none() {
+                        a
+                    } else {
+                        let mut a = a.unwrap();
+                        let b = b.unwrap();
+                        a.merge(b).unwrap();
+                        Some(a)
+                    },
+                )
+                .ok_or_else(|| err_msg("partition scan failed"))
+        }
     }
 
     pub(super) fn create_partition<'part, TS>(&self, ts: TS) -> Result<Partition<'part>>
