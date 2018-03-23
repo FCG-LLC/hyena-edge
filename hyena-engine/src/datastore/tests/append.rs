@@ -496,24 +496,48 @@ mod benches {
     }
 }
 
+#[test]
+#[should_panic(expected = "Provided Append contains no data")]
+fn empty() {
+    use super::*;
+    use ty::block::BlockStorage::Memmap;
+    use block::BlockType as BlockTy;
+
+    let now = <Timestamp as Default>::default();
+
+    let (_root, cat, _) = append_test_impl!(init
+        vec![1],
+        hashmap! {
+            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+        },
+        now
+    );
+
+
+    let append = Append {
+        ts: Default::default(),
+        source_id: 1,
+        data: Default::default(),
+    };
+
+    cat.append(&append).unwrap();
+}
+
 mod dense {
     use super::*;
     use ty::block::BlockStorage::Memmap;
 
     #[test]
     fn ts_only() {
-        use std::mem::transmute;
-
         let now = <Timestamp as Default>::default();
 
         let record_count = 100;
 
-        let data = seqfill!(vec u64, record_count);
-
-        let v = unsafe { transmute::<_, Vec<Timestamp>>(data.clone()) };
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
 
         let expected = hashmap! {
-            0 => Fragment::from(data)
+            0 => Fragment::from(v.clone())
         };
 
         append_test_impl!(

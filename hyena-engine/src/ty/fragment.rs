@@ -500,7 +500,7 @@ fragment_variant_impl!(sparse
                        U128Sparse, u128;);
 
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TimestampFragment(Vec<Timestamp>);
 
 impl TimestampFragment {
