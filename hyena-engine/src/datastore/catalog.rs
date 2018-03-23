@@ -1,14 +1,11 @@
 use error::*;
 use ty::BlockStorage;
-use hyena_common::ty::MIN_TIMESTAMP;
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use std::collections::hash_map::HashMap;
-use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
-use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
