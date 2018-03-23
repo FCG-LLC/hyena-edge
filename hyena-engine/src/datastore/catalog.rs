@@ -194,11 +194,10 @@ impl<'cat> Catalog<'cat> {
                 .with_context(|_| "Failed to create group manager")
                 .unwrap();
 
-            let mut pg = PartitionGroup::new(&root, source_id)
+            let pg = PartitionGroup::new(&root, source_id)
                 .with_context(|_| "Unable to create partition group")
                 .unwrap();
 
-            Catalog::create_single_partition(&mut pg);
             pg.flush().unwrap();
 
             pg

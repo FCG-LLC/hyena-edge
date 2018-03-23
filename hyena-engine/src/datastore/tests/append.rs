@@ -35,38 +35,9 @@ macro_rules! append_test_impl {
 
         for source_id in &source_ids {
 
-            let pg = cat.ensure_group(*source_id)
+            cat.ensure_group(*source_id)
                 .with_context(|_| "Unable to retrieve partition group")
                 .unwrap();
-
-            // this ensures that we have at least one partition in the partition pool
-            // to avoid having ghost directories, we can comment it out
-            // as similar code is present in PartitionGroup::create_partition
-
-            let part = pg.create_partition(ts_min)
-                .with_context(|_| "Unable to create partition")
-                .unwrap();
-
-            let mut vp = VecDeque::new();
-            vp.push_front(part);
-
-            let new_partitions = locked!(rw vp);
-
-            // remove all preexisting partitions
-            let mut preexisting_partitions = ::std::mem::replace(
-                    &mut pg.mutable_partitions,
-                    new_partitions
-                )
-                .into_inner()
-                .with_context(|_| "Unable to consume partition group lock")
-                .unwrap();
-
-            preexisting_partitions.into_iter().for_each(|partition| {
-                partition
-                    .remove()
-                    .with_context(|_| "Unable to remove preexisting partition")
-                    .unwrap();
-            });
         }
 
         (root, cat, ts_min)
@@ -77,6 +48,7 @@ macro_rules! append_test_impl {
         $([
             $ts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {
 
         append_test_impl!($schema, $now, $([
@@ -92,6 +64,7 @@ macro_rules! append_test_impl {
         $([
             $ts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {
 
         append_test_impl!($partition_groups, $schema, $now, $([
@@ -107,6 +80,7 @@ macro_rules! append_test_impl {
             $ts: expr,
             $data: expr,    // HashMap
             $source_id: expr
+            $(,)*
         ]),+ $(,)*) => {{
         use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
@@ -124,6 +98,7 @@ macro_rules! append_test_impl {
             $ts: expr,
             $data: expr,    // HashMap
             $source_id: expr
+            $(,)*
         ]),+ $(,)*) => {{
 
         let columns = $schema;
@@ -159,6 +134,7 @@ macro_rules! append_test_impl {
             $ts_count: expr,
             $block_counts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {{
 
         use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
@@ -181,6 +157,7 @@ macro_rules! append_test_impl {
             $ts_count: expr,
             $block_counts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {{
 
         #[allow(unused)]
@@ -278,15 +255,17 @@ macro_rules! append_test_impl {
                     assert!(td.exists_file(
                             part_root.as_ref().join(format!("block_{}.data", id))
                         ),
-                        "couldn't find block {}",
-                        id);
+                        "couldn't find block {} of partition {:?}",
+                        id,
+                        part_id);
 
                     if (*col).is_sparse() {
                         assert!(td.exists_file(
                                 part_root.as_ref().join(format!("block_{}.index", id))
                             ),
-                            "couldn't find block {} index file",
-                            id);
+                            "couldn't find block {} index file of partition {:?}",
+                            id,
+                            part_id);
                     }
                 }
             });
@@ -689,7 +668,6 @@ mod dense {
         };
 
         let expected = vec![
-            hashmap!{},
             hashmap! {
                 0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
@@ -700,6 +678,7 @@ mod dense {
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
                 3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
             },
+            hashmap!{},
         ];
 
         append_test_impl!(
@@ -904,7 +883,6 @@ mod dense {
                 2 => Fragment::from(b2_c2),
                 3 => Fragment::from(b2_c3),
             },
-            hashmap! {},
         ];
 
         append_test_impl!(
