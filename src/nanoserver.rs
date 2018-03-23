@@ -1,13 +1,19 @@
 use clap;
 use std::fs;
-use futures::{future, Future, Stream};
+use futures::{Future, Stream};
 use tokio_core::reactor::Core;
-use nanomsg_tokio::Socket as NanoSocket;
-use nanomsg::Protocol;
 use bincode::{serialize, Infinite};
+
+use nanomsg_multi_server::{MultiServer, MultiServerFutures};
+use nanomsg_multi_server::proto::{PeerReply, PeerRequest, PeerError};
+use nanomsg_multi_server::config::{GcInterval, SessionTimeout};
 
 use hyena_api::{Request, Reply, run_request};
 use hyena_engine::Catalog;
+
+use std::rc::Rc;
+use std::cell::RefCell;
+
 
 fn get_address(matches: &clap::ArgMatches) -> String {
     let transport = matches.value_of("transport").unwrap();
@@ -33,7 +39,6 @@ fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
         run_request(operation.unwrap(), catalog)
     };
     debug!("Returning: {:?}", reply);
-    trace!("Returning: {:?}", serialize(&reply, Infinite).unwrap());
 
     serialize(&reply, Infinite).unwrap()
 }
@@ -42,28 +47,78 @@ pub fn run(matches: &clap::ArgMatches) {
     let mut core = Core::new().expect("Could not create Core");
     let handle = core.handle();
 
-    let mut nano_socket = NanoSocket::new(Protocol::Rep, &handle)
-        .expect("Unable to create nanomsg socket");
-
-    let address = get_address(matches);
-    debug!("Starting nanomsg server on {}", address);
-
-    nano_socket
-        .bind(address.as_str())
-        .expect("Unable to bind nanomsg endpoint");
-
-    let (writer, reader) = nano_socket.split();
     let dir = matches.value_of("data_dir").unwrap();
     fs::create_dir_all(dir).expect("Could not create data_dir");
-    let mut catalog = Catalog::open_or_create(dir).expect("Unable to initialize catalog");
+    let catalog = Catalog::open_or_create(dir).expect("Unable to initialize catalog");
 
-    let server = reader.map(move |msg| {
-        process_message(msg, &mut catalog)
-    }).forward(writer).then(|_| future::ok::<(), ()>(()));
+    let address = get_address(matches);
 
-    handle.spawn(server);
+    info!("Starting socket server");
 
-    loop {core.turn(None);}
+    let server = MultiServer::new(
+        address.as_ref(),
+        SessionTimeout::default(),
+        GcInterval::default(),
+        handle.clone(),
+    );
+
+    info!("Listening on {}", address);
+
+    let MultiServerFutures { server, sessions } = server.into_futures().expect("server error");
+
+    let catalog = Rc::new(RefCell::new(catalog));
+
+    handle.clone().spawn(sessions.for_each(move |session| {
+        let connid = session.connid;
+
+        info!("[{connid}] Incoming new session {:?}", session, connid=connid);
+        let catalog = catalog.clone();
+
+        let (writer, reader) = session.connection.split();
+
+        handle.spawn(reader
+            .map(move |msg| {
+                use self::PeerRequest::*;
+
+                match msg {
+                    Request(msgid, Some(msg)) => {
+                        info!(
+                            "[{connid}@{msgid}] Incoming Request",
+                            connid=connid, msgid=msgid
+                        );
+
+                        let reply = process_message(msg, &mut catalog.borrow_mut());
+
+                        Ok(PeerReply::Response(msgid, Ok(Some(reply))))
+                    }
+                    Abort(msgid) => {
+                        info!(
+                            "[{connid}@{msgid}] Abort Request",
+                            connid=connid, msgid=msgid
+                        );
+
+                        Ok(PeerReply::Response(msgid, Ok(None)))
+                    }
+                    KeepAlive => {
+                        debug!(
+                            "[{connid}] Keepalive Request",
+                            connid=connid
+                        );
+
+                        Ok(PeerReply::KeepAlive)
+                    }
+                    _ => Err(PeerError::BadMessage),
+                }
+            })
+            .and_then(|reply| reply)
+            .forward(writer)
+            .map(|_| ())
+            .map_err(|error| error!("Session connection error {:?}", error)));
+
+            Ok(())
+    }));
+
+    core.run(server).unwrap();
 }
 
 #[cfg(test)]

@@ -17,10 +17,8 @@ dotenv = "0.10.1"
 futures = "0.1.18"
 tokio-core = "0.1.12"
 bytes = "0.4.6"
-tokio-io = "0.1.4"
-tokio-proto = "0.1.1"
-tokio-service = "0.1.0"
 bincode = "0.9.2"
+nanomsg-multi-server = { git = "ssh://git@gitlab.cs.int/rust/nanomsg-multi.git" }
 
 [dependencies.hyena-engine]
 optional = false
