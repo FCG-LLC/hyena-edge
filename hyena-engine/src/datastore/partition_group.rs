@@ -79,11 +79,15 @@ impl<'pg> PartitionGroup<'pg> {
         PartitionGroup::serialize(self, &meta)
     }
 
+    /// Append data
     pub(super) fn append(&self, catalog: &Catalog, data: &Append) -> Result<usize> {
-        use std::iter::{once, repeat};
-        use ty::fragment::FragmentRef;
 
-        // calculate the size of the append (in records)
+        // append with no data is a no-op
+        if data.is_empty() {
+            return Ok(0)
+        }
+
+        // get types of all columns used in this append
 
         let mut colindices = vec![0, 1]; // ts and source_id
         colindices.extend(data.data.keys());
@@ -101,135 +105,63 @@ impl<'pg> PartitionGroup<'pg> {
             .with_context(|_| err_msg("failed to prepare all columns"))?
             .into();
 
+        // calculate the size of the append (in records)
         let fragcount = data.len();
 
         let (emptycap, currentcap) = {
             let partitions = acquire!(read carry self.mutable_partitions);
-            // current partition capacity
-            let curpart = partitions
-                .back()
-                .ok_or_else(|| err_msg("Mutable partitions pool is empty"))?;
 
             // empty partition capacity for this append
             //
             // the row count we can store depends on a specific sparse columns being present
             // in the append data, so it varies between appends
             let emptycap = catalog.space_for_blocks(&colindices);
+
             // the remaining capacity of the current partition
             // calculated for this specific append
-            let currentcap = curpart.space_for_blocks(&colindices);
+            //
+            // the current partition is the partition that is open for writing
+            // i.e. the upcoming append operation will add some data to it
+            //
+            // current is empty -> return emptycap
+            // current is full -> return 0
+            // current doesn't exist -> return 0
+            // current has space -> return space
+            let currentcap = partitions
+                .back()
+                .map(|part| part
+                    .space_for_blocks(&colindices)
+                    .unwrap_or_else(|| emptycap))
+                .unwrap_or_default();
 
             (
                 emptycap,
-                // check if current partition exceeded its capacity or is simply uninitialized
-                if currentcap == 0 && curpart.is_empty() {
-                    emptycap
-                } else {
-                    currentcap
-                },
+                currentcap,
             )
         };
 
         // check if we can fit the data within current partition
         // or additional ones are needed
-        //
-        // in case we're writing exactly `emptycap` fragments
-        // we should create new partition for future writes
 
         // curfrags - the number of fragments we can write to the current partition
         // reqparts - required number of partitions to create
-        // current_will_be_full - will the next current partition be in a fully written state after
-        // this append completes
-        // single_write - we're writing to single partition only
-        let (curfrags, reqparts, current_will_be_full, single_write) = if fragcount > currentcap {
+        let (curfrags, reqparts) = if fragcount > currentcap {
             let emptyfrags = fragcount - currentcap;
-            let lastfull = emptyfrags % emptycap == 0;
 
             (
                 currentcap,
-                (emptyfrags / emptycap + if lastfull { 0 } else { 1 }) - 1,
-                lastfull,
-                false,
+                (emptyfrags / emptycap) + if emptyfrags % emptycap != 0 { 1 } else { 0 }
             )
         } else {
-            (fragcount, 0, fragcount == currentcap, true)
+            (fragcount, 0)
         };
 
-        // prepare source slices
+        // current_is_full - is the current partition full, i.e. should we attempt to write to it
+        let current_is_full = curfrags == 0;
 
-        let mut fragments = Vec::with_capacity(reqparts + 1);
+        // split append data between partitions
 
-        let (fragments, ts_1, mut frag_1, mut ts_idx, offsets) = once(curfrags)
-            .filter(|c| *c != 0)
-            .chain(repeat(emptycap).take(reqparts))
-            .fold(
-                (
-                    &mut fragments,
-                    data.ts.as_slice(),
-                    data.data
-                        .iter()
-                        .map(|(col_id, frag)| (*col_id, FragmentRef::from(frag)))
-                        .collect::<HashMap<_, _>>(),
-                    vec![],
-                    vec![0],
-                ),
-                |store, mid| {
-
-                    let (fragments, ts_data, frag_data, mut ts_idx, mut offsets) = store;
-
-                    // when dealing with sparse blocks we don't know beforehand which
-                    // partition a sparse entry will belong to
-                    // but as our splitting algorithm calculates the capacity with an assumption
-                    // that sparse blocks are in fact dense, the "overflow" of sparse data
-                    // shouldn't happen
-
-                    let (ts_0, ts_1) = ts_data.split_at(mid);
-                    let (mut frag_0, frag_1) = frag_data.iter().fold(
-                        (HashMap::new(), HashMap::new()),
-                        |acc, (col_id, frag)| {
-                            let (mut hm_0, mut hm_1) = acc;
-
-                            if frag.is_sparse() {
-                                // this uses unsafe conversion usize -> u32
-                                // in reality we shouldn't ever use mid > u32::MAX
-                                // it's still worth to consider adding some check
-                                let (frag_0, frag_1) = frag.split_at_idx(mid as SparseIndex)
-                                    .with_context(|_| "unable to split sparse fragment")
-                                    .unwrap();
-
-                                hm_0.insert(*col_id, frag_0);
-                                hm_1.insert(*col_id, frag_1);
-                            } else {
-                                let (frag_0, frag_1) = frag.split_at(mid);
-
-                                hm_0.insert(*col_id, frag_0);
-                                hm_1.insert(*col_id, frag_1);
-                            }
-
-                            (hm_0, hm_1)
-                        },
-                    );
-
-                    // as we did split, ts_0 cannot be empty
-                    ts_idx.push(
-                        *(&ts_0[..]
-                            .first()
-                            .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
-                            .unwrap()),
-                    );
-                    frag_0.insert(0, FragmentRef::from(&ts_0[..]));
-                    fragments.push(frag_0);
-                    offsets.push(mid);
-
-                    (fragments, ts_1, frag_1, ts_idx, offsets)
-                },
-            );
-
-        if !ts_1.is_empty() {
-            ts_idx.push(*(&ts_1[..].first().unwrap()));
-            frag_1.insert(0, FragmentRef::from(&ts_1[..]));
-            fragments.push(frag_1);
-        }
+        let (ts_idx, fragments, offsets) = Self::split_append(&data, curfrags, reqparts, emptycap);
 
         // create partition pool
 
@@ -239,9 +171,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         let newparts = ts_idx
             .iter()
-            // always create additional partition if the current one will be end being full after
-            // this append, to have at least one available for writing on the next append operation
-            .skip(if current_will_be_full { 0 } else { 1 })
+            .skip(if current_is_full { 0 } else { 1 })
             .map(|ts| self.create_partition(**ts))
             .collect::<Result<Vec<_>>>()
             .with_context(|_| "Unable to create partition for writing")?;
@@ -252,8 +182,7 @@ impl<'pg> PartitionGroup<'pg> {
 
         for ((partition, fragment), offset) in partitions
             .iter_mut()
-            // do not skip current partition if it's the only one
-            .skip(if current_will_be_full && !single_write { curidx } else { curidx - 1 })
+            .skip(if current_is_full { curidx } else { curidx.saturating_sub(1) })
             .zip(fragments.iter())
             .zip(offsets.iter())
         {
