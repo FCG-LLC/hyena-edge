@@ -396,6 +396,21 @@ impl<'fragref> FragmentRef<'fragref> {
 
         frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
+
+    pub fn iter(&self) -> FragmentIter<'fragref> {
+        use self::FragmentRef::*;
+
+        frag_apply!(*self, blk, idx, {
+            FragmentIter(Box::new(blk.iter()
+                .map(|v| Value::from(*v))
+                .enumerate()), PhantomData)
+        }, {
+            FragmentIter(Box::new(idx.iter()
+                .zip(*blk)
+                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+            ), PhantomData)
+        })
+    }
 }
 
 
