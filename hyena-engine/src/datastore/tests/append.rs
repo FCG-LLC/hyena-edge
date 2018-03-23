@@ -1082,6 +1082,74 @@ mod dense {
             [v.into(), record_count, counts, data],
         );
     }
+
+    mod large {
+        use super::*;
+
+        fn test_impl(partitions: usize, even: bool) {
+            use block::BlockType;
+
+            let now = 1;
+
+            let record_count = MAX_RECORDS * partitions - if even { 0 } else { 1 };
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let schema = hashmap! {
+                0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+            };
+
+            let expected = v.chunks(MAX_RECORDS).map(|chunk| {
+                hashmap! {
+                    0 => Fragment::from(chunk.to_vec())
+                }
+            }).collect::<Vec<_>>();
+
+            append_test_impl!(
+                vec![1],
+                schema,
+                now,
+                expected,
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {},
+                    hashmap! {},
+                ]
+            );
+        }
+
+        #[test]
+        fn uneven_2_partitions() {
+            test_impl(2, false);
+        }
+
+        #[test]
+        fn uneven_3_partitions() {
+            test_impl(3, false);
+        }
+
+        #[test]
+        fn uneven_4_partitions() {
+            test_impl(4, false);
+        }
+
+        #[test]
+        fn even_4_partitions() {
+            test_impl(4, true);
+        }
+
+        #[test]
+        fn uneven_40_partitions() {
+            test_impl(40, false);
+        }
+
+        #[test]
+        fn even_40_partitions() {
+            test_impl(40, true);
+        }
+    }
 }
 
 mod sparse {
@@ -1259,6 +1327,94 @@ mod sparse {
                 data
             ]
         );
+    }
+
+    mod large {
+        use super::*;
+
+        fn test_impl(partitions: usize, even: bool) {
+            let now = 0;
+
+            let record_count = MAX_RECORDS * partitions - if even { 0 } else { 1 };
+
+            let sparse_step = 4;
+            let sparse_count_per_partition = MAX_RECORDS / sparse_step;
+            let sparse_count = sparse_count_per_partition * partitions - if even { 0 } else { 1 };
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let data = hashmap! {
+                2 => Fragment::from((seqfill!(vec u32, sparse_count),
+                        seqfill!(vec u32, sparse_count, 0, sparse_step)
+                    )),
+            };
+
+            let expected = v
+                .chunks(MAX_RECORDS)
+                .enumerate()
+                .map(|(i, v)| {
+                    hashmap! {
+                        0 => Fragment::from(v.to_vec()),
+                        2 => Fragment::from((
+                                seqfill!(vec u32,
+                                    sparse_count_per_partition,
+                                    i * sparse_count_per_partition
+                                ),
+                                seqfill!(vec u32, sparse_count_per_partition, 0, sparse_step)
+                            )),
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            append_test_impl!(
+                vec![1],
+                hashmap! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    2 => Column::new(Memmap(BlockTy::U32Sparse), "sparse"),
+                },
+                now,
+                expected,
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {
+                        2 => (sparse_count, sparse_step, 0),
+                    },
+                    data
+                ],
+            );
+        }
+
+        #[test]
+        fn uneven_2_partitions() {
+            test_impl(2, false);
+        }
+
+        #[test]
+        fn uneven_3_partitions() {
+            test_impl(3, false);
+        }
+
+        #[test]
+        fn uneven_4_partitions() {
+            test_impl(4, false);
+        }
+
+        #[test]
+        fn even_4_partitions() {
+            test_impl(4, true);
+        }
+
+        #[test]
+        fn uneven_40_partitions() {
+            test_impl(40, false);
+        }
+
+        #[test]
+        fn even_40_partitions() {
+            test_impl(40, true);
+        }
     }
 }
 
