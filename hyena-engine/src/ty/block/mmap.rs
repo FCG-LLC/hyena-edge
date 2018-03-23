@@ -130,7 +130,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::tests::BLOCK_SIZE;
+    use params::BLOCK_SIZE;
 
 
     #[test]

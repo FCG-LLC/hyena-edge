@@ -37,7 +37,7 @@ extern crate static_assertions;
 extern crate extprim;
 
 extern crate strum;
-#[macro_use] 
+#[macro_use]
 extern crate strum_macros;
 
 pub(crate) mod params;

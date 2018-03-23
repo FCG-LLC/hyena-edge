@@ -79,7 +79,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::tests::BLOCK_SIZE;
+    use params::BLOCK_SIZE;
     use extprim::i128::i128;
     use extprim::u128::u128;
 
