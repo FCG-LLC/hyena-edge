@@ -59,7 +59,7 @@ build:master-release:
   - cargo build --release
   artifacts:
     paths:
-    - target/debug/hyena
+    - target/release/hyena
     expire_in: 1 month
 
 build:master-docs:
