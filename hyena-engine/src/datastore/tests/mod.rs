@@ -21,7 +21,7 @@ use params::BLOCK_SIZE;
 // make sure that size_of::<Timestamp>() == 8
 assert_eq_size!(timestamp_size_check; u64, Timestamp);
 
-const TIMESTAMP_SIZE: usize = 8; // should be `size_of::<Timestamp>()`
+const TIMESTAMP_SIZE: usize = ::std::mem::size_of::<Timestamp>();
 const MAX_RECORDS: usize = BLOCK_SIZE / TIMESTAMP_SIZE;
 
 #[macro_use]
