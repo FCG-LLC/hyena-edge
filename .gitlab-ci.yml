@@ -1,4 +1,4 @@
-image: "gitlab-docker-rust:latest"
+image: "portus.cs.int:5000/gitlab/rust"
 
 variables:
   RUST_COMPILER: "stable"
