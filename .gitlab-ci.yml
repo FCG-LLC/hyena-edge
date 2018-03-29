@@ -91,6 +91,36 @@ build:docs:
     - target/doc/**
     expire_in: 1 week
 
+build:release:
+  stage: build
+  tags:
+  - rust
+  - hyena
+  except:
+  - master
+  when: manual
+  script:
+  - cargo build --release
+  artifacts:
+    paths:
+    - target/release/hyena
+    expire_in: 1 day
+
+build:debug:
+  stage: build
+  tags:
+  - rust
+  - hyena
+  except:
+  - master
+  when: manual
+  script:
+  - cargo build
+  artifacts:
+    paths:
+    - target/debug/hyena
+    expire_in: 1 day
+
 package:master-deb:
   stage: package
   tags:
