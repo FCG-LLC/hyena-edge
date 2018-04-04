@@ -6,10 +6,8 @@ use self::failure::ResultExt;
 
 use self::hyena_test::tempfile;
 
-// change this to PersistentTempDir for int easy tests debugging
-
-pub use self::tempfile::VolatileTempDir as TempDir;
-// pub use self::tempfile::PersistentTempDir as TempDir;
+// set `persistent_test_data` to make temp dirs persistent
+pub use self::tempfile::TempDir;
 
 use hyena_engine::{Catalog, Result};
 
