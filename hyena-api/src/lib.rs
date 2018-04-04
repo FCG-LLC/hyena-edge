@@ -233,6 +233,30 @@ impl Request {
     }
 }
 
+impl std::fmt::Display for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match *self {
+            Request::Insert(ref msg) => {
+                let fragments_str: Vec<String> = msg.columns
+                    .iter()
+                    .map(|c| {
+                        c.iter()
+                            .map(|(k, v)| format!("column id {:?}, {:?} items", k, v.len()))
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    })
+                    .collect();
+                write!(f,
+                       "Insert(timestamps={} items, source={}, fragments=[{}])",
+                       msg.timestamps.len(),
+                       msg.source,
+                       fragments_str.join(", "))
+            }
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct ReplyColumn {
     typ: BlockType,

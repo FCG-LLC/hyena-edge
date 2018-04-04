@@ -28,15 +28,16 @@ fn get_address(matches: &clap::ArgMatches) -> String {
 }
 
 fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
-    trace!("Got: {:?}", msg);
+    //trace!("Got: {:?}", msg);
 
     let operation = Request::parse(&msg);
-    debug!("Operation: {:?}", operation);
 
     let reply = if operation.is_err() {
         Reply::SerializeError(format!("{:?}", operation.unwrap_err()))
     } else {
-        run_request(operation.unwrap(), catalog)
+        let req = operation.unwrap();
+        debug!("Operation: {}", req);
+        run_request(req, catalog)
     };
     debug!("Returning: {:?}", reply);
 
