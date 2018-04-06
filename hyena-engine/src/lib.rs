@@ -64,6 +64,7 @@ pub use self::block::{BlockType, SparseIndex};
 pub use self::ty::fragment::{Fragment, FragmentIter, TimestampFragment};
 pub use self::ty::block::memory::Block as MemoryBlock;
 pub use self::ty::block::mmap::Block as MemmapBlock;
+pub use self::params::SourceId;
 pub use hyena_common::ty::Value;
 pub use hyena_common::ty::{Timestamp, MAX_TIMESTAMP_VALUE, MIN_TIMESTAMP_VALUE};
 

@@ -21,7 +21,7 @@ use error::*;
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
 ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment,
-ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter};
+ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
 
 use hyena_common::ty::Uuid;
 
@@ -37,16 +37,25 @@ use extprim::u128::u128;
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InsertMessage {
     timestamps: Vec<u64>,
-    source: u32,
+    source: SourceId,
+    // todo: simplify to BlockData
     columns: Vec<BlockData>,
 }
 
 impl InsertMessage {
+    pub fn new(timestamps: Vec<u64>, source: SourceId, columns: Vec<BlockData>) -> InsertMessage {
+        InsertMessage {
+            timestamps,
+            source,
+            columns,
+        }
+    }
+
     pub fn timestamps(&self) -> &Vec<u64> {
         &self.timestamps
     }
 
-    pub fn source(&self) -> u32 {
+    pub fn source(&self) -> SourceId {
         self.source
     }
 
@@ -55,7 +64,7 @@ impl InsertMessage {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct DataTriple {
     column_id: ColumnId,
     column_type: BlockType,
@@ -65,14 +74,14 @@ pub struct DataTriple {
 impl DataTriple {
     pub fn new(id: ColumnId, block_type: BlockType, data: Option<Fragment>) -> Self {
         DataTriple {
-            column_id: id, 
-            column_type: block_type, 
+            column_id: id,
+            column_type: block_type,
             data: data
         }
     }
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ScanResultMessage {
     data: Vec<DataTriple>
 }
@@ -219,8 +228,8 @@ pub enum Request {
 }
 
 impl Request {
-    pub fn parse(data: Vec<u8>) -> Result<Request, BinError> {
-        deserialize(&data[..])
+    pub fn parse(data: &[u8]) -> Result<Request, BinError> {
+        deserialize(data)
     }
 }
 
@@ -241,7 +250,7 @@ impl ReplyColumn {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Reply {
     ListColumns(Vec<ReplyColumn>),
     Insert(Result<usize, Error>),
@@ -469,7 +478,7 @@ impl Reply {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Error {
     ColumnNameAlreadyExists(String),
     ColumnIdAlreadyExists(usize),
