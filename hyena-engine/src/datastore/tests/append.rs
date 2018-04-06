@@ -35,18 +35,9 @@ macro_rules! append_test_impl {
 
         for source_id in &source_ids {
 
-            let pg = cat.ensure_group(*source_id)
+            cat.ensure_group(*source_id)
                 .with_context(|_| "Unable to retrieve partition group")
                 .unwrap();
-
-            let part = pg.create_partition(ts_min)
-                .with_context(|_| "Unable to create partition")
-                .unwrap();
-
-            let mut vp = VecDeque::new();
-            vp.push_front(part);
-
-            pg.mutable_partitions = locked!(rw vp);
         }
 
         (root, cat, ts_min)
@@ -57,6 +48,7 @@ macro_rules! append_test_impl {
         $([
             $ts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {
 
         append_test_impl!($schema, $now, $([
@@ -72,6 +64,7 @@ macro_rules! append_test_impl {
         $([
             $ts: expr,
             $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {
 
         append_test_impl!($partition_groups, $schema, $now, $([
@@ -87,6 +80,7 @@ macro_rules! append_test_impl {
             $ts: expr,
             $data: expr,    // HashMap
             $source_id: expr
+            $(,)*
         ]),+ $(,)*) => {{
         use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
@@ -104,6 +98,7 @@ macro_rules! append_test_impl {
             $ts: expr,
             $data: expr,    // HashMap
             $source_id: expr
+            $(,)*
         ]),+ $(,)*) => {{
 
         let columns = $schema;
@@ -139,6 +134,30 @@ macro_rules! append_test_impl {
             $ts_count: expr,
             $block_counts: expr,
             $data: expr    // HashMap
+            $(,)*
+        ]),+ $(,)*) => {{
+
+        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+
+        append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $expected_partitions, $([
+            $ts,
+            $ts_count,
+            $block_counts,
+            $data
+        ],)+)
+
+    }};
+
+    ($partition_groups: expr,
+        $schema: expr,
+        $now: expr,
+        $expected_partitions: expr, // Vec<>
+        $([
+            $ts: expr,
+            $ts_count: expr,
+            $block_counts: expr,
+            $data: expr    // HashMap
+            $(,)*
         ]),+ $(,)*) => {{
 
         #[allow(unused)]
@@ -158,7 +177,8 @@ macro_rules! append_test_impl {
 
         let (td, part_ids) = {
 
-            let init = append_test_impl!(init columns.clone(), now);
+
+        let init = append_test_impl!(init $partition_groups, columns.clone(), now);
             let cat = init.1;
 
             $(
@@ -235,15 +255,17 @@ macro_rules! append_test_impl {
                     assert!(td.exists_file(
                             part_root.as_ref().join(format!("block_{}.data", id))
                         ),
-                        "couldn't find block {}",
-                        id);
+                        "couldn't find block {} of partition {:?}",
+                        id,
+                        part_id);
 
                     if (*col).is_sparse() {
                         assert!(td.exists_file(
                                 part_root.as_ref().join(format!("block_{}.index", id))
                             ),
-                            "couldn't find block {} index file",
-                            id);
+                            "couldn't find block {} index file of partition {:?}",
+                            id,
+                            part_id);
                     }
                 }
             });
@@ -474,24 +496,48 @@ mod benches {
     }
 }
 
+#[test]
+#[should_panic(expected = "Provided Append contains no data")]
+fn empty() {
+    use super::*;
+    use ty::block::BlockStorage::Memmap;
+    use block::BlockType as BlockTy;
+
+    let now = <Timestamp as Default>::default();
+
+    let (_root, cat, _) = append_test_impl!(init
+        vec![1],
+        hashmap! {
+            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+        },
+        now
+    );
+
+
+    let append = Append {
+        ts: Default::default(),
+        source_id: 1,
+        data: Default::default(),
+    };
+
+    cat.append(&append).unwrap();
+}
+
 mod dense {
     use super::*;
     use ty::block::BlockStorage::Memmap;
 
     #[test]
     fn ts_only() {
-        use std::mem::transmute;
-
         let now = <Timestamp as Default>::default();
 
         let record_count = 100;
 
-        let data = seqfill!(vec u64, record_count);
-
-        let v = unsafe { transmute::<_, Vec<Timestamp>>(data.clone()) };
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
 
         let expected = hashmap! {
-            0 => Fragment::from(data)
+            0 => Fragment::from(v.clone())
         };
 
         append_test_impl!(
@@ -646,7 +692,6 @@ mod dense {
         };
 
         let expected = vec![
-            hashmap!{},
             hashmap! {
                 0 => Fragment::from(Vec::from(&v[..MAX_RECORDS])),
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS)),
@@ -657,6 +702,7 @@ mod dense {
                 2 => Fragment::from(seqfill!(vec u8, MAX_RECORDS, MAX_RECORDS)),
                 3 => Fragment::from(seqfill!(vec u32, MAX_RECORDS, MAX_RECORDS)),
             },
+            hashmap!{},
         ];
 
         append_test_impl!(
@@ -851,7 +897,6 @@ mod dense {
         };
 
         let expected = vec![
-            hashmap! {},
             hashmap! {
                 0 => Fragment::from(v_1.clone()),
                 2 => Fragment::from(b1_c2),
@@ -1037,6 +1082,74 @@ mod dense {
             [v.into(), record_count, counts, data],
         );
     }
+
+    mod large {
+        use super::*;
+
+        fn test_impl(partitions: usize, even: bool) {
+            use block::BlockType;
+
+            let now = 1;
+
+            let record_count = MAX_RECORDS * partitions - if even { 0 } else { 1 };
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let schema = hashmap! {
+                0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+            };
+
+            let expected = v.chunks(MAX_RECORDS).map(|chunk| {
+                hashmap! {
+                    0 => Fragment::from(chunk.to_vec())
+                }
+            }).collect::<Vec<_>>();
+
+            append_test_impl!(
+                vec![1],
+                schema,
+                now,
+                expected,
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {},
+                    hashmap! {},
+                ]
+            );
+        }
+
+        #[test]
+        fn uneven_2_partitions() {
+            test_impl(2, false);
+        }
+
+        #[test]
+        fn uneven_3_partitions() {
+            test_impl(3, false);
+        }
+
+        #[test]
+        fn uneven_4_partitions() {
+            test_impl(4, false);
+        }
+
+        #[test]
+        fn even_4_partitions() {
+            test_impl(4, true);
+        }
+
+        #[test]
+        fn uneven_40_partitions() {
+            test_impl(40, false);
+        }
+
+        #[test]
+        fn even_40_partitions() {
+            test_impl(40, true);
+        }
+    }
 }
 
 mod sparse {
@@ -1204,13 +1317,351 @@ mod sparse {
                 2 => Column::new(Memmap(BlockTy::U8Sparse), "col1"),
             },
             now,
-            vec![hashmap!{}, expected],
+            vec![expected, hashmap! {}],
             [
                 v.into(),
                 record_count,
                 hashmap! {
                     2 => (sparse_count_2, sparse_step_2, 0),
                 },
+                data
+            ]
+        );
+    }
+
+    mod large {
+        use super::*;
+
+        fn test_impl(partitions: usize, even: bool) {
+            let now = 0;
+
+            let record_count = MAX_RECORDS * partitions - if even { 0 } else { 1 };
+
+            let sparse_step = 4;
+            let sparse_count_per_partition = MAX_RECORDS / sparse_step;
+            let sparse_count = sparse_count_per_partition * partitions - if even { 0 } else { 1 };
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let data = hashmap! {
+                2 => Fragment::from((seqfill!(vec u32, sparse_count),
+                        seqfill!(vec u32, sparse_count, 0, sparse_step)
+                    )),
+            };
+
+            let expected = v
+                .chunks(MAX_RECORDS)
+                .enumerate()
+                .map(|(i, v)| {
+                    hashmap! {
+                        0 => Fragment::from(v.to_vec()),
+                        2 => Fragment::from((
+                                seqfill!(vec u32,
+                                    sparse_count_per_partition,
+                                    i * sparse_count_per_partition
+                                ),
+                                seqfill!(vec u32, sparse_count_per_partition, 0, sparse_step)
+                            )),
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            append_test_impl!(
+                vec![1],
+                hashmap! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    2 => Column::new(Memmap(BlockTy::U32Sparse), "sparse"),
+                },
+                now,
+                expected,
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {
+                        2 => (sparse_count, sparse_step, 0),
+                    },
+                    data
+                ],
+            );
+        }
+
+        #[test]
+        fn uneven_2_partitions() {
+            test_impl(2, false);
+        }
+
+        #[test]
+        fn uneven_3_partitions() {
+            test_impl(3, false);
+        }
+
+        #[test]
+        fn uneven_4_partitions() {
+            test_impl(4, false);
+        }
+
+        #[test]
+        fn even_4_partitions() {
+            test_impl(4, true);
+        }
+
+        #[test]
+        fn uneven_40_partitions() {
+            test_impl(40, false);
+        }
+
+        #[test]
+        fn even_40_partitions() {
+            test_impl(40, true);
+        }
+    }
+}
+
+mod layout {
+    use super::*;
+    use ty::block::BlockStorage::Memmap;
+
+    // first empty, non-full write (single partition output)
+    // 100 = [100]
+    #[test]
+    fn empty_nonfull() {
+        let now = 0;
+
+        let record_count = 100;
+
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected = data.clone();
+
+        expected.insert(0, Fragment::from(v.clone()));
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            vec![expected],
+            [
+                v.into(),
+                record_count,
+                hashmap! {},
+                data
+            ]
+        );
+    }
+
+    // first empty, full write (single partition output)
+    // MAX_RECORDS = [MAX_RECORDS]
+    #[test]
+    fn empty_full() {
+        let now = 0;
+
+        let record_count = MAX_RECORDS;
+
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected = data.clone();
+
+        expected.insert(0, Fragment::from(v.clone()));
+
+        let expected_empty = hashmap! {};
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            // in this case we should be left with fully written partition
+            // and a completely empty one
+            vec![expected, expected_empty],
+            [
+                v.into(),
+                record_count,
+                hashmap! {},
+                data
+            ]
+        );
+
+    }
+
+    // first empty, full write (single partition output)
+    // MAX_RECORDS + 100 = [MAX_RECORDS, 100]
+    #[test]
+    fn empty_full_plus() {
+        let now = 0;
+
+        let record_count = MAX_RECORDS + 100;
+
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected1 = data.clone();
+        let mut expected2 = data.clone();
+
+        expected1.insert(0, Fragment::from(v[..MAX_RECORDS].to_vec()));
+        expected2.insert(0, Fragment::from(v[MAX_RECORDS..].to_vec()));
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            vec![expected1, expected2],
+            [
+                v.into(),
+                record_count,
+                hashmap! {},
+                data
+            ]
+        );
+
+    }
+
+    // first with data, non-full write (single partition output)
+    // 100 -> 100 = [200]
+    #[test]
+    fn nonempty_nonfull() {
+        let now = 0;
+
+        let record_count = 100;
+
+        let mut v = vec![Timestamp::from(0); record_count];
+        seqfill!(Timestamp, &mut v[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected = data.clone();
+
+        expected.insert(0, Fragment::from(multiply_vec!(v.clone(), 2)));
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            vec![expected],
+            [
+                v.clone().into(),
+                record_count,
+                hashmap! {},
+                data.clone()
+            ],
+            [
+                v.into(),
+                record_count,
+                hashmap! {},
+                data
+            ]
+        );
+    }
+
+    // first with data, full write (single partition output)
+    // 100 -> MAX_RECORDS - 100 = [MAX_RECORDS]
+    #[test]
+    fn nonempty_full() {
+        let now = 0;
+
+        let record_count_1 = 100;
+
+        let mut v1 = vec![Timestamp::from(0); record_count_1];
+        seqfill!(Timestamp, &mut v1[..], now);
+
+        let record_count_2 = MAX_RECORDS - record_count_1;
+
+        let mut v2 = vec![Timestamp::from(0); record_count_2];
+        seqfill!(Timestamp, &mut v2[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected = data.clone();
+
+        let combined = v1.iter().chain(v2.iter()).cloned().collect::<Vec<_>>();
+
+        expected.insert(0, Fragment::from(combined));
+
+        let expected_empty = hashmap! {};
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            // in this case we should be left with fully written partition
+            // and a completely empty one
+            vec![expected, expected_empty],
+            [
+                v1.into(),
+                record_count_1,
+                hashmap! {},
+                data.clone()
+            ],
+            [
+                v2.into(),
+                record_count_2,
+                hashmap! {},
+                data
+            ]
+        );
+    }
+
+    // first with data, overflowing full write (two partitions output)
+    // 100 -> MAX_RECORDS + 100 = [MAX_RECORDS, 100]
+    #[test]
+    fn nonempty_full_plus() {
+        let now = 0;
+
+        let record_count_1 = 100;
+
+        let mut v1 = vec![Timestamp::from(0); record_count_1];
+        seqfill!(Timestamp, &mut v1[..], now);
+
+        let record_count_2 = MAX_RECORDS;
+
+        let mut v2 = vec![Timestamp::from(0); record_count_2];
+        seqfill!(Timestamp, &mut v2[..], now);
+
+        let data = hashmap! {};
+
+        let mut expected1 = data.clone();
+        let mut expected2 = data.clone();
+
+        expected1.insert(0, Fragment::from({
+            v1.iter().chain(v2[..MAX_RECORDS - record_count_1].iter()).cloned().collect::<Vec<_>>()
+        }));
+
+        expected2.insert(0, Fragment::from(v2[MAX_RECORDS - record_count_1..].to_vec()));
+
+        append_test_impl!(
+            vec![1],
+            hashmap! {
+                0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            },
+            now,
+            vec![expected1, expected2],
+            [
+                v1.into(),
+                record_count_1,
+                hashmap! {},
+                data.clone()
+            ],
+            [
+                v2.into(),
+                record_count_2,
+                hashmap! {},
                 data
             ]
         );

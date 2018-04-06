@@ -108,7 +108,7 @@ mod tests {
     fn nonexistent() {
         use std::fs::remove_dir;
 
-        let root = { tempdir!().as_ref().to_path_buf() };
+        let root = { tempdir!(volatile).as_ref().to_path_buf() };
 
         assert!(!root.exists());
 

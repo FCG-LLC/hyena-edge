@@ -153,7 +153,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::tests::BLOCK_SIZE;
+    use params::BLOCK_SIZE;
     use extprim::i128::i128;
     use extprim::u128::u128;
 
@@ -482,7 +482,7 @@ mod tests {
             let (storage, index) = make_storage::<T>(name);
             super::generic::block_tf::<T, _, _>(storage, index);
         }
-        
+
         #[test]
         fn block_u128() {
             let (data, index) = make_storage::<u128>("sparse_u128");

@@ -50,5 +50,6 @@ default = [
 ]
 hole_punching = ["libc"]
 mmap = ["memmap"]
+persistent_test_data = ["hyena-test/persistent_test_data"]
 nightly = []
 perf = []

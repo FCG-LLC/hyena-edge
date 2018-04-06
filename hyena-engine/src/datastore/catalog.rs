@@ -1,14 +1,11 @@
 use error::*;
 use ty::BlockStorage;
-use hyena_common::ty::MIN_TIMESTAMP;
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use std::collections::hash_map::HashMap;
-use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
-use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
@@ -194,11 +191,10 @@ impl<'cat> Catalog<'cat> {
                 .with_context(|_| "Failed to create group manager")
                 .unwrap();
 
-            let mut pg = PartitionGroup::new(&root, source_id)
+            let pg = PartitionGroup::new(&root, source_id)
                 .with_context(|_| "Unable to create partition group")
                 .unwrap();
 
-            Catalog::create_single_partition(&mut pg);
             pg.flush().unwrap();
 
             pg
@@ -212,18 +208,6 @@ impl<'cat> Catalog<'cat> {
 
         Ok(())
     }
-
-    fn create_single_partition(pg: &mut PartitionGroup) {
-        let part = pg.create_partition(MIN_TIMESTAMP)
-            .with_context(|_| "Unable to create partition")
-            .unwrap();
-
-        let mut vp = VecDeque::new();
-        vp.push_front(part);
-
-        pg.mutable_partitions = locked!(rw vp);
-    }
-
 
     fn prepare_partition_groups<P, I>(root: P, ids: I) -> Result<PartitionGroupMap<'cat>>
     where

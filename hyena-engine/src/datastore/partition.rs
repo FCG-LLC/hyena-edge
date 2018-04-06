@@ -66,6 +66,7 @@ impl<'part> Partition<'part> {
         Partition::deserialize(&meta, &root)
     }
 
+    #[allow(dead_code)]
     pub fn len(&self) -> usize {
         if !self.blocks.is_empty() {
             if let Some(block) = self.blocks.get(&0) {
@@ -77,6 +78,7 @@ impl<'part> Partition<'part> {
         0
     }
 
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.blocks.is_empty() || self.len() == 0
     }
@@ -107,11 +109,14 @@ impl<'part> Partition<'part> {
             let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                 // dense block handler
 
-                // destination bounds checking intentionally left out
+                // destination bounds checking intentionally left out in release builds
                 let slen = frg.len();
 
                 {
                     let blkslice = blk.as_mut_slice_append();
+
+                    debug_assert!(slen <= blkslice.len(), "bounds check failed for dense block");
+
                     &blkslice[..slen].copy_from_slice(&frg[..]);
                 }
 
@@ -120,7 +125,7 @@ impl<'part> Partition<'part> {
                 slen
             }, {
                 // sparse block handler
-                // destination bounds checking intentionally left out
+                // destination bounds checking intentionally left out in release builds
                 let slen = frg.len();
 
                 let block_offset = if let Some(offset) = blk.as_index_slice().last() {
@@ -131,6 +136,8 @@ impl<'part> Partition<'part> {
 
                 {
                     let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
+
+                    debug_assert!(slen <= blkslice.len(), "bounds check failed for sparse block");
 
                     &mut blkslice[..slen].copy_from_slice(&frg[..]);
                     &mut blkindex[..slen].copy_from_slice(&fidx[..]);
@@ -418,7 +425,10 @@ impl<'part> Partition<'part> {
         Ok(())
     }
 
-    pub fn space_for_blocks(&self, indices: &[ColumnId]) -> usize {
+    /// Calculate how many records containing given indices will fit into this partition
+    /// or return None, meaning that this partition doesn't contain any blocks
+    /// in which case the caller should resort to `Catalog::space_for_blocks`
+    pub(crate) fn space_for_blocks(&self, indices: &[ColumnId]) -> Option<usize> {
         indices.iter()
             .filter_map(|block_id| {
                 if let Some(block) = self.blocks.get(block_id) {
@@ -429,10 +439,6 @@ impl<'part> Partition<'part> {
                 }
             })
             .min()
-            // the default shouldn't ever happen, as there always should be ts block
-            // but in case it happens, this will return 0
-            // which in turn will cause new partition to be used
-            .unwrap_or_default()
     }
 
     #[allow(unused)]
@@ -1018,7 +1024,7 @@ mod tests {
         };
 
         assert_eq!(
-            part.space_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()),
+            part.space_for_blocks(Vec::from_iter(blocks.keys().cloned()).as_slice()).unwrap(),
             20
         );
     }

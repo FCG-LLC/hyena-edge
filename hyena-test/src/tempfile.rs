@@ -1,9 +1,15 @@
 pub const DEFAULT_TEMPDIR_PREFIX: &str = "hyena-test";
 pub const DEFAULT_TEMPFILE_NAME: &str = "tempfile.bin";
 
+#[cfg(not(feature = "persistent_test_data"))]
+pub use tempdir::TempDir as TempDir;
+#[cfg(feature = "persistent_test_data")]
+pub use self::persistent_tempdir::TempDir as TempDir;
+
 pub use self::tempdir_tools::TempDirExt;
 pub use self::persistent_tempdir::TempDir as PersistentTempDir;
 pub use tempdir::TempDir as VolatileTempDir;
+
 
 pub(crate) mod tempdir_tools {
     use failure::{err_msg, Error, ResultExt};
@@ -110,8 +116,20 @@ macro_rules! tempdir {
         tempdir!(persistent $crate::tempfile::DEFAULT_TEMPDIR_PREFIX)
     };
 
-    ($prefix: expr) => {{
+    (volatile $prefix: expr) => {{
         use $crate::tempfile::VolatileTempDir as TempDir;
+
+        tempdir!(@ TempDir::new($prefix))
+    }};
+
+    (volatile) => {
+        tempdir!(volatile $crate::tempfile::DEFAULT_TEMPDIR_PREFIX)
+    };
+
+    ($prefix: expr) => {{
+        // import feature-flagged TempDir
+        // so if `persistent_test_data` is set this makes this a persistent version
+        use $crate::tempfile::TempDir;
 
         tempdir!(@ TempDir::new($prefix))
     }};
@@ -177,6 +195,11 @@ mod tests {
     use std::path::Path;
     use std::fs::remove_dir;
 
+    #[cfg(not(feature = "persistent_test_data"))]
+    const DEFAULT_PERSISTENT: bool = false;
+    #[cfg(feature = "persistent_test_data")]
+    const DEFAULT_PERSISTENT: bool = true;
+
     macro_rules! path_name {
         ($path: expr) => {
             $path.file_name()
@@ -222,13 +245,18 @@ mod tests {
             tempfile!(),
             DEFAULT_TEMPDIR_PREFIX,
             DEFAULT_TEMPFILE_NAME,
-            false,
+            DEFAULT_PERSISTENT,
         );
     }
 
     #[test]
     fn tempfile_name() {
-        assert_tempfile(tempfile!("test"), DEFAULT_TEMPDIR_PREFIX, "test", false);
+        assert_tempfile(
+            tempfile!("test"),
+            DEFAULT_TEMPDIR_PREFIX,
+            "test",
+            DEFAULT_PERSISTENT,
+        );
     }
 
     #[test]
@@ -237,7 +265,7 @@ mod tests {
             tempfile!(prefix "test"),
             "test",
             DEFAULT_TEMPFILE_NAME,
-            false,
+            DEFAULT_PERSISTENT,
         );
     }
 
@@ -247,7 +275,7 @@ mod tests {
             tempfile!(prefix "test", "testfile"),
             "test",
             "testfile",
-            false,
+            DEFAULT_PERSISTENT,
         );
     }
 

@@ -17,4 +17,5 @@ optional = true
 
 [features]
 default = []
+persistent_test_data = []
 perf = ["flame"]
