@@ -1014,6 +1014,40 @@ mod tests {
 
                 assert_eq!(expected, result);
             }
+
+            #[cfg(all(feature = "nightly", test))]
+            mod benches {
+                use test::{Bencher, black_box};
+                use super::*;
+
+                #[bench]
+                fn continuous(b: &mut Bencher) {
+                    let (_root, part, _) = materialize_test_init!();
+
+                    let rowids = vec![1_usize, 2, 3];
+
+                    b.iter(|| {
+                        let result = part
+                            .materialize(&None, &rowids[..])
+                            .expect("Materialize failed");
+                        black_box(&result);
+                    })
+                }
+
+                #[bench]
+                fn non_continuous(b: &mut Bencher) {
+                    let (_root, part, _) = materialize_test_init!();
+
+                    let rowids = vec![0_usize, 1, 3, 8];
+
+                    b.iter(|| {
+                        let result = part
+                            .materialize(&None, &rowids[..])
+                            .expect("Materialize failed");
+                        black_box(&result);
+                    });
+                }
+            }
         }
     }
 
