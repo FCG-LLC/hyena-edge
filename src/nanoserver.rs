@@ -28,20 +28,21 @@ fn get_address(matches: &clap::ArgMatches) -> String {
 }
 
 fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
-    //trace!("Got: {:?}", msg);
-
     let operation = Request::parse(&msg);
 
-    let reply = if operation.is_err() {
-        Reply::SerializeError(format!("{:?}", operation.unwrap_err()))
-    } else {
-        let req = operation.unwrap();
-        debug!("Operation: {}", req);
-        run_request(req, catalog)
-    };
-    debug!("Returning: {}", reply);
+    let reply = match operation {
+        Ok(request) => {
+            trace!("Operation: {}", request);
 
-    serialize(&reply, Infinite).unwrap()
+            run_request(request, catalog)
+        },
+        Err(error) => Reply::SerializeError(format!("{:?}", error)),
+    };
+
+    trace!("Returning: {}", reply);
+
+    serialize(&reply, Infinite)
+        .expect("Reply serialization error")
 }
 
 pub fn run(matches: &clap::ArgMatches) {
