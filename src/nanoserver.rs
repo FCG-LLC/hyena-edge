@@ -39,7 +39,7 @@ fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
         debug!("Operation: {}", req);
         run_request(req, catalog)
     };
-    debug!("Returning: {:?}", reply);
+    debug!("Returning: {}", reply);
 
     serialize(&reply, Infinite).unwrap()
 }
