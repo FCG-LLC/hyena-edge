@@ -287,6 +287,31 @@ pub enum Reply {
     Other,
 }
 
+impl std::fmt::Display for Reply {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match *self {
+            Reply::Scan(ref msg) => {
+                match *msg {
+                    Ok(ref result) => {
+                        let columns: Vec<String> = result.data
+                            .iter()
+                            .map(|data| match data.data {
+                                Some(ref fragment) => {
+                                    format!("column #{}: {} items", data.column_id, fragment.len())
+                                }
+                                None => format!("column #{}: 0 items", data.column_id),
+                            })
+                            .collect();
+                        write!(f, "ScanResultMessage(data={}", columns.join(", "))
+                    }
+                    Err(ref error) => write!(f, "{:?}", error),
+                }
+            }
+            _ => write!(f, "{:?}", self),
+        }
+    }
+}
+
 impl Reply {
     fn list_columns(catalog: &Catalog) -> Reply {
         let cm: &ColumnMap = catalog.as_ref();
