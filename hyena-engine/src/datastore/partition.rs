@@ -294,49 +294,91 @@ impl<'part> Partition<'part> {
                                     .map(|rowid| bs[*rowid])
                                     .collect::<Vec<_>>()
                             })
-                    }, {
-                        let (index, data) = blk.as_indexed_slice();
+                        }, {
+                            use ty::{SparseIter, SparseIterator};
 
-                        let mut result = Vec::new();
-                        let mut result_idx = Vec::new();
-                        let mut curidx = 0;
-                        let mut i = &index[..];
+                            let (index, data) = blk.as_indexed_slice();
 
-                        // map rowid (source block rowid) to target_rowid
-                        // (target block rowid), which is an index in the rowids vec
-                        // so essentially a rowid of the resulting rowset
+                            // map rowid (source block rowid) to target_rowid
+                            // (target block rowid), which is an index in the rowids vec
+                            // so essentially a rowid of the resulting rowset
+                            //
+                            // for a block defined like this:
+                            //
+                            // +--------+----+------+------+
+                            // | rowid  | ts | col1 | col2 |
+                            // +--------+----+------+------+
+                            // |   0    | 1  |      | 10   |
+                            // +--------+----+------+------+
+                            // |   1    | 2  | 1    | 20   |
+                            // +--------+----+------+------+
+                            // |   2    | 3  |      |      |
+                            // +--------+----+------+------+
+                            // |   3    | 4  | 2    |      |
+                            // +--------+----+------+------+
+                            // |   4    | 5  |      |      |
+                            // +--------+----+------+------+
+                            //
+                            // with rowids = [1, 2, 3] and all columns materialize
+                            //
+                            // we would get the result like this:
+                            // (origid included only to illustrate the transformation)
+                            //
+                            // +--------+--------+----+------+------+
+                            // | rowid  | origid | ts | col1 | col2 |
+                            // +--------+--------+----+------+------+
+                            // |   0    |   1    | 2  | 1    | 20   |
+                            // +--------+--------+----+------+------+
+                            // |   1    |   2    | 3  |      |      |
+                            // +--------+--------+----+------+------+
+                            // |   2    |   3    | 4  | 2    |      |
+                            // +--------+--------+----+------+------+
+                            //
+                            // which translates to the following for sparse col1:
+                            //
+                            // +--------+--------+------+
+                            // | rowid  | origid | col1 |
+                            // +--------+--------+------+
+                            // |   0    |   1    | 1    |
+                            // +--------+--------+------+
+                            // |   1    |   2    |      |
+                            // +--------+--------+------+
+                            // |   2    |   3    | 2    |
+                            // +--------+--------+------+
+                            //
+                            // (1, 0), (2, 2)
+                            //
+                            //
+                            // rowid is an index of an element in rowids slice
+                            // origid is a rowid from original data set
+                            // every matching sparse row will have its index replaced by new rowid
+                            // to properly translate to the result Fragment
 
-                        for (target_rowid, rowid) in rowids.iter().enumerate() {
+                            let mut iter = SparseIter::new(data, index.into_iter().cloned());
 
-                            // 'crawl' the block, that is for every resulting rowid
-                            // try to find the closest matching sparse index
-                            for (rid, idx) in i.iter().scan(curidx, |c, &v| {
-                                let ret = (*c, v as usize);
-                                *c += 1;
+                            let (d, i): (Vec<_>, Vec<SparseIndex>) = rowids
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(target_rowid, rowid)| {
+                                    // `as` shouldn't misbehave here, as we assume that
+                                    // both `rowid` and `target_rowid` are <= u32::MAX
+                                    // nevertheless it would be better to have this migrated to
+                                    // `TryFrom` as soon as it stabilizes
 
-                                Some(ret)
-                            }) {
-                                if *rowid == idx {
-                                    result.push(data[rid]);
-                                    // todo: fix `as` casting / use TryFrom when stable
-                                    // it shouldn't fail because rowids.len() < 2^32
-                                    // but better be safe than sorry
-                                    result_idx.push(target_rowid as u32);
-                                    curidx = rid + 1;
+                                    // using assert! here gives ~20%-30% performance decrease
+                                    debug_assert!(*rowid <= ::std::u32::MAX as usize);
+                                    debug_assert!(target_rowid <= ::std::u32::MAX as usize);
 
-                                    break;
-                                }
-                            }
+                                    iter
+                                        .next_to(*rowid as SparseIndex)
+                                        .and_then(|v| v)
+                                        .map(|(v, _)| (*v, target_rowid as SparseIndex))
+                                })
+                                .unzip();
 
-                            i = &index[curidx..];
+                            Fragment::from((d, i))
 
-                            if i.is_empty() {
-                                break;
-                            }
-                        }
-
-                        Fragment::from((result, result_idx))
-                    })),
+                        }))
                     ))
                 } else {
                     // if this is a sparse block, then it's a valid case
@@ -971,6 +1013,40 @@ mod tests {
                 };
 
                 assert_eq!(expected, result);
+            }
+
+            #[cfg(all(feature = "nightly", test))]
+            mod benches {
+                use test::{Bencher, black_box};
+                use super::*;
+
+                #[bench]
+                fn continuous(b: &mut Bencher) {
+                    let (_root, part, _) = materialize_test_init!();
+
+                    let rowids = vec![1_usize, 2, 3];
+
+                    b.iter(|| {
+                        let result = part
+                            .materialize(&None, &rowids[..])
+                            .expect("Materialize failed");
+                        black_box(&result);
+                    })
+                }
+
+                #[bench]
+                fn non_continuous(b: &mut Bencher) {
+                    let (_root, part, _) = materialize_test_init!();
+
+                    let rowids = vec![0_usize, 1, 3, 8];
+
+                    b.iter(|| {
+                        let result = part
+                            .materialize(&None, &rowids[..])
+                            .expect("Materialize failed");
+                        black_box(&result);
+                    });
+                }
             }
         }
     }
