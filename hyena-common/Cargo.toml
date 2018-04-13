@@ -13,6 +13,8 @@ serde = "1.0.27"
 serde_derive = "1.0.27"
 num = "0.1.41"
 rand = "0.4.1"
+fxhash = "0.2.1"
+rayon = "1.0.1"
 
 [dependencies.uuid]
 features = [
@@ -21,3 +23,7 @@ features = [
 ]
 optional = false
 version = "0.5.1"
+
+[features]
+default = []
+nightly = []
