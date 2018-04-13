@@ -197,7 +197,7 @@ fn it_scans() {
                     }))
                 ]);
 
-                filters
+                Some(filters)
             },
             Some(vec![0, 3]),
             None,

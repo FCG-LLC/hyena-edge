@@ -164,18 +164,22 @@ impl<'part> Partition<'part> {
         // only filters and projection for now
         // full ts range
 
-        let rowids = self.filter(&scan.filters)?;
+        let rowids = if let Some(ref filters) = scan.filters {
+            let rowids = self.filter(filters)?;
 
-        // this is superfluous if we're dealing with dense blocks only
-        // as it doesn't matter if rowids are sorted then
-        // but it still should be cheaper than converting for each sparse block separately
+            // this is superfluous if we're dealing with dense blocks only
+            // as it doesn't matter if rowids are sorted then
+            // but it still should be cheaper than converting for each sparse block separately
 
-        let mut rowids = Vec::from_iter(rowids.into_iter());
-        rowids.sort_unstable();
+            let mut rowids = Vec::from_iter(rowids.into_iter());
+            rowids.sort_unstable();
 
-        let rowids = rowids;
+            Some(rowids)
+        } else {
+            None
+        };
 
-        let materialized = self.materialize(&scan.projection, &rowids);
+        let materialized = self.materialize(&scan.projection, rowids.as_ref().map(AsRef::as_ref));
 
         materialized.map(|m| m.into())
     }
@@ -256,14 +260,15 @@ impl<'part> Partition<'part> {
     /// # Arguments
     ///
     /// * `projection` - an optional `Vec` of `ColumnId` or None for all columns
-    /// * `rowids` - a slice of row indexes, needs to be sorted in ascending order!
+    /// * `rowids` - an Option of slice of row indexes, needs to be sorted in ascending order!
+    ///              when set to None, materialize all rowids
     ///
     /// # Returns
     ///
     /// `HashMap` with results placed in `Fragment`s
 
     #[inline]
-    fn materialize(&self, projection: &Option<Vec<ColumnId>>, rowids: &[RowId])
+    fn materialize(&self, projection: &Option<Vec<ColumnId>>, rowids: Option<&[RowId]>)
         -> Result<HashMap<ColumnId, Option<Fragment>>> {
 
         let all_columns = if projection.is_some() {
@@ -290,9 +295,15 @@ impl<'part> Partition<'part> {
                         Fragment::from(if bs.is_empty() {
                                 Vec::new()
                             } else {
-                                rowids.iter()
-                                    .map(|rowid| bs[*rowid])
-                                    .collect::<Vec<_>>()
+                                if let Some(rowids) = rowids {
+                                    rowids.iter()
+                                        .map(|rowid| bs[*rowid])
+                                        .collect::<Vec<_>>()
+                                } else {
+                                    // materialize full block
+
+                                    bs.to_vec()
+                                }
                             })
                         }, {
                             use ty::{SparseIter, SparseIterator};
@@ -356,28 +367,31 @@ impl<'part> Partition<'part> {
 
                             let mut iter = SparseIter::new(data, index.into_iter().cloned());
 
-                            let (d, i): (Vec<_>, Vec<SparseIndex>) = rowids
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(target_rowid, rowid)| {
-                                    // `as` shouldn't misbehave here, as we assume that
-                                    // both `rowid` and `target_rowid` are <= u32::MAX
-                                    // nevertheless it would be better to have this migrated to
-                                    // `TryFrom` as soon as it stabilizes
+                            let (d, i): (Vec<_>, Vec<SparseIndex>) = if let Some(rowids) = rowids {
+                                rowids
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(target_rowid, rowid)| {
+                                        // `as` shouldn't misbehave here, as we assume that
+                                        // both `rowid` and `target_rowid` are <= u32::MAX
+                                        // nevertheless it would be better to have this migrated to
+                                        // `TryFrom` as soon as it stabilizes
 
-                                    // using assert! here gives ~20%-30% performance decrease
-                                    debug_assert!(*rowid <= ::std::u32::MAX as usize);
-                                    debug_assert!(target_rowid <= ::std::u32::MAX as usize);
+                                        // using assert! here gives ~20%-30% performance decrease
+                                        debug_assert!(*rowid <= ::std::u32::MAX as usize);
+                                        debug_assert!(target_rowid <= ::std::u32::MAX as usize);
 
-                                    iter
-                                        .next_to(*rowid as SparseIndex)
-                                        .and_then(|v| v)
-                                        .map(|(v, _)| (*v, target_rowid as SparseIndex))
-                                })
-                                .unzip();
+                                        iter
+                                            .next_to(*rowid as SparseIndex)
+                                            .and_then(|v| v)
+                                            .map(|(v, _)| (*v, target_rowid as SparseIndex))
+                                    })
+                                    .unzip()
+                            } else {
+                                iter.unzip()
+                            };
 
                             Fragment::from((d, i))
-
                         }))
                     ))
                 } else {
@@ -987,7 +1001,8 @@ mod tests {
 
                 let rowids = vec![1_usize, 2, 3];
 
-                let result = part.materialize(&None, &rowids[..]).expect("Materialize failed");
+                let result = part.materialize(&None, Some(&rowids[..]))
+                    .expect("Materialize failed");
 
                 let expected = hashmap! {
                     0 => Some(Fragment::from(vec![2_u64, 3, 4])),
@@ -1004,7 +1019,8 @@ mod tests {
 
                 let rowids = vec![0_usize, 1, 3, 8];
 
-                let result = part.materialize(&None, &rowids[..]).expect("Materialize failed");
+                let result = part.materialize(&None, Some(&rowids[..]))
+                    .expect("Materialize failed");
 
                 let expected = hashmap! {
                     0 => Some(Fragment::from(vec![1_u64, 2, 4, 9])),
@@ -1028,7 +1044,7 @@ mod tests {
 
                     b.iter(|| {
                         let result = part
-                            .materialize(&None, &rowids[..])
+                            .materialize(&None, Some(&rowids[..]))
                             .expect("Materialize failed");
                         black_box(&result);
                     })
@@ -1042,7 +1058,7 @@ mod tests {
 
                     b.iter(|| {
                         let result = part
-                            .materialize(&None, &rowids[..])
+                            .materialize(&None, Some(&rowids[..]))
                             .expect("Materialize failed");
                         black_box(&result);
                     });

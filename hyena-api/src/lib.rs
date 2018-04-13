@@ -419,9 +419,7 @@ impl Reply {
             return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
                 .into())));
         }
-        if scan_request.filters.is_empty() {
-            return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
-        }
+
         let scan = Reply::build_scan(scan_request);
         let result = match catalog.scan(&scan) {
             Err(e) => return Reply::Scan(Err(Error::ScanError(e.to_string()))),
@@ -482,6 +480,7 @@ impl Reply {
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
+
         let columns = catalog.as_ref()
             .iter()
             .map(|(id, c)| {
