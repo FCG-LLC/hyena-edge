@@ -7,7 +7,7 @@ RowId};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
-use std::collections::{HashMap, HashSet};
+use hyena_common::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
 use params::PARTITION_METADATA;
@@ -631,7 +631,7 @@ impl<'part> Drop for Partition<'part> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::hash_map::HashMap;
+    use hyena_common::collections::HashMap;
     use ty::block::{Block, BlockStorage, BlockId};
     use std::fmt::Debug;
     use hyena_test::random::timestamp::{RandomTimestamp, RandomTimestampGen};

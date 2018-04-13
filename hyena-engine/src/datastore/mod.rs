@@ -1,5 +1,5 @@
 use ty::ColumnId;
-use std::collections::hash_map::HashMap;
+use hyena_common::collections::HashMap;
 use params::SourceId;
 
 mod catalog;

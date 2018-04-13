@@ -12,13 +12,13 @@ macro_rules! carry {
 #[macro_export]
 macro_rules! hashmap {
     () => {{
-        use std::collections::hash_map::HashMap;
+        use $crate::collections::HashMap;
 
         HashMap::new()
     }};
 
     ( $($key:expr => $value:expr),+ $(,)* ) => {{
-        use std::collections::hash_map::HashMap;
+        use $crate::collections::HashMap;
 
         let capacity = count!($($value),+);
 
@@ -34,13 +34,13 @@ macro_rules! hashmap {
 #[macro_export]
 macro_rules! hashset {
     () => {{
-        use std::collections::hash_set::HashSet;
+        use $crate::collections::HashSet;
 
         HashSet::new()
     }};
 
     ( $($value:expr),+ $(,)* ) => {{
-        use std::collections::hash_set::HashSet;
+        use $crate::collections::HashSet;
 
         let capacity = count!($($value),+);
 

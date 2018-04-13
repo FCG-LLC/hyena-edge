@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use hyena_common::collections::HashMap;
 use ty::{ColumnId, Fragment, FragmentRef};
 
 pub mod append;
