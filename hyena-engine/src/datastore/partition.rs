@@ -172,7 +172,8 @@ impl<'part> Partition<'part> {
             // but it still should be cheaper than converting for each sparse block separately
 
             let mut rowids = Vec::from_iter(rowids.into_iter());
-            rowids.sort_unstable();
+
+            rowids.par_sort_unstable();
 
             Some(rowids)
         } else {
