@@ -165,7 +165,7 @@ impl<'part> Partition<'part> {
         // full ts range
 
         let rowids = if let Some(ref filters) = scan.filters {
-            let rowids = self.filter(filters)?;
+            let rowids = self.filter(filters, scan.or_clauses_count)?;
 
             // this is superfluous if we're dealing with dense blocks only
             // as it doesn't matter if rowids are sorted then
@@ -195,64 +195,82 @@ impl<'part> Partition<'part> {
     /// `HashSet` with matching `RowId`s
 
     #[inline]
-    fn filter(&self, filters: &ScanFilters) -> Result<HashSet<usize>> {
-        filters
+    fn filter(&self, filters: &ScanFilters, or_clauses_count: usize) -> Result<HashSet<usize>> {
+        let result = filters
             .par_iter()
-            .map(|(block_id, filters)| {
+            .fold(|| vec![Some(HashSet::new()); or_clauses_count],
+                |mut acc, (block_id, or_filters)| {
                 if let Some(block) = self.blocks.get(block_id) {
                     let block = acquire!(read block);
 
-                    Some(map_block!(map block, blk, {
-                        let mut ret = Vec::new();
-                        let mut rowid = 0;
+                    map_block!(map block, blk, {
+                        blk.as_slice().iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(val)) {
+                                                result.insert(rowid);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
 
-                        for val in blk.as_slice().iter() {
-                            if filters.iter().all(|f| f.apply(val)) {
-                                ret.push(rowid)
-                            }
-
-                            rowid += 1;
-                        }
-
-                        ret.into_iter().collect()
                     }, {
-                        let mut ret = Vec::new();
-
                         let (idx, data) = blk.as_indexed_slice();
-                        let mut rowid = 0;
 
-                        for val in data.iter() {
-                            if filters.iter().all(|f| f.apply(val)) {
-                                // this is a safe cast u32 -> usize
-                                ret.push(idx[rowid] as usize)
-                            }
-
-                            rowid += 1;
-                        }
-
-                        ret.into_iter().collect()
-                    }))
-                } else {
-                    // if this is a sparse block, then it's a valid case
-                    // so we'll leave the decision whether scan failed or not here
-                    // to our caller (who has access to the catalog)
-
-                    Some(HashSet::new())
+                        data.iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(val)) {
+                                                // this is a safe cast u32 -> usize
+                                                result.insert(idx[rowid] as usize);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
+                    })
                 }
+
+                acc
             })
             .reduce(
-                || None,
+                || vec![None; or_clauses_count],
                 |a, b| {
-                    if a.is_none() {
-                        b
-                    } else if b.is_none() {
-                        a
-                    } else {
-                        Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
-                    }
+                    a.into_iter().zip(b.into_iter())
+                        .map(|(a, b)| {
+                            if a.is_none() {
+                                b
+                            } else if b.is_none() {
+                                a
+                            } else {
+                                Some(a.unwrap().intersection(&b.unwrap()).cloned().collect())
+                            }
+                        })
+                        .collect()
                 },
-            )
-            .ok_or_else(|| err_msg("scan error"))
+            );
+
+            if result.iter().any(|result| result.is_none()) {
+                Err(err_msg("scan error: an empty filter variant was provided"))
+            } else {
+                Ok(result.into_iter()
+                    .fold(HashSet::new(), |a, b| {
+                        a.union(&b.unwrap()).cloned().collect()
+                    }))
+            }
     }
 
     /// Materialize scan results with given projection
