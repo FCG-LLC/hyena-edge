@@ -175,7 +175,59 @@ pub struct ScanRequest {
     pub max_ts: u64,
     pub partition_ids: HashSet<Uuid>,
     pub projection: Vec<ColumnId>,
-    pub filters: Vec<ScanFilter>,
+    // OR(AND(ScanFilter), AND(ScanFilter))
+    pub filters: Vec<Vec<ScanFilter>>,
+}
+
+impl From<ScanRequest> for hyena_engine::Scan {
+
+    fn from(scan_request: ScanRequest) -> Scan {
+
+        let scan_range = ScanTsRange::Bounded{
+            start: scan_request.min_ts,
+            end:   scan_request.max_ts
+        };
+
+        let partitions =
+            if !scan_request.partition_ids.is_empty() {
+                Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
+            } else { None };
+
+        let filters = if scan_request.filters.is_empty() {
+            None
+        } else {
+            Some(scan_request.filters
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(and_group, and_filters)| {
+                        and_filters
+                            .iter()
+                            .map(move |and_filter| {
+                                let op = and_filter.typed_val.to_scan_filter(&and_filter.op);
+
+                                (and_group, and_filter.column, op)
+                            })
+                    })
+                    .fold(hyena_engine::ScanFilters::new(), |mut map, (and_group, column_id, op)| {
+                        {
+                            let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
+
+                            or_vec.resize(and_group + 1, Vec::new());
+
+                            let and_vec = or_vec.get_mut(and_group).unwrap();
+                            and_vec.push(op);
+                        }
+
+                        map
+                    }))
+        };
+
+        Scan::new(filters,
+                  Some(scan_request.projection),
+                  None,
+                  partitions,
+                  Some(scan_range))
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -453,47 +505,7 @@ impl Reply {
     }
 
     fn build_scan(scan_request: ScanRequest) -> Scan {
-        let scan_range = ScanTsRange::Bounded{
-            start: scan_request.min_ts,
-            end:   scan_request.max_ts
-        };
-
-        let partitions =
-            if !scan_request.partition_ids.is_empty() {
-                Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
-            } else { None };
-
-        let filters = if scan_request.filters.is_empty() {
-            None
-        } else {
-            Some(scan_request.filters
-                    .iter()
-                    .fold(hyena_engine::ScanFilters::new(), |mut map, ref filter| {
-                        use std::collections::hash_map::Entry;
-
-                        let op = filter.typed_val.to_scan_filter(&filter.op);
-
-                        match map.entry(filter.column) {
-                            Entry::Occupied(mut v) => {
-                                v.get_mut()
-                                    .first_mut()
-                                    .unwrap()
-                                    .push(op);
-                            }
-                            Entry::Vacant(v) => {
-                                v.insert(vec![vec![op]]);
-                            }
-                        }
-
-                        map
-                    }))
-        };
-
-        Scan::new(filters,
-                  Some(scan_request.projection),
-                  None,
-                  partitions,
-                  Some(scan_range))
+        Scan::from(scan_request)
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
@@ -1003,12 +1015,12 @@ mod tests {
                     max_ts: 1,
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
-                    filters: vec![ScanFilter {
+                    filters: vec![vec![ScanFilter {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::I8(10),
                                       str_val: "".into(),
-                                  }],
+                                  }]],
                 };
 
                 let reply = Reply::scan(request, &cat);
@@ -1041,6 +1053,313 @@ mod tests {
 //                 }
             }
 
+            mod or {
+                use super::*;
+                use hyena_engine::{ScanFilter as EngineFilter, ScanFilterOp, ScanFilters};
+
+                fn build_scan(filters: Vec<Vec<ScanFilter>>) -> Scan {
+                    Scan::from(ScanRequest {
+                        min_ts: 1,
+                        max_ts: 10,
+                        partition_ids: Default::default(),
+                        projection: vec![1, 2, 3],
+                        filters,
+                    })
+                }
+
+                #[inline]
+                fn expect(filters: ScanFilters, result: Scan) {
+                    let expected = Scan::new(
+                        Some(filters),
+                        Some(vec![1, 2, 3]),
+                        None,
+                        None,
+                        Some(ScanTsRange::Bounded{
+                            start: 1,
+                            end: 10,
+                        })
+                    );
+
+                    assert_eq!(expected, result);
+
+                }
+
+                // ts > 12
+
+                #[test]
+                fn single_and() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        }
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![vec![EngineFilter::U64(ScanFilterOp::Gt(12))]],
+                    };
+
+                    expect(expected, scan);
+                }
+
+                // ts > 12 && ts < 30
+
+                #[test]
+                fn two_ands() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Lt,
+                            typed_val: FilterVal::U64(30),
+                            str_val: "".into(),
+                        }
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![vec![
+                            EngineFilter::U64(ScanFilterOp::Gt(12)),
+                            EngineFilter::U64(ScanFilterOp::Lt(30)),
+                        ]],
+                    };
+
+                    expect(expected, scan);
+                }
+
+                // ts > 12 && ts < 30 && source_id == 12
+
+                #[test]
+                fn two_ands_two_columns() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Lt,
+                            typed_val: FilterVal::U64(30),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U32(12),
+                            str_val: "".into(),
+                        }
+
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![vec![
+                            EngineFilter::U64(ScanFilterOp::Gt(12)),
+                            EngineFilter::U64(ScanFilterOp::Lt(30)),
+                        ]],
+                        1 => vec![vec![
+                            EngineFilter::U32(ScanFilterOp::Eq(12)),
+                        ]],
+                    };
+
+                    expect(expected, scan);
+                }
+
+                // (ts > 12 && ts < 30 && source_id == 12) || (ts == 7)
+
+                #[test]
+                fn two_ands_two_columns_single_or() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Lt,
+                            typed_val: FilterVal::U64(30),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U32(12),
+                            str_val: "".into(),
+                        }
+
+                    ], vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U64(7),
+                            str_val: "".into(),
+                        },
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Gt(12)),
+                                EngineFilter::U64(ScanFilterOp::Lt(30)),
+                            ],
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Eq(7)),
+                            ],
+                        ],
+                        1 => vec![vec![
+                            EngineFilter::U32(ScanFilterOp::Eq(12)),
+                        ]],
+                    };
+
+                    expect(expected, scan);
+                }
+
+                // (ts > 12 && ts < 30 && source_id == 12) || (ts == 7 && source_id > 10)
+
+                #[test]
+                fn two_ands_two_columns_two_ors() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Lt,
+                            typed_val: FilterVal::U64(30),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U32(12),
+                            str_val: "".into(),
+                        }
+                    ], vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U64(7),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U32(10),
+                            str_val: "".into(),
+                        }
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Gt(12)),
+                                EngineFilter::U64(ScanFilterOp::Lt(30)),
+                            ],
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Eq(7)),
+                            ],
+                        ],
+                        1 => vec![
+                            vec![
+                                EngineFilter::U32(ScanFilterOp::Eq(12)),
+                            ],
+                            vec![
+                                EngineFilter::U32(ScanFilterOp::Gt(10)),
+                            ],
+                        ],
+                    };
+
+                    expect(expected, scan);
+                }
+
+                // (ts > 12 && ts < 30 && source_id == 12)
+                // || (ts == 7 && source_id > 10 && other == 2)
+
+                #[test]
+                fn two_ands_two_columns_two_ors_added_column() {
+                    let scan = build_scan(vec![vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U64(12),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Lt,
+                            typed_val: FilterVal::U64(30),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U32(12),
+                            str_val: "".into(),
+                        }
+                    ], vec![
+                        ScanFilter {
+                            column: 0,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::U64(7),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 1,
+                            op: ScanComparison::Gt,
+                            typed_val: FilterVal::U32(10),
+                            str_val: "".into(),
+                        },
+                        ScanFilter {
+                            column: 2,
+                            op: ScanComparison::Eq,
+                            typed_val: FilterVal::I8(2),
+                            str_val: "".into(),
+                        }
+
+                    ]]);
+
+                    let expected = hashmap!{
+                        0 => vec![
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Gt(12)),
+                                EngineFilter::U64(ScanFilterOp::Lt(30)),
+                            ],
+                            vec![
+                                EngineFilter::U64(ScanFilterOp::Eq(7)),
+                            ],
+                        ],
+                        1 => vec![
+                            vec![
+                                EngineFilter::U32(ScanFilterOp::Eq(12)),
+                            ],
+                            vec![
+                                EngineFilter::U32(ScanFilterOp::Gt(10)),
+                            ],
+                        ],
+                        2 => vec![
+                            vec![],
+                            vec![
+                                EngineFilter::I8(ScanFilterOp::Eq(2)),
+                            ]
+                        ]
+                    };
+
+                    expect(expected, scan);
+                }
+            }
+
             #[test]
             fn fails_if_projection_empty() {
                 let td = tempdir!();
@@ -1054,12 +1373,12 @@ mod tests {
                     max_ts: 10,
                     partition_ids: partition_ids,
                     projection: vec![],
-                    filters: vec![ScanFilter {
+                    filters: vec![vec![ScanFilter {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::U32(10),
                                       str_val: "".into(),
-                                  }],
+                                  }]],
                 };
 
                 let _reply = Reply::scan(request, &cat);
