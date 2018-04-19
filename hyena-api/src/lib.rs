@@ -467,13 +467,26 @@ impl Reply {
             None
         } else {
             Some(scan_request.filters
-                .iter()
-                .map(|filter| (
-                        filter.column,
-                        vec![filter.typed_val.to_scan_filter(&filter.op)]
-                        )
-                    )
-                .collect())
+                    .iter()
+                    .fold(hyena_engine::ScanFilters::new(), |mut map, ref filter| {
+                        use std::collections::hash_map::Entry;
+
+                        let op = filter.typed_val.to_scan_filter(&filter.op);
+
+                        match map.entry(filter.column) {
+                            Entry::Occupied(mut v) => {
+                                v.get_mut()
+                                    .first_mut()
+                                    .unwrap()
+                                    .push(op);
+                            }
+                            Entry::Vacant(v) => {
+                                v.insert(vec![vec![op]]);
+                            }
+                        }
+
+                        map
+                    }))
         };
 
         Scan::new(filters,
