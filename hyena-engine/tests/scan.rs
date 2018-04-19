@@ -128,10 +128,10 @@ fn it_scans_with_dense_filter() {
             {
                 let mut filters = HashMap::new();
 
-                filters.insert(2, vec![
+                filters.insert(2, vec![vec![
                     ScanFilter::U64(ScanFilterOp::Gt(10)),
                     ScanFilter::U64(ScanFilterOp::LtEq(25)),
-                ]);
+                ]]);
 
                 Some(filters)
             },
@@ -179,10 +179,10 @@ fn it_scans_with_sparse_filter() {
             {
                 let mut filters = HashMap::new();
 
-                filters.insert(4, vec![
+                filters.insert(4, vec![vec![
                     ScanFilter::U64(ScanFilterOp::Gt(10)),
                     ScanFilter::U64(ScanFilterOp::LtEq(25)),
-                ]);
+                ]]);
 
                 Some(filters)
             },

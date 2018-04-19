@@ -180,12 +180,12 @@ fn it_scans() {
             {
                 let mut filters = HashMap::new();
 
-                filters.insert(2, vec![
+                filters.insert(2, vec![vec![
                     ScanFilter::U64(ScanFilterOp::GtEq(20)),
                     ScanFilter::U64(ScanFilterOp::LtEq(30)),
-                ]);
+                ]]);
 
-                filters.insert(3, vec![
+                filters.insert(3, vec![vec![
                     ScanFilter::U64(ScanFilterOp::In({
                         let mut set = HashSet::new();
 
@@ -195,7 +195,7 @@ fn it_scans() {
 
                         set
                     }))
-                ]);
+                ]]);
 
                 Some(filters)
             },
