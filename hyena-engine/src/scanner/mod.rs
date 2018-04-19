@@ -10,8 +10,12 @@ use ty::fragment::Fragment;
 use extprim::i128::i128;
 use extprim::u128::u128;
 
-pub type ScanFilters = HashMap<ColumnId, Vec<ScanFilter>>;
+pub type ScanFilters = OrScanFilters;
 pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
+
+pub type OrScanFilters = HashMap<ColumnId, Vec<AndScanFilters>>;
+pub type AndScanFilters = Vec<ScanFilter>;
+
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -19,24 +23,35 @@ pub struct Scan {
     pub(crate) partitions: Option<HashSet<PartitionId>>,
     pub(crate) groups: Option<Vec<SourceId>>,
     pub(crate) projection: Option<Vec<ColumnId>>,
-    pub(crate) filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
+    pub(crate) filters: Option<ScanFilters>,
+    pub(crate) or_clauses_count: usize,
 }
 
 impl Scan {
     pub fn new(
-        filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
+        filters: Option<ScanFilters>,
         projection: Option<Vec<ColumnId>>,
         groups: Option<Vec<SourceId>>,
         partitions: Option<HashSet<PartitionId>>,
         ts_range: Option<ScanTsRange>,
     ) -> Scan {
+        let or_clauses_count = filters
+            .as_ref()
+            .map(|filters| Self::count_or_clauses(filters))
+            .unwrap_or_default();
+
         Scan {
             filters,
             projection,
             groups,
             partitions,
             ts_range,
+            or_clauses_count,
         }
+    }
+
+    pub(crate) fn count_or_clauses(filters: &ScanFilters) -> usize {
+        filters.iter().map(|(_, and_filters)| and_filters.len()).max().unwrap_or_default()
     }
 }
 
