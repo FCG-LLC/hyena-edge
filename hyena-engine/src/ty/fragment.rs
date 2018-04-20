@@ -541,6 +541,32 @@ impl From<Vec<Timestamp>> for Fragment {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimestampFragmentRef<'tsfrag>(&'tsfrag [Timestamp]);
+
+impl<'tsfrag> From<&'tsfrag TimestampFragment> for TimestampFragmentRef<'tsfrag> {
+    fn from(source: &'tsfrag TimestampFragment) -> TimestampFragmentRef<'tsfrag> {
+        TimestampFragmentRef(source.as_slice())
+    }
+}
+
+impl<'fragref, 'tsfrag> From<&'fragref FragmentRef<'tsfrag>> for TimestampFragmentRef<'tsfrag> {
+    fn from(source: &'fragref FragmentRef<'tsfrag>) -> TimestampFragmentRef<'tsfrag> {
+        if let FragmentRef::U64Dense(frag) = *source {
+            TimestampFragmentRef(unsafe { transmute(frag) })
+        } else {
+            panic!("Expected U64Dense FragmentRef. Cannot convert to TimestampFragmentRef");
+        }
+    }
+}
+
+impl<'tsfrag> ::std::ops::Deref for TimestampFragmentRef<'tsfrag> {
+    type Target = [Timestamp];
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
 
 #[cfg(test)]
 mod tests {
