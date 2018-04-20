@@ -13,9 +13,9 @@ use rayon::prelude::*;
 use params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
 use std::sync::RwLock;
 use std::iter::FromIterator;
-use ty::fragment::Fragment;
+use ty::fragment::{Fragment, TimestampFragmentRef};
 use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters};
+use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -92,68 +92,88 @@ impl<'part> Partition<'part> {
         self.ensure_blocks(&blockmap)
             .with_context(|_| "Unable to create block map")
             .unwrap();
-        let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
-            if let Some(block) = self.blocks.get(blk_idx) {
-                trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
-                Some((block, frags.get(blk_idx).unwrap()))
-            } else {
-                None
-            }
-        });
 
-        let mut written: usize = 0;
+        // ts range update
+        let (ts_min, ts_max) =
+            self.compare_ts(frags.get(&TIMESTAMP_COLUMN).expect("assumed ts fragment not found"));
 
-        for (ref mut block, ref data) in ops {
-            let b = acquire!(write block);
-
-            let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
-                // dense block handler
-
-                // destination bounds checking intentionally left out in release builds
-                let slen = frg.len();
-
-                {
-                    let blkslice = blk.as_mut_slice_append();
-
-                    debug_assert!(slen <= blkslice.len(), "bounds check failed for dense block");
-
-                    &blkslice[..slen].copy_from_slice(&frg[..]);
-                }
-
-                blk.set_written(slen).with_context(|_| "set_written failed")?;
-
-                slen
-            }, {
-                // sparse block handler
-                // destination bounds checking intentionally left out in release builds
-                let slen = frg.len();
-
-                let block_offset = if let Some(offset) = blk.as_index_slice().last() {
-                    *offset + 1
+        let written = {
+            let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
+                if let Some(block) = self.blocks.get(blk_idx) {
+                    trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
+                    Some((block, frags.get(blk_idx).unwrap()))
                 } else {
-                    0
-                };
-
-                {
-                    let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
-
-                    debug_assert!(slen <= blkslice.len(), "bounds check failed for sparse block");
-
-                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
-                    &mut blkindex[..slen].copy_from_slice(&fidx[..]);
-
-                    // adjust the offset
-                    &mut blkindex[..slen].par_iter_mut().for_each(|idx| {
-                        *idx = *idx - offset + block_offset;
-                    });
+                    None
                 }
-
-                blk.set_written(slen).with_context(|_| "set_written failed")?;
-
-                slen
             });
 
-            written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
+            let mut written: usize = 0;
+
+            for (ref mut block, ref data) in ops {
+                let b = acquire!(write block);
+
+                let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
+                    // dense block handler
+
+                    // destination bounds checking intentionally left out in release builds
+                    let slen = frg.len();
+
+                    {
+                        let blkslice = blk.as_mut_slice_append();
+
+                        debug_assert!(slen <= blkslice.len(),
+                            "bounds check failed for dense block");
+
+                        &blkslice[..slen].copy_from_slice(&frg[..]);
+                    }
+
+                    blk.set_written(slen).with_context(|_| "set_written failed")?;
+
+                    slen
+                }, {
+                    // sparse block handler
+                    // destination bounds checking intentionally left out in release builds
+                    let slen = frg.len();
+
+                    let block_offset = if let Some(offset) = blk.as_index_slice().last() {
+                        *offset + 1
+                    } else {
+                        0
+                    };
+
+                    {
+                        let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
+
+                        debug_assert!(slen <= blkslice.len(),
+                            "bounds check failed for sparse block");
+
+                        &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                        &mut blkindex[..slen].copy_from_slice(&fidx[..]);
+
+                        // adjust the offset
+                        &mut blkindex[..slen].par_iter_mut().for_each(|idx| {
+                            *idx = *idx - offset + block_offset;
+                        });
+                    }
+
+                    blk.set_written(slen).with_context(|_| "set_written failed")?;
+
+                    slen
+                });
+
+                written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
+            }
+
+            written
+        };
+
+        // update ts
+        if let Some(ts_min) = ts_min {
+            self.ts_min = ts_min;
+        }
+
+        if let Some(ts_max) = ts_max {
+            self.ts_max = ts_max;
         }
 
         // todo: fix this (should be slen)
@@ -422,6 +442,31 @@ impl<'part> Partition<'part> {
                 }
             })
             .collect()
+    }
+
+    #[inline]
+    pub(crate) fn is_within_ts_range(&self, range: &ScanTsRange) -> bool {
+        range.overlaps_with(self.ts_min, self.ts_max)
+    }
+
+    #[inline]
+    fn compare_ts<'frag, 'tsfrag, T>(&self, ts_frag: &'frag T)
+        -> (Option<Timestamp>, Option<Timestamp>)
+        where TimestampFragmentRef<'tsfrag>: From<&'frag T> {
+
+        TimestampFragmentRef::from(ts_frag)
+            .iter()
+            .fold((None, None), |mut acc, ts| {
+                if *ts < acc.0.unwrap_or(self.ts_min) {
+                    acc.0 = Some(*ts);
+                }
+
+                if *ts > acc.1.unwrap_or(self.ts_max) {
+                    acc.1 = Some(*ts);
+                }
+
+                acc
+            })
     }
 
     #[allow(unused)]
