@@ -23,7 +23,7 @@ use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Sca
 ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment,
 ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
 
-use hyena_common::ty::Uuid;
+use hyena_common::ty::{Uuid, Timestamp};
 
 use hyena_common::collections::{HashMap, HashSet};
 use std::convert::From;
@@ -184,8 +184,8 @@ impl From<ScanRequest> for hyena_engine::Scan {
     fn from(scan_request: ScanRequest) -> Scan {
 
         let scan_range = ScanTsRange::Bounded{
-            start: scan_request.min_ts,
-            end:   scan_request.max_ts
+            start: Timestamp::from(scan_request.min_ts),
+            end:   Timestamp::from(scan_request.max_ts),
         };
 
         let partitions =
@@ -1075,8 +1075,8 @@ mod tests {
                         None,
                         None,
                         Some(ScanTsRange::Bounded{
-                            start: 1,
-                            end: 10,
+                            start: Timestamp::from(1),
+                            end: Timestamp::from(10),
                         })
                     );
 
