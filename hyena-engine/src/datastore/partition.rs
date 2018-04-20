@@ -10,7 +10,7 @@ use std::cmp::{max, min};
 use hyena_common::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
-use params::PARTITION_METADATA;
+use params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
 use std::sync::RwLock;
 use std::iter::FromIterator;
 use ty::fragment::Fragment;
@@ -69,7 +69,7 @@ impl<'part> Partition<'part> {
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         if !self.blocks.is_empty() {
-            if let Some(block) = self.blocks.get(&0) {
+            if let Some(block) = self.blocks.get(&TIMESTAMP_COLUMN) {
                 let b = acquire!(read block);
                 return b.len();
             }

@@ -6,7 +6,7 @@ use hyena_common::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
-use params::{SourceId, CATALOG_METADATA};
+use params::{SourceId, CATALOG_METADATA, TIMESTAMP_COLUMN};
 use mutator::append::Append;
 use scanner::{Scan, ScanResult};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -50,7 +50,7 @@ impl<'cat> Catalog<'cat> {
         let ts_column = Column::new(BlockStorage::Memmap(BlockType::U64Dense), "timestamp");
         let source_column = Column::new(BlockStorage::Memory(BlockType::I32Dense), "source_id");
         let mut map = HashMap::new();
-        map.insert(0, ts_column);
+        map.insert(TIMESTAMP_COLUMN, ts_column);
         map.insert(1, source_column);
 
         self.ensure_columns(map)

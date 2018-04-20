@@ -17,3 +17,6 @@ pub(crate) const CATALOG_METADATA: &str = "catalog.data";
 
 /// The type of source_id column
 pub type SourceId = u32;
+
+// The index of timestamp column
+pub const TIMESTAMP_COLUMN: super::ty::ColumnId = 0;
