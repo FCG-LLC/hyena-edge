@@ -13,7 +13,8 @@ use hyena_engine::Catalog;
 
 use std::rc::Rc;
 use std::cell::RefCell;
-
+use std::thread;
+use futures::sync::mpsc::UnboundedSender;
 
 fn get_address(matches: &clap::ArgMatches) -> String {
     let transport = matches.value_of("transport").unwrap();
@@ -28,31 +29,31 @@ fn get_address(matches: &clap::ArgMatches) -> String {
 }
 
 fn process_message(msg: Vec<u8>, catalog: &mut Catalog) -> Vec<u8> {
-    //trace!("Got: {:?}", msg);
-
     let operation = Request::parse(&msg);
 
-    let reply = if operation.is_err() {
-        Reply::SerializeError(format!("{:?}", operation.unwrap_err()))
-    } else {
-        let req = operation.unwrap();
-        debug!("Operation: {}", req);
-        run_request(req, catalog)
-    };
-    debug!("Returning: {}", reply);
+    let reply = match operation {
+        Ok(request) => {
+            trace!("Operation: {}", request);
 
-    serialize(&reply, Infinite).unwrap()
+            run_request(request, catalog)
+        },
+        Err(error) => Reply::SerializeError(format!("{:?}", error)),
+    };
+
+    trace!("Returning: {}", reply);
+
+    serialize(&reply, Infinite)
+        .expect("Reply serialization error")
 }
 
-pub fn run(matches: &clap::ArgMatches) {
+pub fn run(matches: clap::ArgMatches) {
     let mut core = Core::new().expect("Could not create Core");
     let handle = core.handle();
 
     let dir = matches.value_of("data_dir").unwrap();
     fs::create_dir_all(dir).expect("Could not create data_dir");
-    let catalog = Catalog::open_or_create(dir).expect("Unable to initialize catalog");
 
-    let address = get_address(matches);
+    let address = get_address(&matches);
 
     info!("Starting socket server");
 
@@ -67,59 +68,126 @@ pub fn run(matches: &clap::ArgMatches) {
 
     let MultiServerFutures { server, sessions } = server.into_futures().expect("server error");
 
-    let catalog = Rc::new(RefCell::new(catalog));
+    // for sending to the catalog thread
+    // this in-memory channel is unbounded, so requests sent through it will queue up
+    // and be processed synchronously within the thread
+    let (cat_writer, cat_reader) = ::std::sync::mpsc::channel();
 
-    handle.clone().spawn(sessions.for_each(move |session| {
-        let connid = session.connid;
+    let catalog_thread = {
+        let dir = dir.to_owned();
 
-        info!("[{connid}] Incoming new session {:?}", session, connid=connid);
-        let catalog = catalog.clone();
+        thread::Builder::new()
+            .spawn(move || {
+                let catalog = Rc::new(RefCell::new(Catalog::open_or_create(dir)
+                    .expect("Unable to initialize catalog")));
 
-        let (writer, reader) = session.connection.split();
-
-        handle.spawn(reader
-            .map(move |msg| {
-                use self::PeerRequest::*;
-
-                match msg {
-                    Request(msgid, Some(msg)) => {
-                        info!(
-                            "[{connid}@{msgid}] Incoming Request",
-                            connid=connid, msgid=msgid
-                        );
+                cat_reader
+                    .iter()
+                    .for_each(|msg: (_, _, _, UnboundedSender<_>)| {
+                        let (msg, connid, msgid, output_channel) = msg;
 
                         let reply = process_message(msg, &mut catalog.borrow_mut());
 
-                        Ok(PeerReply::Response(msgid, Ok(Some(reply))))
-                    }
-                    Abort(msgid) => {
-                        info!(
-                            "[{connid}@{msgid}] Abort Request",
-                            connid=connid, msgid=msgid
-                        );
+                        debug!("[{}@{}] Sending reply", connid, msgid);
 
-                        Ok(PeerReply::Response(msgid, Ok(None)))
-                    }
-                    KeepAlive => {
-                        debug!(
-                            "[{connid}] Keepalive Request",
-                            connid=connid
-                        );
-
-                        Ok(PeerReply::KeepAlive)
-                    }
-                    _ => Err(PeerError::BadMessage),
-                }
+                        output_channel
+                            .unbounded_send(Ok(PeerReply::Response(msgid, Ok(Some(reply)))))
+                            .unwrap_or_else(|_| error!(
+                                "session was already closed before reply could be sent"
+                            ));
+                });
             })
-            .and_then(|reply| reply)
-            .forward(writer)
-            .map(|_| ())
-            .map_err(|error| error!("Session connection error {:?}", error)));
+            .expect("unable to start catalog thread")
+    };
 
-            Ok(())
-    }));
+    {
+        let cat_writer = cat_writer.clone();
+
+        handle.clone().spawn(sessions.for_each(move |session| {
+            let connid = session.connid;
+
+            info!("[{connid}] Incoming new session {:?}", session, connid=connid);
+
+            // for outputting to writer
+            let (out_writer, out_reader) = ::futures::sync::mpsc::unbounded();
+
+            let (writer, reader) = session.connection.split();
+
+            handle.spawn(
+                out_reader
+                    .map_err(|_| PeerError::Unknown)
+                    .and_then(|reply| reply)
+                    .forward(writer)
+                    .map(|_| ())
+                    .map_err(|error| error!("Session connection error {:?}", error))
+            );
+
+            let cat_writer = cat_writer.clone();
+
+            handle.spawn(reader
+                .for_each(move |msg| {
+                    use self::PeerRequest::*;
+
+                    match msg {
+                        Request(msgid, Some(msg)) => {
+                            debug!(
+                                "[{connid}@{msgid}] Incoming Request",
+                                connid=connid, msgid=msgid
+                            );
+
+                            let msg = (msg, connid, msgid, out_writer.clone());
+
+                            cat_writer
+                                .send(msg)
+                                .unwrap_or_else(|_| error!("catalog thread was unavailable"));
+                        }
+                        Abort(msgid) => {
+                            debug!(
+                                "[{connid}@{msgid}] Abort Request",
+                                connid=connid, msgid=msgid
+                            );
+
+                            out_writer
+                                .unbounded_send(Ok(PeerReply::Response(msgid, Ok(None))))
+                                .unwrap_or_else(|_| error!(
+                                    "session was already closed before reply could be sent"
+                                ));
+                        }
+                        KeepAlive => {
+                            debug!(
+                                "[{connid}] Keepalive Request",
+                                connid=connid
+                            );
+
+                            out_writer
+                                .unbounded_send(Ok(PeerReply::KeepAlive))
+                                .unwrap_or_else(|_| error!(
+                                    "session was already closed before reply could be sent"
+                                ));
+                        }
+                        _ => {
+                            out_writer
+                                .unbounded_send(Err(PeerError::BadMessage))
+                                .unwrap_or_else(|_| error!(
+                                    "session was already closed before reply could be sent"
+                                ));
+                        }
+                    };
+
+                    Ok(())
+                })
+                .map(|_| ())
+                .map_err(|error| error!("Session connection error {:?}", error)));
+
+                Ok(())
+        }));
+    }
 
     core.run(server).unwrap();
+
+    if let Err(err) = catalog_thread.join() {
+        error!("Catalog thread was poisoned with {:?}", err);
+    }
 }
 
 #[cfg(test)]

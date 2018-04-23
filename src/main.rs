@@ -31,8 +31,7 @@ fn main() {
 
     info!("Starting Hyena");
 
-    let data_dir = options.value_of("data_dir").unwrap();
-    debug!("Data directory: {}", data_dir);
+    debug!("Data directory: {}", options.value_of("data_dir").unwrap());
 
-    nanoserver::run(&options);
+    nanoserver::run(options);
 }
