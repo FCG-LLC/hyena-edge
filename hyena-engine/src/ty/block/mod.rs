@@ -1,5 +1,5 @@
 use error::*;
-use std::collections::HashMap;
+use hyena_common::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
 use block;

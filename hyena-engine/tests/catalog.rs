@@ -1,4 +1,5 @@
 extern crate hyena_engine;
+extern crate hyena_common;
 extern crate failure;
 
 use failure::ResultExt;
@@ -8,7 +9,7 @@ use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column, 
                    SparseIndex, Timestamp, TimestampFragment};
 
 use std::iter::repeat;
-use std::collections::{HashMap, HashSet};
+use hyena_common::collections::{HashMap, HashSet};
 
 #[macro_use]
 mod common;

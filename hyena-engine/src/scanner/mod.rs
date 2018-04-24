@@ -1,6 +1,6 @@
 use error::*;
 use ty::ColumnId;
-use std::collections::{HashMap, HashSet};
+use hyena_common::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Deref;

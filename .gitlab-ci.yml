@@ -202,18 +202,16 @@ bench:master-std:
     paths:
     - .cargo
     - target
-    - hyena-engine/.bench
+    - .bench
   tags:
   - hyena-bench
   only:
   - master
   script:
-  # currently we only have such benchmarks in hyena-engine
-  - cd hyena-engine
   - mkdir -p .bench
   - >
     [[ -f .bench/master ]] && cp .bench/master .bench/prev-master
-  - cargo +nightly bench --features=nightly | tee .bench/master
+  - cargo +nightly bench --all --features=nightly | tee .bench/master
   - >
     if [[ -f .bench/prev-master ]];
     then
@@ -224,8 +222,8 @@ bench:master-std:
     fi
   artifacts:
     paths:
-    - hyena-engine/.bench/prev-master
-    - hyena-engine/.bench/master
+    - .bench/prev-master
+    - .bench/master
 
 bench:std:
   stage: bench
@@ -233,18 +231,16 @@ bench:std:
     paths:
     - .cargo
     - target
-    - hyena-engine/.bench
+    - .bench
   tags:
   - hyena-bench
   except:
   - master
   script:
-  # currently we only have such benchmarks in hyena-engine
-  - cd hyena-engine
   - mkdir -p .bench
   - >
     [[ -f ".bench/${CI_COMMIT_REF_NAME}" ]] && cp ".bench/${CI_COMMIT_REF_NAME}" ".bench/prev-${CI_COMMIT_REF_NAME}"
-  - cargo +nightly bench --features=nightly | tee ".bench/${CI_COMMIT_REF_NAME}"
+  - cargo +nightly bench --all --features=nightly | tee ".bench/${CI_COMMIT_REF_NAME}"
   - >
     [[ -f .bench/master ]] && echo "This change compared to master"
   - >

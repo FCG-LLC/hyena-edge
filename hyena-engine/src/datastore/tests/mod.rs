@@ -3,7 +3,7 @@ use ty::BlockStorage;
 use hyena_common::ty::Timestamp;
 use block::SparseIndex;
 use storage::manager::{PartitionGroupManager, PartitionManager};
-use std::collections::hash_map::HashMap;
+use hyena_common::collections::HashMap;
 use std::default::Default;
 use std::sync::RwLock;
 use params::{SourceId, CATALOG_METADATA, PARTITION_GROUP_METADATA};

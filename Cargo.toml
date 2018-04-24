@@ -47,3 +47,6 @@ git = "ssh://git@gitlab.cs.int/rust/nanomsg-rs.git"
 git = "ssh://git@gitlab.cs.int/rust/nanomsg-tokio.git"
 optional = false
 
+[features]
+default = []
+nightly = ["hyena-common/nightly", "hyena-engine/nightly"]

@@ -25,8 +25,7 @@ ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
 
 use hyena_common::ty::Uuid;
 
-use std::collections::hash_map::HashMap;
-use std::collections::HashSet;
+use hyena_common::collections::{HashMap, HashSet};
 use std::convert::From;
 use std::fmt::Debug;
 use std::hash::Hash;

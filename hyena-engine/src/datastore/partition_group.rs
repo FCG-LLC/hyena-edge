@@ -2,7 +2,7 @@ use error::*;
 use hyena_common::ty::Timestamp;
 use block::SparseIndex;
 use storage::manager::PartitionManager;
-use std::collections::hash_map::HashMap;
+use hyena_common::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;

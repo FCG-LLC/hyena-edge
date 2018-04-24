@@ -2,7 +2,7 @@ use error::*;
 use ty::BlockStorage;
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
-use std::collections::hash_map::HashMap;
+use hyena_common::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
