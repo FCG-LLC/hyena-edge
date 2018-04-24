@@ -150,7 +150,7 @@ mod full {
                 )+
 
                 let scan = Scan::new(
-                    filters,
+                    Some(filters),
                     None,
                     None,
                     None,
@@ -220,7 +220,7 @@ mod full {
                 )+
 
                 let scan = Scan::new(
-                    filters,
+                    Some(filters),
                     None,
                     None,
                     None,
@@ -326,9 +326,9 @@ mod full {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     0 => vec![ScanFilter::U64(ScanFilterOp::Gt(0))] // a.k.a. full scan
-                },
+                }),
                 None,
                 None,
                 Some(parts),
@@ -1015,9 +1015,9 @@ mod minimal {
         });
 
         let scan = Scan::new(
-            hashmap! {
+            Some(hashmap! {
                 0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-            },
+            }),
             None,
             None,
             None,
@@ -1040,9 +1040,9 @@ mod minimal {
         });
 
         let scan = Scan::new(
-            hashmap! {
+            Some(hashmap! {
                 1 => vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]
-            },
+            }),
             None,
             None,
             None,
@@ -1065,9 +1065,34 @@ mod minimal {
         });
 
         let scan = Scan::new(
-            hashmap! {
+            Some(hashmap! {
                 0 => vec![ScanFilter::U64(ScanFilterOp::In(hashset![2, 5, 10]))]
-            },
+            }),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn scan_full() {
+        let (_td, catalog, _) = scan_minimal_init!(ops);
+
+        let expected = ScanResult::from(hashmap! {
+            0 => Some(Fragment::from(vec![1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10])),
+            1 => Some(Fragment::from(vec![5_u32, 6, 7, 2, 3, 4, 1, 2, 3, 4])),
+            2 => Some(Fragment::from((vec![1_u8, 2, 3, 4], vec![1_u32, 3, 5, 8]))),
+            3 => Some(Fragment::from(vec![10_u16, 20, 30, 40, 50, 50, 40, 30, 20, 10])),
+            4 => Some(Fragment::from((vec![10_u16, 20, 30, 7, 8], vec![0_u32, 1, 5, 8, 9]))),
+        });
+
+        let scan = Scan::new(
+            None,
             None,
             None,
             None,
@@ -1103,10 +1128,10 @@ mod minimal {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     1 => vec![ScanFilter::U32(ScanFilterOp::Lt(3))],
                     3 => vec![ScanFilter::U16(ScanFilterOp::Gt(30))],
-                },
+                }),
                 None,
                 None,
                 None,
@@ -1139,10 +1164,10 @@ mod minimal {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     2 => vec![ScanFilter::U8(ScanFilterOp::Lt(4))],
                     4 => vec![ScanFilter::U16(ScanFilterOp::Gt(15))],
-                },
+                }),
                 None,
                 None,
                 None,
@@ -1173,10 +1198,10 @@ mod minimal {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     1 => vec![ScanFilter::U32(ScanFilterOp::Gt(4))],
                     4 => vec![ScanFilter::U16(ScanFilterOp::Lt(15))],
-                },
+                }),
                 None,
                 None,
                 None,
@@ -1235,9 +1260,9 @@ mod minimal {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-                },
+                }),
                 None,
                 None,
                 None,
@@ -1270,9 +1295,9 @@ mod minimal {
             });
 
             let scan = Scan::new(
-                hashmap! {
+                Some(hashmap! {
                     0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-                },
+                }),
                 None,
                 Some(vec![1, 7]),
                 None,
@@ -1304,9 +1329,9 @@ mod minimal {
                 });
 
                 let scan = Scan::new(
-                    hashmap! {
+                    Some(hashmap! {
                         0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-                    },
+                    }),
                     Some(vec![0, 2, 4]),
                     None,
                     None,
@@ -1333,9 +1358,9 @@ mod minimal {
                 });
 
                 let scan = Scan::new(
-                    hashmap! {
+                    Some(hashmap! {
                         0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-                    },
+                    }),
                     Some(vec![2, 4]),
                     None,
                     None,
@@ -1363,9 +1388,9 @@ mod minimal {
                 });
 
                 let scan = Scan::new(
-                    hashmap! {
+                    Some(hashmap! {
                         0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
-                    },
+                    }),
                     Some(vec![2, 4, 7]),
                     None,
                     None,
@@ -1393,9 +1418,9 @@ mod benches {
                 let (_td, catalog, _) = scan_test_impl!(init);
 
                 let scan = Scan::new(
-                    hashmap! {
+                    Some(hashmap! {
                         $idx => vec![ScanFilterOp::Lt($value).into()]
-                    },
+                    }),
                     None,
                     None,
                     None,
@@ -1414,9 +1439,9 @@ mod benches {
                 let (_td, catalog, _) = scan_test_impl!(init sparse);
 
                 let scan = Scan::new(
-                    hashmap! {
+                    Some(hashmap! {
                         $idx => vec![ScanFilterOp::Lt($value).into()]
-                    },
+                    }),
                     None,
                     None,
                     None,

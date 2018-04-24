@@ -133,7 +133,7 @@ fn it_scans_with_dense_filter() {
                     ScanFilter::U64(ScanFilterOp::LtEq(25)),
                 ]);
 
-                filters
+                Some(filters)
             },
             Some(vec![0, 3, 5]),
             None,
@@ -184,7 +184,7 @@ fn it_scans_with_sparse_filter() {
                     ScanFilter::U64(ScanFilterOp::LtEq(25)),
                 ]);
 
-                filters
+                Some(filters)
             },
             Some(vec![0, 3, 5]),
             None,

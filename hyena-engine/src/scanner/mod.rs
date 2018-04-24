@@ -19,12 +19,12 @@ pub struct Scan {
     pub(crate) partitions: Option<HashSet<PartitionId>>,
     pub(crate) groups: Option<Vec<SourceId>>,
     pub(crate) projection: Option<Vec<ColumnId>>,
-    pub(crate) filters: HashMap<ColumnId, Vec<ScanFilter>>,
+    pub(crate) filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
 }
 
 impl Scan {
     pub fn new(
-        filters: HashMap<ColumnId, Vec<ScanFilter>>,
+        filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
         projection: Option<Vec<ColumnId>>,
         groups: Option<Vec<SourceId>>,
         partitions: Option<HashSet<PartitionId>>,

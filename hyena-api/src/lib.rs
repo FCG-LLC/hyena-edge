@@ -419,9 +419,7 @@ impl Reply {
             return Reply::Scan(Err(Error::InvalidScanRequest("Projections cannot be empty"
                 .into())));
         }
-        if scan_request.filters.is_empty() {
-            return Reply::Scan(Err(Error::InvalidScanRequest("Filters cannot be empty".into())));
-        }
+
         let scan = Reply::build_scan(scan_request);
         let result = match catalog.scan(&scan) {
             Err(e) => return Reply::Scan(Err(Error::ScanError(e.to_string()))),
@@ -465,14 +463,18 @@ impl Reply {
                 Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
             } else { None };
 
-        let filters = scan_request.filters
-            .iter()
-            .map(|filter| (
-                    filter.column,
-                    vec![filter.typed_val.to_scan_filter(&filter.op)]
+        let filters = if scan_request.filters.is_empty() {
+            None
+        } else {
+            Some(scan_request.filters
+                .iter()
+                .map(|filter| (
+                        filter.column,
+                        vec![filter.typed_val.to_scan_filter(&filter.op)]
+                        )
                     )
-                )
-            .collect();
+                .collect())
+        };
 
         Scan::new(filters,
                   Some(scan_request.projection),
@@ -482,6 +484,7 @@ impl Reply {
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
+
         let columns = catalog.as_ref()
             .iter()
             .map(|(id, c)| {
