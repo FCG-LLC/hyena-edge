@@ -52,6 +52,13 @@ pub fn app() -> App<'static, 'static> {
              .default_value("/tmp/hyena.ipc")
              .short("i")
              .long("ipc-path"))
+        .arg(Arg::with_name("session_ipc_path")
+             .takes_value(true)
+             .help("A directory where session ipc sockets will be created")
+             .required(false)
+             .default_value("/tmp")
+             .short("s")
+             .long("session-ipc-path"))
 }
 
 #[cfg(test)]
