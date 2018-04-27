@@ -14,6 +14,7 @@ use hyena_engine::Catalog;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::thread;
+use std::path::PathBuf;
 use futures::sync::mpsc::UnboundedSender;
 
 fn get_address(matches: &clap::ArgMatches) -> String {
@@ -55,12 +56,19 @@ pub fn run(matches: clap::ArgMatches) {
 
     let address = get_address(&matches);
 
+    let session_ipc_path = PathBuf::from(matches.value_of("session_ipc_path")
+        .expect("Session ipc path not specified"));
+
     info!("Starting socket server");
 
     let server = MultiServer::new(
         address.as_ref(),
         SessionTimeout::default(),
         GcInterval::default(),
+        move |session_id| {
+            let path = session_ipc_path.join(format!("hyena-session-{}.ipc", session_id));
+            format!("ipc://{}", path.display())
+        },
         handle.clone(),
     );
 
