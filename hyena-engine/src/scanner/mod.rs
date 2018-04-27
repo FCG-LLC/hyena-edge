@@ -94,6 +94,7 @@ use std::ops::Deref;
 use datastore::PartitionId;
 use params::SourceId;
 use ty::fragment::Fragment;
+use hyena_common::ty::Timestamp;
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -145,9 +146,33 @@ impl Scan {
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScanTsRange {
     Full,
-    Bounded { start: u64, end: u64 }, // inclusive, exclusive
-    From { start: u64 },              // inclusive
-    To { end: u64 },                  // exclusive
+    Bounded { start: Timestamp, end: Timestamp }, // inclusive, exclusive
+    From { start: Timestamp },              // inclusive
+    To { end: Timestamp },                  // exclusive
+}
+
+impl ScanTsRange {
+    /// Check if this range overlaps with another range defined by the params
+    ///
+    /// Passed values should satisfy `min <= max` condition
+
+    #[inline]
+    pub fn overlaps_with<TS>(&self, min: TS, max: TS) -> bool
+    where Timestamp: From<TS> {
+        let min = Timestamp::from(min);
+        let max = Timestamp::from(max);
+
+        debug_assert!(min <= max);
+
+        match *self {
+            ScanTsRange::Full => true,
+            ScanTsRange::Bounded { start, end }
+                if start <= max && min < end => true,
+            ScanTsRange::From { start } if start <= max => true,
+            ScanTsRange::To { end } if end > min => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -555,6 +580,255 @@ mod tests {
             });
 
             assert_eq!(result.dense_len(), expected);
+        }
+    }
+
+    mod ts_range {
+        use super::*;
+
+        // Default range:
+        //
+        //       |-------------|
+        //       10           17
+
+        #[inline]
+        fn overlaps_test(range: &ScanTsRange) -> bool {
+            let (min, max) = (10, 17);
+
+            range.overlaps_with(min, max)
+        }
+
+        #[test]
+        fn full() {
+            assert_eq!(overlaps_test(&ScanTsRange::Full), true);
+        }
+
+        mod bounded {
+            use super::*;
+
+            #[inline]
+            fn bounds_check<T>(start: T, end: T) -> bool
+            where Timestamp: From<T> {
+                let start = Timestamp::from(start);
+                let end = Timestamp::from(end);
+
+                overlaps_test(&ScanTsRange::Bounded { start, end })
+            }
+
+
+            #[inline]
+            fn assert_bounds<T>(start: T, end: T, checks: bool)
+            where Timestamp: From<T> {
+                assert_eq!(bounds_check(start, end), checks);
+            }
+
+            //      |-------------|
+            //      10           17
+            //          [-----)
+            //          12   15
+
+            #[test]
+            fn contained() {
+                assert_bounds(12, 15, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //  [---------------------)
+            //  8                    19
+
+            #[test]
+            fn contains() {
+                assert_bounds(8, 19, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //  [-------)
+            //  8       12
+
+            #[test]
+            fn overlaps_left() {
+                assert_bounds(8, 12, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //                [-------)
+            //                15     19
+
+            #[test]
+            fn overlaps_right() {
+                assert_bounds(15, 19, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //                    [---)
+            //                    17 19
+
+            #[test]
+            fn overlaps_right_edge() {
+                assert_bounds(17, 19, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //                  [---)
+            //                  16 18
+
+            #[test]
+            fn overlaps_right_near_edge() {
+                assert_bounds(16, 18, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //  [---)
+            //  8  10
+
+            #[test]
+            fn overlaps_left_edge() {
+                assert_bounds(8, 10, false)
+            }
+
+            //      |-------------|
+            //      10           17
+            //  [-----)
+            //  8    11
+
+            #[test]
+            fn overlaps_left_near_edge() {
+                assert_bounds(8, 11, true)
+            }
+
+            //      |-------------|
+            //      10           17
+            //                      [---)
+            //                      18 20
+
+            #[test]
+            fn adjacent_right() {
+                assert_bounds(18, 20, false)
+            }
+
+            //      |-------------|
+            //      10           17
+            //  [-)
+            //  8 9
+
+            #[test]
+            fn adjacent_left() {
+                assert_bounds(8, 9, false)
+            }
+        }
+
+        mod from {
+            use super::*;
+
+            //      |-------------|
+            //      10           17
+            //  [=>
+            //  8
+
+            #[test]
+            fn from_left() {
+                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(8) }), true);
+            }
+
+            //      |-------------|
+            //      10           17
+            //      [=>
+            //      10
+
+            #[test]
+            fn from_left_edge() {
+                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(10) }), true);
+            }
+
+            //      |-------------|
+            //      10           17
+            //            [=>
+            //            13
+
+            #[test]
+            fn from_within() {
+                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(13) }), true);
+            }
+
+            //      |-------------|
+            //      10           17
+            //                      [=>
+            //                      18
+
+            #[test]
+            fn from_right() {
+                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(18) }), false);
+            }
+
+            //      |-------------|
+            //      10           17
+            //                    [=>
+            //                    17
+
+            #[test]
+            fn from_right_edge() {
+                assert_eq!(overlaps_test(&ScanTsRange::From { start: Timestamp::from(17) }), true);
+            }
+        }
+
+        mod to {
+            use super::*;
+
+            //      |-------------|
+            //      10           17
+            //  =>)
+            //    9
+
+            #[test]
+            fn to_left() {
+                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(9) }), false);
+            }
+
+            //      |-------------|
+            //      10           17
+            //    =>)
+            //      10
+
+            #[test]
+            fn to_left_edge() {
+                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(10) }), false);
+            }
+
+            //      |-------------|
+            //      10           17
+            //          =>)
+            //            13
+
+            #[test]
+            fn to_within() {
+                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(13) }), true);
+            }
+
+            //      |-------------|
+            //      10           17
+            //                    =>)
+            //                      18
+
+            #[test]
+            fn to_right() {
+                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(18) }), true);
+            }
+
+            //      |-------------|
+            //      10           17
+            //                  =>)
+            //                   17
+
+            #[test]
+            fn to_right_edge() {
+                assert_eq!(overlaps_test(&ScanTsRange::To { end: Timestamp::from(17) }), true);
+            }
         }
     }
 }

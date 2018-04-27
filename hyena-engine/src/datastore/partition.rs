@@ -10,12 +10,12 @@ use std::cmp::{max, min};
 use hyena_common::collections::{HashMap, HashSet};
 #[cfg(feature = "mmap")]
 use rayon::prelude::*;
-use params::PARTITION_METADATA;
+use params::{PARTITION_METADATA, TIMESTAMP_COLUMN};
 use std::sync::RwLock;
 use std::iter::FromIterator;
-use ty::fragment::Fragment;
+use ty::fragment::{Fragment, TimestampFragmentRef};
 use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters};
+use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -69,7 +69,7 @@ impl<'part> Partition<'part> {
     #[allow(dead_code)]
     pub fn len(&self) -> usize {
         if !self.blocks.is_empty() {
-            if let Some(block) = self.blocks.get(&0) {
+            if let Some(block) = self.blocks.get(&TIMESTAMP_COLUMN) {
                 let b = acquire!(read block);
                 return b.len();
             }
@@ -92,68 +92,88 @@ impl<'part> Partition<'part> {
         self.ensure_blocks(&blockmap)
             .with_context(|_| "Unable to create block map")
             .unwrap();
-        let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
-            if let Some(block) = self.blocks.get(blk_idx) {
-                trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
-                Some((block, frags.get(blk_idx).unwrap()))
-            } else {
-                None
-            }
-        });
 
-        let mut written: usize = 0;
+        // ts range update
+        let (ts_min, ts_max) =
+            self.compare_ts(frags.get(&TIMESTAMP_COLUMN).expect("assumed ts fragment not found"));
 
-        for (ref mut block, ref data) in ops {
-            let b = acquire!(write block);
-
-            let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
-                // dense block handler
-
-                // destination bounds checking intentionally left out in release builds
-                let slen = frg.len();
-
-                {
-                    let blkslice = blk.as_mut_slice_append();
-
-                    debug_assert!(slen <= blkslice.len(), "bounds check failed for dense block");
-
-                    &blkslice[..slen].copy_from_slice(&frg[..]);
-                }
-
-                blk.set_written(slen).with_context(|_| "set_written failed")?;
-
-                slen
-            }, {
-                // sparse block handler
-                // destination bounds checking intentionally left out in release builds
-                let slen = frg.len();
-
-                let block_offset = if let Some(offset) = blk.as_index_slice().last() {
-                    *offset + 1
+        let written = {
+            let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
+                if let Some(block) = self.blocks.get(blk_idx) {
+                    trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
+                    Some((block, frags.get(blk_idx).unwrap()))
                 } else {
-                    0
-                };
-
-                {
-                    let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
-
-                    debug_assert!(slen <= blkslice.len(), "bounds check failed for sparse block");
-
-                    &mut blkslice[..slen].copy_from_slice(&frg[..]);
-                    &mut blkindex[..slen].copy_from_slice(&fidx[..]);
-
-                    // adjust the offset
-                    &mut blkindex[..slen].par_iter_mut().for_each(|idx| {
-                        *idx = *idx - offset + block_offset;
-                    });
+                    None
                 }
-
-                blk.set_written(slen).with_context(|_| "set_written failed")?;
-
-                slen
             });
 
-            written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
+            let mut written: usize = 0;
+
+            for (ref mut block, ref data) in ops {
+                let b = acquire!(write block);
+
+                let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
+                    // dense block handler
+
+                    // destination bounds checking intentionally left out in release builds
+                    let slen = frg.len();
+
+                    {
+                        let blkslice = blk.as_mut_slice_append();
+
+                        debug_assert!(slen <= blkslice.len(),
+                            "bounds check failed for dense block");
+
+                        &blkslice[..slen].copy_from_slice(&frg[..]);
+                    }
+
+                    blk.set_written(slen).with_context(|_| "set_written failed")?;
+
+                    slen
+                }, {
+                    // sparse block handler
+                    // destination bounds checking intentionally left out in release builds
+                    let slen = frg.len();
+
+                    let block_offset = if let Some(offset) = blk.as_index_slice().last() {
+                        *offset + 1
+                    } else {
+                        0
+                    };
+
+                    {
+                        let (blkindex, blkslice) = blk.as_mut_indexed_slice_append();
+
+                        debug_assert!(slen <= blkslice.len(),
+                            "bounds check failed for sparse block");
+
+                        &mut blkslice[..slen].copy_from_slice(&frg[..]);
+                        &mut blkindex[..slen].copy_from_slice(&fidx[..]);
+
+                        // adjust the offset
+                        &mut blkindex[..slen].par_iter_mut().for_each(|idx| {
+                            *idx = *idx - offset + block_offset;
+                        });
+                    }
+
+                    blk.set_written(slen).with_context(|_| "set_written failed")?;
+
+                    slen
+                });
+
+                written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
+            }
+
+            written
+        };
+
+        // update ts
+        if let Some(ts_min) = ts_min {
+            self.ts_min = ts_min;
+        }
+
+        if let Some(ts_max) = ts_max {
+            self.ts_max = ts_max;
         }
 
         // todo: fix this (should be slen)
@@ -422,6 +442,31 @@ impl<'part> Partition<'part> {
                 }
             })
             .collect()
+    }
+
+    #[inline]
+    pub(crate) fn is_within_ts_range(&self, range: &ScanTsRange) -> bool {
+        range.overlaps_with(self.ts_min, self.ts_max)
+    }
+
+    #[inline]
+    fn compare_ts<'frag, 'tsfrag, T>(&self, ts_frag: &'frag T)
+        -> (Option<Timestamp>, Option<Timestamp>)
+        where TimestampFragmentRef<'tsfrag>: From<&'frag T> {
+
+        TimestampFragmentRef::from(ts_frag)
+            .iter()
+            .fold((None, None), |mut acc, ts| {
+                if *ts < acc.0.unwrap_or(self.ts_min) {
+                    acc.0 = Some(*ts);
+                }
+
+                if *ts > acc.1.unwrap_or(self.ts_max) {
+                    acc.1 = Some(*ts);
+                }
+
+                acc
+            })
     }
 
     #[allow(unused)]
@@ -883,10 +928,46 @@ mod tests {
         assert_eq!(ret_ts_max, ts_max);
     }
 
+    fn meta_ts(ts_ty: BlockStorage) {
+        use ty::fragment::FragmentRef;
+
+        let root = tempdir!();
+        let row_count = 100;
+
+        let mut part = Partition::new(&root, Partition::gen_id(), 0)
+            .with_context(|_| "Failed to create partition")
+            .unwrap();
+
+        let ts = RandomTimestampGen::iter().take(row_count).collect::<Vec<_>>();
+
+        let (ts_min, ts_max) = ts.iter().fold((0, 0), |(ts_min, ts_max), ts| {
+            (
+                min(*ts, ts_min),
+                max(*ts, ts_max),
+            )
+        });
+
+        let blocks = hashmap! {
+            0 => ts_ty,
+        }.into();
+
+        let frags = hashmap! {
+            0 => Fragment::from(ts),
+        };
+
+        let refs = frags.iter()
+            .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
+            .collect();
+
+        part.append(&blocks, &refs, 0).expect("Partition append failed");
+
+        assert_eq!(part.ts_min, Timestamp::from(ts_min));
+        assert_eq!(part.ts_max, Timestamp::from(ts_max));
+    }
+
     fn update_meta(ts_ty: BlockStorage) {
 
         let root = tempdir!();
-
         let (mut part, ts_min, ts_max) = ts_init(&root, ts_ty, 100);
 
         part.update_meta()
@@ -1359,45 +1440,104 @@ mod tests {
         );
     }
 
-    #[test]
-    fn get_ts() {
-        let root = tempdir!();
+    mod ts {
+        use super::*;
+        use ty::fragment::FragmentRef;
+        use block::BlockType;
+        use self::BlockStorage::Memory;
 
-        let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
+        macro_rules! ts_test_init {
+            ($ts_init: expr, $( $ts_frag: expr ),+ $(,)*) => {{
+                let root = tempdir!();
 
-        let mut part = Partition::new(&root, Partition::gen_id(), ts_min)
-            .with_context(|_| "Failed to create partition")
-            .unwrap();
+                let mut part = Partition::new(&root, Partition::gen_id(), $ts_init)
+                    .with_context(|_| "Failed to create partition")
+                    .unwrap();
 
-        part.ts_max = ts_max;
+                let blocks = hashmap! {
+                    0 => Memory(BlockType::U64Dense),
+                }.into();
 
-        let part = part;
+                $(
+                    let ts: Vec<u64> = $ts_frag;
 
-        let (ret_ts_min, ret_ts_max) = part.get_ts();
+                    let frags = hashmap! {
+                        0 => Fragment::from(ts),
+                    };
 
-        assert_eq!(ret_ts_min, ts_min);
-        assert_eq!(ret_ts_max, ts_max);
-    }
+                    let refs = frags.iter()
+                        .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
+                        .collect();
 
-    #[test]
-    fn set_ts() {
-        let root = tempdir!();
+                    part.append(&blocks, &refs, 0).expect("Partition append failed");
+                )+
 
-        let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
-        let start_ts = RandomTimestampGen::random_from(ts_max);
+                (root, part)
+            }};
+        }
 
-        assert_ne!(ts_min, start_ts);
+        #[test]
+        fn single_append() {
+            let (_td, part) = ts_test_init!(0, vec![0, 1, 2, 3, 4, 5]);
 
-        let mut part = Partition::new(&root, Partition::gen_id(), start_ts)
-            .with_context(|_| "Failed to create partition")
-            .unwrap();
+            assert_eq!(part.ts_min, Timestamp::from(0));
+            assert_eq!(part.ts_max, Timestamp::from(5));
+        }
 
-        part.set_ts(Some(ts_min), Some(ts_max))
-            .with_context(|_| "Unable to set timestamps")
-            .unwrap();
+        #[test]
+        fn multiple_appends() {
+            let (_td, part) = ts_test_init!(
+                1,
+                vec![1, 2, 3, 4, 5],
+                vec![10, 20, 30],
+                vec![1, 5, 45],
+                vec![0, 7, 5],
+            );
 
-        assert_eq!(part.ts_min, ts_min);
-        assert_eq!(part.ts_max, ts_max);
+            assert_eq!(part.ts_min, Timestamp::from(0));
+            assert_eq!(part.ts_max, Timestamp::from(45));
+        }
+
+        #[test]
+        fn get_ts() {
+            let root = tempdir!();
+
+            let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
+
+            let mut part = Partition::new(&root, Partition::gen_id(), ts_min)
+                .with_context(|_| "Failed to create partition")
+                .unwrap();
+
+            part.ts_max = ts_max;
+
+            let part = part;
+
+            let (ret_ts_min, ret_ts_max) = part.get_ts();
+
+            assert_eq!(ret_ts_min, ts_min);
+            assert_eq!(ret_ts_max, ts_max);
+        }
+
+        #[test]
+        fn set_ts() {
+            let root = tempdir!();
+
+            let &(ts_min, ts_max) = &RandomTimestampGen::pairs(1)[..][0];
+            let start_ts = RandomTimestampGen::random_from(ts_max);
+
+            assert_ne!(ts_min, start_ts);
+
+            let mut part = Partition::new(&root, Partition::gen_id(), start_ts)
+                .with_context(|_| "Failed to create partition")
+                .unwrap();
+
+            part.set_ts(Some(ts_min), Some(ts_max))
+                .with_context(|_| "Unable to set timestamps")
+                .unwrap();
+
+            assert_eq!(part.ts_min, ts_min);
+            assert_eq!(part.ts_max, ts_max);
+        }
     }
 
     mod serialize {
@@ -1565,6 +1705,11 @@ mod tests {
         }
 
         #[test]
+        fn meta_ts() {
+            super::meta_ts(Memory(BlockType::U64Dense));
+        }
+
+        #[test]
         fn update_meta() {
             super::update_meta(Memory(BlockType::U64Dense));
         }
@@ -1635,16 +1780,21 @@ mod tests {
     mod mmap {
         use super::*;
         use block::BlockType;
-        use self::BlockStorage::Memory;
+        use self::BlockStorage::Memmap;
 
         #[test]
         fn scan_ts() {
-            super::scan_ts(Memory(BlockType::U64Dense));
+            super::scan_ts(Memmap(BlockType::U64Dense));
+        }
+
+        #[test]
+        fn meta_ts() {
+            super::meta_ts(Memmap(BlockType::U64Dense));
         }
 
         #[test]
         fn update_meta() {
-            super::update_meta(Memory(BlockType::U64Dense));
+            super::update_meta(Memmap(BlockType::U64Dense));
         }
 
         #[test]
@@ -1665,7 +1815,7 @@ mod tests {
 
         mod serialize {
             use super::*;
-            use self::BlockStorage::Memory;
+            use self::BlockStorage::Memmap;
 
             #[test]
             fn blocks() {
@@ -1679,7 +1829,7 @@ mod tests {
                 super::super::serialize::heads(
                     &root,
                     block_test_impl!(mmap BlockType),
-                    Memory(BlockType::U64Dense),
+                    Memmap(BlockType::U64Dense),
                     100,
                 );
             }
@@ -1687,7 +1837,7 @@ mod tests {
 
         mod deserialize {
             use super::*;
-            use self::BlockStorage::Memory;
+            use self::BlockStorage::Memmap;
 
             #[test]
             fn blocks() {
@@ -1701,7 +1851,7 @@ mod tests {
                 super::super::deserialize::heads(
                     &root,
                     block_test_impl!(mmap BlockType),
-                    Memory(BlockType::U64Dense),
+                    Memmap(BlockType::U64Dense),
                     100,
                 );
             }

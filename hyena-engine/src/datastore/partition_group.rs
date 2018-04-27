@@ -361,6 +361,11 @@ impl<'pg> PartitionGroup<'pg> {
                 } else {
                     true
                 })
+                .filter(|partition| match scan.ts_range {
+                    None  => true,
+                    Some(ref range) if partition.is_within_ts_range(range) => true,
+                    _ => false,
+                })
                 .map(|partition| {
                     partition
                         .scan(&scan)
