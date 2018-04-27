@@ -146,7 +146,7 @@ mod full {
                 let mut filters = HashMap::new();
 
                 $(
-                    filters.insert($idx, vec![$( $value )+]);
+                    filters.insert($idx, vec![vec![$( $value )+]]);
                 )+
 
                 let scan = Scan::new(
@@ -216,7 +216,7 @@ mod full {
                 let mut filters = HashMap::new();
 
                 $(
-                    filters.insert($idx, vec![$( $value )+]);
+                    filters.insert($idx, vec![vec![$( $value )+]]);
                 )+
 
                 let scan = Scan::new(
@@ -327,7 +327,7 @@ mod full {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    0 => vec![ScanFilter::U64(ScanFilterOp::Gt(0))] // a.k.a. full scan
+                    0 => vec![vec![ScanFilter::U64(ScanFilterOp::Gt(0))]] // a.k.a. full scan
                 }),
                 None,
                 None,
@@ -1016,7 +1016,7 @@ mod minimal {
 
         let scan = Scan::new(
             Some(hashmap! {
-                0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
             }),
             None,
             None,
@@ -1041,7 +1041,7 @@ mod minimal {
 
         let scan = Scan::new(
             Some(hashmap! {
-                1 => vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]
+                1 => vec![vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]]
             }),
             None,
             None,
@@ -1066,7 +1066,7 @@ mod minimal {
 
         let scan = Scan::new(
             Some(hashmap! {
-                0 => vec![ScanFilter::U64(ScanFilterOp::In(hashset![2, 5, 10]))]
+                0 => vec![vec![ScanFilter::U64(ScanFilterOp::In(hashset![2, 5, 10]))]]
             }),
             None,
             None,
@@ -1129,8 +1129,8 @@ mod minimal {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    1 => vec![ScanFilter::U32(ScanFilterOp::Lt(3))],
-                    3 => vec![ScanFilter::U16(ScanFilterOp::Gt(30))],
+                    1 => vec![vec![ScanFilter::U32(ScanFilterOp::Lt(3))]],
+                    3 => vec![vec![ScanFilter::U16(ScanFilterOp::Gt(30))]],
                 }),
                 None,
                 None,
@@ -1165,8 +1165,8 @@ mod minimal {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    2 => vec![ScanFilter::U8(ScanFilterOp::Lt(4))],
-                    4 => vec![ScanFilter::U16(ScanFilterOp::Gt(15))],
+                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Lt(4))]],
+                    4 => vec![vec![ScanFilter::U16(ScanFilterOp::Gt(15))]],
                 }),
                 None,
                 None,
@@ -1199,8 +1199,8 @@ mod minimal {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    1 => vec![ScanFilter::U32(ScanFilterOp::Gt(4))],
-                    4 => vec![ScanFilter::U16(ScanFilterOp::Lt(15))],
+                    1 => vec![vec![ScanFilter::U32(ScanFilterOp::Gt(4))]],
+                    4 => vec![vec![ScanFilter::U16(ScanFilterOp::Lt(15))]],
                 }),
                 None,
                 None,
@@ -1261,7 +1261,7 @@ mod minimal {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                    0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                 }),
                 None,
                 None,
@@ -1296,7 +1296,7 @@ mod minimal {
 
             let scan = Scan::new(
                 Some(hashmap! {
-                    0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                    0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                 }),
                 None,
                 Some(vec![1, 7]),
@@ -1330,7 +1330,7 @@ mod minimal {
 
                 let scan = Scan::new(
                     Some(hashmap! {
-                        0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                        0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                     }),
                     Some(vec![0, 2, 4]),
                     None,
@@ -1359,7 +1359,7 @@ mod minimal {
 
                 let scan = Scan::new(
                     Some(hashmap! {
-                        0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                        0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                     }),
                     Some(vec![2, 4]),
                     None,
@@ -1389,7 +1389,7 @@ mod minimal {
 
                 let scan = Scan::new(
                     Some(hashmap! {
-                        0 => vec![ScanFilter::U64(ScanFilterOp::Lt(4))]
+                        0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                     }),
                     Some(vec![2, 4, 7]),
                     None,
@@ -1419,7 +1419,7 @@ mod benches {
 
                 let scan = Scan::new(
                     Some(hashmap! {
-                        $idx => vec![ScanFilterOp::Lt($value).into()]
+                        $idx => vec![vec![ScanFilterOp::Lt($value).into()]]
                     }),
                     None,
                     None,
@@ -1440,7 +1440,7 @@ mod benches {
 
                 let scan = Scan::new(
                     Some(hashmap! {
-                        $idx => vec![ScanFilterOp::Lt($value).into()]
+                        $idx => vec![vec![ScanFilterOp::Lt($value).into()]]
                     }),
                     None,
                     None,

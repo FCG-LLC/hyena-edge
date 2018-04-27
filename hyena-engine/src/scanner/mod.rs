@@ -1,3 +1,90 @@
+//! # Scan API
+//!
+//! This module contains tools for preparing scan requests.
+//!
+//! ## Filtering
+//!
+//! Hyena currently supports filtering with expressions in form
+//!
+//! ```python
+//! (A && B) || (C && D)
+//! ```
+//! where A, B, C, D are column filter expressions.
+//!
+//! ### Example
+//!
+//! ```rust
+//! # #[macro_use]
+//! # extern crate hyena_common;
+//! # extern crate hyena_engine;
+//! # use hyena_engine::{ScanFilters, ScanFilter, ScanFilterOp};
+//! // with schema:
+//!
+//! // 1 -> source_id
+//! // 2 -> col1
+//! // 3 -> col2
+//!
+//! // (source_id > 1 && source_id < 3 && col1 > 1 && col1 < 3) || (col1 < 7 && col2 == 12)
+//!
+//! # fn main() {
+//!
+//! let filters: ScanFilters = hashmap! {
+//!     1 => vec![  // OR
+//!         vec![   // AND #0, source_id > 1 && source_id > 3
+//!                  ScanFilter::from(ScanFilterOp::Gt(1)),
+//!                  ScanFilter::from(ScanFilterOp::Lt(3)),
+//!         ],
+//!         // AND #1, implied `true`
+//!     ],
+//!     2 => vec![  // OR
+//!         vec![   // AND #0, col1 > 1 && col1 < 3
+//!             ScanFilter::from(ScanFilterOp::Lt(3)),
+//!             ScanFilter::from(ScanFilterOp::Gt(1)),
+//!         ],
+//!         vec![   // AND #1, col1 < 7
+//!             ScanFilter::from(ScanFilterOp::Lt(7)),
+//!         ],
+//!     ],
+//!     3 => vec![  // OR
+//!         vec![   // AND #0, implied `true`
+//!             ],
+//!         vec![   // AND #1, col2 == 12
+//!             ScanFilter::from(ScanFilterOp::Eq(12)),
+//!         ],
+//!     ],
+//! };
+//!
+//! # }
+//! ```
+//!
+//! ```text
+//! AND:
+//!
+//! #0: (source_id > 1 && source_id < 3 && col1 > 1 && col1 < 3)
+//!     filters[1][0] && filters[2][0] && filters[3][0]
+//!     Because filters[3][0] is empty, we assume it's `true`
+//!
+//! #1: (col1 < 7 && col2 == 12)
+//!     filters[1][1] && filters[2][1] && filters[3][1]
+//!     Because filters[1][1] is not present, we assume it's `true`
+//!
+//! OR:
+//!
+//! #0 || #1
+//!
+//! +---------------+-----------+-------------+
+//! | column        |  and #0 ↓ |   and #1 ↓  |
+//! +---------------+-----------+-------------+
+//! | source_id (1) | > 1, < 3  |             |
+//! +---------------+-----------+-------------+
+//! | col1 (2)      | > 1, < 3  |     < 7     |
+//! +--------+------+-----------+-------------+
+//! | col2 (3)      |           |     = 12    |
+//! +===============+===========+=============+
+//! |      OR →     |   AND #0  |    AND #1   |
+//! +---------------+-----------+-------------+
+//! ```
+
 use error::*;
 use ty::ColumnId;
 use hyena_common::collections::{HashMap, HashSet};
@@ -10,8 +97,12 @@ use ty::fragment::Fragment;
 use extprim::i128::i128;
 use extprim::u128::u128;
 
-pub type ScanFilters = HashMap<ColumnId, Vec<ScanFilter>>;
+pub type ScanFilters = OrScanFilters;
 pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
+
+pub type OrScanFilters = HashMap<ColumnId, Vec<AndScanFilters>>;
+pub type AndScanFilters = Vec<ScanFilter>;
+
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -19,24 +110,35 @@ pub struct Scan {
     pub(crate) partitions: Option<HashSet<PartitionId>>,
     pub(crate) groups: Option<Vec<SourceId>>,
     pub(crate) projection: Option<Vec<ColumnId>>,
-    pub(crate) filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
+    pub(crate) filters: Option<ScanFilters>,
+    pub(crate) or_clauses_count: usize,
 }
 
 impl Scan {
     pub fn new(
-        filters: Option<HashMap<ColumnId, Vec<ScanFilter>>>,
+        filters: Option<ScanFilters>,
         projection: Option<Vec<ColumnId>>,
         groups: Option<Vec<SourceId>>,
         partitions: Option<HashSet<PartitionId>>,
         ts_range: Option<ScanTsRange>,
     ) -> Scan {
+        let or_clauses_count = filters
+            .as_ref()
+            .map(|filters| Self::count_or_clauses(filters))
+            .unwrap_or_default();
+
         Scan {
             filters,
             projection,
             groups,
             partitions,
             ts_range,
+            or_clauses_count,
         }
+    }
+
+    pub(crate) fn count_or_clauses(filters: &ScanFilters) -> usize {
+        filters.iter().map(|(_, and_filters)| and_filters.len()).max().unwrap_or_default()
     }
 }
 

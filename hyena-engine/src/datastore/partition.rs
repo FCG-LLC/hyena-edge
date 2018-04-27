@@ -165,14 +165,15 @@ impl<'part> Partition<'part> {
         // full ts range
 
         let rowids = if let Some(ref filters) = scan.filters {
-            let rowids = self.filter(filters)?;
+            let rowids = self.filter(filters, scan.or_clauses_count)?;
 
             // this is superfluous if we're dealing with dense blocks only
             // as it doesn't matter if rowids are sorted then
             // but it still should be cheaper than converting for each sparse block separately
 
             let mut rowids = Vec::from_iter(rowids.into_iter());
-            rowids.sort_unstable();
+
+            rowids.par_sort_unstable();
 
             Some(rowids)
         } else {
@@ -195,64 +196,82 @@ impl<'part> Partition<'part> {
     /// `HashSet` with matching `RowId`s
 
     #[inline]
-    fn filter(&self, filters: &ScanFilters) -> Result<HashSet<usize>> {
-        filters
+    fn filter(&self, filters: &ScanFilters, or_clauses_count: usize) -> Result<HashSet<usize>> {
+        let result = filters
             .par_iter()
-            .map(|(block_id, filters)| {
+            .fold(|| vec![Some(HashSet::new()); or_clauses_count],
+                |mut acc, (block_id, or_filters)| {
                 if let Some(block) = self.blocks.get(block_id) {
                     let block = acquire!(read block);
 
-                    Some(map_block!(map block, blk, {
-                        let mut ret = Vec::new();
-                        let mut rowid = 0;
+                    map_block!(map block, blk, {
+                        blk.as_slice().iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(val)) {
+                                                result.insert(rowid);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
 
-                        for val in blk.as_slice().iter() {
-                            if filters.iter().all(|f| f.apply(val)) {
-                                ret.push(rowid)
-                            }
-
-                            rowid += 1;
-                        }
-
-                        ret.into_iter().collect()
                     }, {
-                        let mut ret = Vec::new();
-
                         let (idx, data) = blk.as_indexed_slice();
-                        let mut rowid = 0;
 
-                        for val in data.iter() {
-                            if filters.iter().all(|f| f.apply(val)) {
-                                // this is a safe cast u32 -> usize
-                                ret.push(idx[rowid] as usize)
-                            }
-
-                            rowid += 1;
-                        }
-
-                        ret.into_iter().collect()
-                    }))
-                } else {
-                    // if this is a sparse block, then it's a valid case
-                    // so we'll leave the decision whether scan failed or not here
-                    // to our caller (who has access to the catalog)
-
-                    Some(HashSet::new())
+                        data.iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(val)) {
+                                                // this is a safe cast u32 -> usize
+                                                result.insert(idx[rowid] as usize);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
+                    })
                 }
+
+                acc
             })
             .reduce(
-                || None,
+                || vec![None; or_clauses_count],
                 |a, b| {
-                    if a.is_none() {
-                        b
-                    } else if b.is_none() {
-                        a
-                    } else {
-                        Some(a.unwrap().intersection(&b.unwrap()).map(|v| *v).collect())
-                    }
+                    a.into_iter().zip(b.into_iter())
+                        .map(|(a, b)| {
+                            if a.is_none() {
+                                b
+                            } else if b.is_none() {
+                                a
+                            } else {
+                                Some(a.unwrap().intersection(&b.unwrap()).cloned().collect())
+                            }
+                        })
+                        .collect()
                 },
-            )
-            .ok_or_else(|| err_msg("scan error"))
+            );
+
+            if result.iter().any(|result| result.is_none()) {
+                Err(err_msg("scan error: an empty filter variant was provided"))
+            } else {
+                Ok(result.into_iter()
+                    .fold(HashSet::new(), |a, b| {
+                        a.union(&b.unwrap()).cloned().collect()
+                    }))
+            }
     }
 
     /// Materialize scan results with given projection
@@ -924,80 +943,299 @@ mod tests {
     mod scan {
         use super::*;
 
+//     +--------+----+------+------+
+//     | rowidx | ts | col1 | col2 |
+//     +--------+----+------+------+
+//     |   0    | 1  |      | 10   |
+//     +--------+----+------+------+
+//     |   1    | 2  | 1    | 20   |
+//     +--------+----+------+------+
+//     |   2    | 3  |      |      |
+//     +--------+----+------+------+
+//     |   3    | 4  | 2    |      |
+//     +--------+----+------+------+
+//     |   4    | 5  |      |      |
+//     +--------+----+------+------+
+//     |   5    | 6  | 3    | 30   |
+//     +--------+----+------+------+
+//     |   6    | 7  |      |      |
+//     +--------+----+------+------+
+//     |   7    | 8  |      |      |
+//     +--------+----+------+------+
+//     |   8    | 9  | 4    | 7    |
+//     +--------+----+------+------+
+//     |   9    | 10 |      | 8    |
+//     +--------+----+------+------+
+
+        macro_rules! scan_test_init {
+            () => {{
+                use block::BlockType;
+                use self::BlockStorage::Memory;
+                use ty::fragment::FragmentRef;
+
+                let root = tempdir!();
+
+                let ts = 0;
+
+                let mut part = Partition::new(&root, Partition::gen_id(), ts)
+                    .with_context(|_| "Failed to create partition")
+                    .unwrap();
+
+                let blocks = hashmap! {
+                    0 => Memory(BlockType::U64Dense),
+                    1 => Memory(BlockType::U8Sparse),
+                    2 => Memory(BlockType::U16Sparse),
+                }.into();
+
+                let frags = hashmap! {
+                    0 => Fragment::from(vec![1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                    1 => Fragment::from((vec![
+                        1_u8, 2, 3, 4,
+                    ], vec![
+                        1_u32, 3, 5, 8,
+                    ])),
+                    2 => Fragment::from((vec![
+                        10_u16, 20, 30, 7, 8,
+                    ], vec![
+                        0_u32, 1, 5, 8, 9,
+                    ])),
+                };
+
+                let refs = frags.iter()
+                    .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
+                    .collect();
+
+                part.append(&blocks, &refs, 0).expect("Partition append failed");
+
+                (root, part, ts)
+            }};
+        }
+
+        mod filter {
+            use super::*;
+            use scanner::{ScanFilter, ScanFilterOp};
+
+            mod and {
+                use super::*;
+
+                // ts < 4 && ts > 1
+
+                #[test]
+                fn single_column() {
+                    let (_root, part, _) = scan_test_init!();
+
+                    let expected = hashset!{1, 2};
+
+                    let filters = hashmap! {
+                            0 => vec![
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                    ScanFilter::U64(ScanFilterOp::Gt(1))
+                                ]
+                            ]
+                        };
+
+                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                        .expect("filter failed");
+
+                    assert_eq!(expected, result);
+                }
+
+                // ts < 4 && ts > 1 && source < 2
+
+                #[test]
+                fn multiple_columns() {
+                    let (_root, part, _) = scan_test_init!();
+
+                    let expected = hashset!{1};
+
+                    let filters = hashmap! {
+                            0 => vec![
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                    ScanFilter::U64(ScanFilterOp::Gt(1))
+                                ]
+                            ],
+                            1 => vec![
+                                vec![
+                                    ScanFilter::U8(ScanFilterOp::Lt(2))
+                                ]
+                            ]
+                        };
+
+                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                        .expect("filter failed");
+
+                    assert_eq!(expected, result);
+                }
+            }
+
+
+            mod or {
+                use super::*;
+
+                // (ts < 4 && ts > 1) || (ts > 7 && ts < 9)
+
+                #[test]
+                fn single_column() {
+                    let (_root, part, _) = scan_test_init!();
+
+                    let expected = hashset!{1, 2, 7};
+
+                    let filters = hashmap! {
+                            0 => vec![
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                    ScanFilter::U64(ScanFilterOp::Gt(1))
+                                ],
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Gt(7)),
+                                    ScanFilter::U64(ScanFilterOp::Lt(9))
+                                ]
+                            ]
+                        };
+
+                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                        .expect("filter failed");
+
+                    assert_eq!(expected, result);
+                }
+
+                // (ts < 4 && ts > 1 && source < 2) || (ts > 5 && source > 3 && source <= 4)
+
+                #[test]
+                fn multiple_columns() {
+                    let (_root, part, _) = scan_test_init!();
+
+                    let expected = hashset!{1, 8};
+
+                    let filters = hashmap! {
+                            0 => vec![
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                    ScanFilter::U64(ScanFilterOp::Gt(1))
+                                ],
+                                vec![
+                                    ScanFilter::U64(ScanFilterOp::Gt(5))
+                                ]
+                            ],
+                            1 => vec![
+                                vec![
+                                    ScanFilter::U8(ScanFilterOp::Lt(2))
+                                ],
+                                vec![
+                                    ScanFilter::U8(ScanFilterOp::Gt(3)),
+                                    ScanFilter::U8(ScanFilterOp::LtEq(4))
+                                ]
+                            ]
+                        };
+
+                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                        .expect("filter failed");
+
+                    assert_eq!(expected, result);
+                }
+            }
+
+            #[cfg(all(feature = "nightly", test))]
+            mod benches {
+                use test::{Bencher, black_box};
+                use scanner::{ScanFilter, ScanFilterOp, Scan};
+                use super::*;
+
+                mod and {
+                    use super::*;
+
+                    #[bench]
+                    fn single_column_one_filter(b: &mut Bencher) {
+                        let (_root, part, _) = scan_test_init!();
+
+                        let filters = hashmap! {
+                            0 => vec![vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                            ]],
+                        };
+
+                        b.iter(|| {
+                            let result = part
+                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .expect("Filter failed");
+                            black_box(&result);
+                        })
+                    }
+
+                    #[bench]
+                    fn single_column_two_filters(b: &mut Bencher) {
+                        let (_root, part, _) = scan_test_init!();
+
+                        let filters = hashmap! {
+                            0 => vec![vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1)),
+                            ]],
+                        };
+
+                        b.iter(|| {
+                            let result = part
+                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .expect("Filter failed");
+                            black_box(&result);
+                        })
+                    }
+
+                    #[bench]
+                    fn multi_columns_one_filter(b: &mut Bencher) {
+                        let (_root, part, _) = scan_test_init!();
+
+                        let filters = hashmap! {
+                            0 => vec![vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                            ]],
+                            1 => vec![vec![
+                                ScanFilter::U8(ScanFilterOp::Gt(2)),
+                            ]],
+                        };
+
+                        b.iter(|| {
+                            let result = part
+                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .expect("Filter failed");
+                            black_box(&result);
+                        })
+                    }
+
+                    #[bench]
+                    fn multi_columns_two_filters(b: &mut Bencher) {
+                        let (_root, part, _) = scan_test_init!();
+
+                        let filters = hashmap! {
+                            0 => vec![vec![
+                                ScanFilter::U64(ScanFilterOp::Lt(4)),
+                                ScanFilter::U64(ScanFilterOp::Gt(1)),
+                            ]],
+                            1 => vec![vec![
+                                ScanFilter::U8(ScanFilterOp::Gt(2)),
+                                ScanFilter::U8(ScanFilterOp::Lt(4)),
+                            ]],
+                        };
+
+                        b.iter(|| {
+                            let result = part
+                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .expect("Filter failed");
+                            black_box(&result);
+                        })
+                    }
+                }
+            }
+        }
+
         mod materialize {
             use super::*;
 
-//         +--------+----+------+------+
-//         | rowidx | ts | col1 | col2 |
-//         +--------+----+------+------+
-//         |   0    | 1  |      | 10   |
-//         +--------+----+------+------+
-//         |   1    | 2  | 1    | 20   |
-//         +--------+----+------+------+
-//         |   2    | 3  |      |      |
-//         +--------+----+------+------+
-//         |   3    | 4  | 2    |      |
-//         +--------+----+------+------+
-//         |   4    | 5  |      |      |
-//         +--------+----+------+------+
-//         |   5    | 6  | 3    | 30   |
-//         +--------+----+------+------+
-//         |   6    | 7  |      |      |
-//         +--------+----+------+------+
-//         |   7    | 8  |      |      |
-//         +--------+----+------+------+
-//         |   8    | 9  | 4    | 7    |
-//         +--------+----+------+------+
-//         |   9    | 10 |      | 8    |
-//         +--------+----+------+------+
-
-            macro_rules! materialize_test_init {
-                () => {{
-                    use block::BlockType;
-                    use self::BlockStorage::Memory;
-                    use ty::fragment::FragmentRef;
-
-                    let root = tempdir!();
-
-                    let ts = 0;
-
-                    let mut part = Partition::new(&root, Partition::gen_id(), ts)
-                        .with_context(|_| "Failed to create partition")
-                        .unwrap();
-
-                    let blocks = hashmap! {
-                        0 => Memory(BlockType::U64Dense),
-                        1 => Memory(BlockType::U8Sparse),
-                        2 => Memory(BlockType::U16Sparse),
-                    }.into();
-
-                    let frags = hashmap! {
-                        0 => Fragment::from(vec![1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
-                        1 => Fragment::from((vec![
-                            1_u8, 2, 3, 4,
-                        ], vec![
-                            1_u32, 3, 5, 8,
-                        ])),
-                        2 => Fragment::from((vec![
-                            10_u16, 20, 30, 7, 8,
-                        ], vec![
-                            0_u32, 1, 5, 8, 9,
-                        ])),
-                    };
-
-                    let refs = frags.iter()
-                        .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
-                        .collect();
-
-                    part.append(&blocks, &refs, 0).expect("Partition append failed");
-
-                    (root, part, ts)
-                }};
-            }
-
             #[test]
             fn continuous() {
-                let (_root, part, _) = materialize_test_init!();
+                let (_root, part, _) = scan_test_init!();
 
                 let rowids = vec![1_usize, 2, 3];
 
@@ -1015,7 +1253,7 @@ mod tests {
 
             #[test]
             fn non_continuous() {
-                let (_root, part, _) = materialize_test_init!();
+                let (_root, part, _) = scan_test_init!();
 
                 let rowids = vec![0_usize, 1, 3, 8];
 
@@ -1038,7 +1276,7 @@ mod tests {
 
                 #[bench]
                 fn continuous(b: &mut Bencher) {
-                    let (_root, part, _) = materialize_test_init!();
+                    let (_root, part, _) = scan_test_init!();
 
                     let rowids = vec![1_usize, 2, 3];
 
@@ -1052,7 +1290,7 @@ mod tests {
 
                 #[bench]
                 fn non_continuous(b: &mut Bencher) {
-                    let (_root, part, _) = materialize_test_init!();
+                    let (_root, part, _) = scan_test_init!();
 
                     let rowids = vec![0_usize, 1, 3, 8];
 
