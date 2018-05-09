@@ -34,7 +34,7 @@ hyena-test = { path = "../hyena-test" }
 
 [features]
 parse_msg = ["regex", "clap", "nanomsg-multi-server"]
-gen_test_out = ["clap", "rand", "uuid"]
+gen_test_out = ["clap", "rand", "uuid", "nanomsg-multi-server"]
 
 [[bin]]
 name = "parse_msg"
