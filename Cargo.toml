@@ -50,3 +50,5 @@ optional = false
 [features]
 default = []
 nightly = ["hyena-common/nightly", "hyena-engine/nightly"]
+debug = ["hyena-engine/debug"]
+

@@ -38,6 +38,14 @@ features = [
 optional = false
 version = "0.5.1"
 
+[dependencies.prettytable-rs]
+optional = true
+version = "0.7.0"
+
+[dependencies.term]
+optional = true
+version = "0.5.1"
+
 [dev-dependencies]
 num = "0.1.41"
 rand = "0.4.1"
@@ -53,3 +61,4 @@ mmap = ["memmap"]
 persistent_test_data = ["hyena-test/persistent_test_data"]
 nightly = []
 perf = []
+debug = ["prettytable-rs", "term"]
