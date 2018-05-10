@@ -68,9 +68,49 @@ impl<'cat> Catalog<'cat> {
         Catalog::with_data(root.as_ref()).or_else(|_| Catalog::new(root.as_ref()))
     }
 
+    #[cfg(feature = "validate_append")]
+    fn validate_append(&self, data: &Append) -> bool {
+        let ts_len = data.ts.len();
+
+        data.data.iter()
+            .all(|(_col, fragment)| {
+
+                // check fragment length for dense blocks
+                if !fragment.is_sparse() {
+                    if ts_len != fragment.len() {
+                        error!("Dense append fragment has different length than ts");
+
+                        return false;
+                    }
+
+                } else {
+                    if ts_len > fragment.len() {
+                        error!("Sparse append fragment longer than ts");
+
+                        return false;
+                    }
+
+                    if fragment.iter().any(|(idx, _)| idx >= ts_len) {
+                        error!("Sparse append fragment has index greater than ts length");
+
+                        return false;
+                    }
+                }
+
+                true
+            })
+    }
+
     pub fn append(&self, data: &Append) -> Result<usize> {
         if data.is_empty() {
             bail!("Provided Append contains no data");
+        }
+
+        #[cfg(feature = "validate_append")]
+        {
+            if !self.validate_append(&data) {
+                bail!("Provided Append is not consistent");
+            }
         }
 
         // dispatch to proper PartitionGroup

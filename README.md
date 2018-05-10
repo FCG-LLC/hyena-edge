@@ -18,6 +18,12 @@ It supports parallel scans and appends execution with limited mutation support f
 -t, --transport <transport>        Nanomsg transport [default: ipc]  [possible values: tcp, ipc, ws]
 ```
 
+## Compile-time feature flags
+
+- nightly - signal that the nightly compiler is in use, allows running benches
+- debug - compile with the debug table tools module, provides `DebugTable` trait and impls
+- validate_append - enable validation of incoming Append data, this can have noticeable impact on performance
+
 ## Architecture
 
 The main design choices of Hyena:
