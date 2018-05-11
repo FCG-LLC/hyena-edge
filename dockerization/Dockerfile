@@ -1,24 +1,30 @@
 FROM portus.cs.int:5000/prod/cs-base
-LABEL maintainer="<devops@collective-sense.com>"
-ARG destEnv
-# ARG debVer
-
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install apt-transport-https -y --force-yes
+ARG destEnv="sandbox"
+ARG commitSha="unknown"
+ARG commitRef="unknown"
+ARG ciJobId="unknown"
 
-RUN groupadd -g 10033 hyena
-RUN adduser --no-create-home --system --shell /bin/false --gecos 'hyena dedicated user' --uid 10033 --gid 10033 --disabled-password hyena
+LABEL maintainer="<devops@collective-sense.com>" \
+	com.collective-sense.build-info.sha="${commitSha}" \
+	com.collective-sense.build-info.ref="${commitRef}" \
+	com.collective-sense.build-info.ci-id="${ciJobId}"
 
-RUN echo "deb http://aptly.cs.int/public xenial $destEnv" >> /etc/apt/sources.list
-RUN printf "Package: * \nPin: release a=xenial, o=aptly.cs.int \nPin-Priority: 1600 \n" > /etc/apt/preferences
+RUN echo "deb http://aptly.cs.int/public xenial $destEnv" >> /etc/apt/sources.list \
+	&& printf "Package: * \nPin: release a=xenial, o=aptly.cs.int \nPin-Priority: 1600 \n" > /etc/apt/preferences
 
-RUN apt-get update
-#    && apt-get install -y hyena=$debVer
+RUN groupadd -g 10033 hyena \
+	&& adduser --no-create-home --system --shell /bin/false --gecos 'hyena dedicated user' --uid 10033 --gid 10033 --disabled-password hyena
 
 COPY *.deb /tmp
 
-RUN (dpkg -i /tmp/*.deb || true) && apt-get install -fy && rm /tmp/*.deb
+RUN apt-get update \
+	&& (dpkg -i /tmp/*.deb || true) \
+	&& apt-get install -fy --no-install-recommends \
+	&& apt-get clean \
+	&& rm -rf /var/lib/apt/lists \
+	&& rm /tmp/*.deb
 
 USER hyena
 

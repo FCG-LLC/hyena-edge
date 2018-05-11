@@ -226,7 +226,14 @@ docker:master-portus:
     for dockerfile in ${DOCKERFILES_TO_BUILD}; do
         echo "Building ${DOCKER_IMAGE_BUILD_DIR}/${dockerfile}..."
 
-        sudo docker build --file ${dockerfile} --build-arg destEnv=${DEST_ENV} --no-cache -t ${LOCAL_DOCKER_IMAGE} .
+        sudo docker build \
+            --file ${dockerfile} \
+            --build-arg destEnv="${DEST_ENV}" \
+            --build-arg commitSha="${CI_COMMIT_SHA}" \
+            --build-arg commitRef="${CI_COMMIT_REF_NAME}" \
+            --build-arg ciJobId="${CI_JOB_ID}" \
+            --no-cache \
+            -t ${LOCAL_DOCKER_IMAGE} .
         sudo docker tag ${LOCAL_DOCKER_IMAGE} portus.cs.int:5000/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
     done
 
@@ -288,8 +295,11 @@ test:tests:
     #script:
     #- cargo bench --all
 
-deploy:int:
+deploy:int01:
   stage: deploy
+  #environment:
+    #name: int01
+    #url: https://int01.cs.int
   variables:
     DEST_ENV: int
     HOST_KEY: |
@@ -313,6 +323,9 @@ deploy:int:
 
 deploy:int02:
   stage: deploy
+  #environment:
+    #name: int02
+    #url: https://int02.cs.int
   variables:
     DEST_ENV: int
     HOST_KEY: |
