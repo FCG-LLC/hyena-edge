@@ -32,8 +32,8 @@ before_script:
   - mkdir -p $CARGO_HOME
 
   ## Install build prerequisites
-  - sudo add-apt-repository "deb http://aptly.cs.int/public xenial int"
   - wget http://aptly.cs.int/public/cs-repo.key -O - | sudo apt-key add -
+  - sudo add-apt-repository "deb http://aptly.cs.int/public xenial int"
   - sudo apt-get update
   - sudo apt-get install -y libnanomsg5 libnanomsg-dev
 
