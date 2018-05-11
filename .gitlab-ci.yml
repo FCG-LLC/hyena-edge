@@ -151,6 +151,8 @@ package:master-deb:
 
 docker-image:master-portus:
   stage: docker-image
+  variables:
+    DEST_ENV: int
   tags:
   - rust
   - hyena
@@ -160,7 +162,7 @@ docker-image:master-portus:
   - >
     sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
   - >
-    .ci-utils/build.hyena-gitlab.sh
+    destEnv=$DEST_ENV .ci-utils/build.hyena-gitlab.sh
 
 test:clippy:
   stage: test

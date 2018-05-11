@@ -6,7 +6,7 @@ BUILD_DOCKER_IMAGE=true
 DOCKERFILES_TO_BUILD="Dockerfile"
 DOCKER_IMAGE_BUILD_DIR="dockerization"
 
-destEnv="dev"
+destEnv="${destEnv:-dev}"
 
 function retry() {
   count=$1
