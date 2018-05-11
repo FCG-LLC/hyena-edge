@@ -142,7 +142,7 @@ package:master-deb:
   - cp -rvf README.md build/source/
   - pushd build/source
   - >
-    debuild --no-tgz-check -i -I -us -uc -b
+    debuild --no-tgz-check -i -I -us -uc -b -Zgzip
   - popd
   artifacts:
     paths:
