@@ -34,14 +34,14 @@ before_script:
   ## Install build prerequisites
   - wget http://aptly.cs.int/public/cs-repo.key -O - | sudo apt-key add -
   - sudo add-apt-repository "deb http://aptly.cs.int/public xenial int"
-  #- sudo apt-get update
   - sudo apt-get install -y libnanomsg5 libnanomsg-dev
 
 stages:
   - test
   - build
   - package
-  - docker-image
+  - docker
+  - publish
   - deploy
   - bench
 
@@ -137,8 +137,18 @@ package:master-deb:
     export SHORT_COMMIT=${CI_COMMIT_SHA:0:8}
   - >
     export VERSION="$(date -u +"%Y%m%d%H%M%S")-$SHORT_COMMIT"
-  - >
-    .ci-utils/prepare-deb-package.sh ${VERSION}
+  - |
+    if [ $VERSION ]; then
+        VERSION="-$VERSION"
+    fi
+
+    LAST_VERSION="$(head -n 1 debian/changelog)"
+    CHANGELOG_MSG="  * hyena development branch"
+    TRAILER_LINE=" -- DevOps <devops@collective-sense.com>  `date -R`"
+
+    echo -e "$LAST_VERSION\n\n$CHANGELOG_MSG\n\n$TRAILER_LINE\n\n$(cat debian/changelog)\n" > debian/changelog
+
+    sed -i "0,/)/ s/)/$VERSION)/" debian/changelog
   - cat debian/changelog
   - mkdir -p build/source
   - mv debian build/source/debian
@@ -153,10 +163,11 @@ package:master-deb:
     - build/*.deb
     expire_in: 1 week
 
-docker-image:master-aptly:
-  stage: docker-image
+publish:master-aptly:
+  stage: publish
   variables:
     DEST_ENV: int
+    APTLY_SERVER: aptly.cs.int
   allow_failure: true
   cache:
     paths: []
@@ -168,13 +179,31 @@ docker-image:master-aptly:
   - master
   - ci_changes
   script:
-  - >
-    destEnv=$DEST_ENV .ci-utils/push-to-aptly.sh
+  - |
+    APTLY_HTTP="http://${APTLY_SERVER}:8080"
 
-docker-image:master-portus:
-  stage: docker-image
+    cd build
+
+    DEB_PACKAGES=$(ls *.deb)
+
+    # upload
+
+    for deb in ${DEB_PACKAGES}; do
+        curl -X POST -F file=@${deb} ${APTLY_HTTP}/api/files/${deb%_amd64.*}
+        curl -X POST ${APTLY_HTTP}/api/repos/${DEST_ENV}/file/${deb%_amd64.*}
+    done
+
+    # publish
+    ssh -o StrictHostKeyChecking=no -tt aptly@${APTLY_SERVER}
+
+docker:master-portus:
+  stage: docker
   variables:
     DEST_ENV: int
+    DOCKERFILES_TO_BUILD: Dockerfile
+    DOCKER_IMAGE_BUILD_DIR: dockerization
+    LOCAL_DOCKER_IMAGE: "cs/hyena"
+    PORTUS_DOCKER_IMAGE: "cs-hyena"
   cache:
     paths: []
     policy: pull
@@ -186,8 +215,44 @@ docker-image:master-portus:
   script:
   - >
     sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
-  - >
-    destEnv=$DEST_ENV .ci-utils/build.hyena-gitlab.sh
+  - |
+    DEB_PACKAGES=$(ls build/*.deb)
+
+    # copy DEB_PACKAGES
+    cp -vf $DEB_PACKAGES ${DOCKER_IMAGE_BUILD_DIR}/
+
+    cd ${DOCKER_IMAGE_BUILD_DIR}
+
+    for dockerfile in ${DOCKERFILES_TO_BUILD}; do
+        echo "Building ${DOCKER_IMAGE_BUILD_DIR}/${dockerfile}..."
+
+        sudo docker build --file ${dockerfile} --build-arg destEnv=${DEST_ENV} --no-cache -t ${LOCAL_DOCKER_IMAGE} .
+        sudo docker tag ${LOCAL_DOCKER_IMAGE} portus.cs.int:5000/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
+    done
+
+publish:master-portus:
+    stage: publish
+    retry: 2
+    variables:
+      DEST_ENV: int
+      DOCKERFILES_TO_BUILD: Dockerfile
+      DOCKER_IMAGE_BUILD_DIR: dockerization
+      LOCAL_DOCKER_IMAGE: "cs/hyena"
+      PORTUS_DOCKER_IMAGE: "cs-hyena"
+    cache:
+      paths: []
+      policy: pull
+    tags:
+    - rust
+    - hyena
+    only:
+    - master
+    - ci_changes
+    script:
+    - >
+      sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
+    - >
+      sudo docker push portus.cs.int:5000/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
 
 test:clippy:
   stage: test
