@@ -9,12 +9,14 @@ extern crate hyena_api;
 extern crate hyena_engine;
 extern crate rand;
 extern crate uuid;
+extern crate nanomsg_multi_server;
 
 use bincode::{serialize, Infinite};
 use clap::{App, Arg, ArgMatches};
 use hyena_api::{Reply, ReplyColumn, RefreshCatalogResponse, PartitionInfo, Error, DataTriple,
                 ScanResultMessage};
 use hyena_engine::{BlockType, Fragment};
+use nanomsg_multi_server::proto::PeerReply;
 use rand::Rng;
 use std::fs::File;
 use std::io::Write;
@@ -100,7 +102,8 @@ fn get_args() -> App<'static, 'static> {
             .short("c")
             .long("command")
             .takes_value(true)
-            .possible_values(&["columns",
+            .possible_values(&["keepalive",
+                               "columns",
                                "catalog",
                                "addcolumn",
                                "insert",
@@ -175,6 +178,13 @@ fn verify_column_data(options: &Options) {
     }
 }
 
+fn gen_keepalive(options: Options) {
+    let peer_reply = PeerReply::KeepAlive;
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
+}
+
 fn gen_columns_vec(options: &Options) -> Vec<ReplyColumn> {
     (0..options.column_ids.len())
         .map(|index| {
@@ -191,7 +201,10 @@ fn gen_columns(options: Options) {
     let reply = Reply::ListColumns(columns);
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn gen_partition_vec(options: &Options) -> Vec<PartitionInfo> {
@@ -217,7 +230,10 @@ fn gen_catalog(options: Options) {
     let reply = Reply::RefreshCatalog(response);
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn gen_add_column(options: Options) {
@@ -232,7 +248,10 @@ fn gen_add_column(options: Options) {
     });
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn gen_insert(options: Options) {
@@ -247,7 +266,10 @@ fn gen_insert(options: Options) {
     });
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn gen_serialize_error(options: Options) {
@@ -258,7 +280,10 @@ fn gen_serialize_error(options: Options) {
     let reply = Reply::SerializeError(options.error_text.unwrap());
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn gen_vec<T: rand::Rand>(rows: usize) -> Vec<T> {
@@ -319,7 +344,10 @@ fn gen_scan(options: Options) {
     });
     let serialized = serialize(&reply, Infinite).unwrap();
 
-    write(&options.output, &serialized);
+    let peer_reply = PeerReply::Response(0, Ok(Some(serialized)));
+    let peer_serialized = serialize(&peer_reply, Infinite).unwrap();
+
+    write(&options.output, &peer_serialized);
 }
 
 fn main() {
@@ -328,6 +356,7 @@ fn main() {
     let options = Options::new(&args);
 
     match command {
+        "keepalive" => gen_keepalive(options),
         "columns" => gen_columns(options),
         "catalog" => gen_catalog(options),
         "addcolumn" => gen_add_column(options),

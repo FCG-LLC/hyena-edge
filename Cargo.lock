@@ -364,6 +364,7 @@ dependencies = [
  "hyena-engine 0.1.0",
  "hyena-test 0.1.0",
  "log 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nanomsg-multi-server 0.1.0 (git+ssh://git@gitlab.cs.int/rust/nanomsg-multi.git)",
  "rand 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 0.2.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.43 (registry+https://github.com/rust-lang/crates.io-index)",

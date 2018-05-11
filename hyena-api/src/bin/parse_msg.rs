@@ -6,25 +6,27 @@
 extern crate clap;
 extern crate hyena_api;
 extern crate regex;
+extern crate nanomsg_multi_server;
 
 use clap::{App, Arg};
 use hyena_api::Request;
+use nanomsg_multi_server::proto::{deserialize, PeerRequest};
 use regex::Regex;
 use std::fs::File;
 use std::io::Read;
 
-fn test_print(request: &Request) {
+fn test_write(request: &Request) -> String {
     match *request {
-        Request::ListColumns => println!("{:?}", request),
-        Request::RefreshCatalog => println!("{:?}", request),
+        Request::ListColumns => format!("{:?}", request),
+        Request::RefreshCatalog => format!("{:?}", request),
         Request::AddColumn(ref req) => {
-            println!("AddColumn {{column_name: {:?}, column_type: {:?}}}",
+            format!("AddColumn {{column_name: {:?}, column_type: {:?}}}",
                      req.column_name,
-                     req.column_type);
+                     req.column_type)
         }
         Request::Insert(ref req) => {
             let r = Regex::new(r"(\d+): (\w+).\[([^\]]+)\].").unwrap();
-            print!("Insert {{source: {}, timestamps: #{}, columns: [",
+            let pre = format!("Insert {{source: {}, timestamps: #{}, columns: [",
                    req.source(),
                    req.timestamps().len());
             let columns = req.columns().iter().fold("".to_owned(), |acc, column| {
@@ -38,10 +40,10 @@ fn test_print(request: &Request) {
                 });
                 if acc == "" { lala } else { acc + ", " + &lala }
             });
-            println!("{} ]}}", columns);
+            format!("{}{} ]}}", pre, columns)
         }
         Request::Scan(ref req) => {
-            println!("Scan {{min_ts: {}, max_ts: {}, partition_ids: #{}, projection: {:?}, \
+            format!("Scan {{min_ts: {}, max_ts: {}, partition_ids: #{}, projection: {:?}, \
                       filters: {:?}}}",
                      req.min_ts,
                      req.max_ts,
@@ -49,7 +51,17 @@ fn test_print(request: &Request) {
                      req.projection,
                      req.filters)
         }
-        _ => println!{"Request type not implemented"},
+        _ => format!{"Request type not implemented"},
+    }
+}
+
+fn test_print_peer_request(pr: &PeerRequest) {
+    match *pr {
+        PeerRequest::Request(ref msg_id, Some(ref msg)) => {
+            let operation = Request::parse(&msg).unwrap();
+            println!("Request: {}, {}", msg_id, test_write(&operation));
+        },
+        ref msg => println!("{:?}", msg)
     }
 }
 
@@ -66,6 +78,6 @@ fn main() {
     let mut msg: Vec<u8> = vec![];
     File::open(filename).unwrap().read_to_end(&mut msg).unwrap();
 
-    let operation = Request::parse(msg).unwrap();
-    test_print(&operation);
+    let operation: PeerRequest = deserialize(&msg).unwrap();
+    test_print_peer_request(&operation);
 }

@@ -18,6 +18,7 @@ serde_derive = "1.0.27"
 log = "0.4.1"
 regex = {version = "0.2", optional = true}
 rand = {version = "0.4", optional = true}
+nanomsg-multi-server = { git = "ssh://git@gitlab.cs.int/rust/nanomsg-multi.git", optional = true }
 
 [dependencies.uuid]
 features = [
@@ -32,8 +33,8 @@ version = "0.5.1"
 hyena-test = { path = "../hyena-test" }
 
 [features]
-parse_msg = ["regex", "clap"]
-gen_test_out = ["clap", "rand", "uuid"]
+parse_msg = ["regex", "clap", "nanomsg-multi-server"]
+gen_test_out = ["clap", "rand", "uuid", "nanomsg-multi-server"]
 
 [[bin]]
 name = "parse_msg"
