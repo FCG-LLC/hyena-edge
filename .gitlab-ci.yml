@@ -34,7 +34,7 @@ before_script:
   ## Install build prerequisites
   - wget http://aptly.cs.int/public/cs-repo.key -O - | sudo apt-key add -
   - sudo add-apt-repository "deb http://aptly.cs.int/public xenial int"
-  - sudo apt-get update
+  #- sudo apt-get update
   - sudo apt-get install -y libnanomsg5 libnanomsg-dev
 
 stages:
@@ -42,6 +42,7 @@ stages:
   - build
   - package
   - docker-image
+  - deploy
   - bench
 
 cache:
@@ -123,6 +124,9 @@ build:debug:
 
 package:master-deb:
   stage: package
+  cache:
+    paths: []
+    policy: pull
   tags:
   - rust
   - hyena
@@ -149,10 +153,31 @@ package:master-deb:
     - build/*.deb
     expire_in: 1 week
 
+docker-image:master-aptly:
+  stage: docker-image
+  variables:
+    DEST_ENV: int
+  allow_failure: true
+  cache:
+    paths: []
+    policy: pull
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  - ci_changes
+  script:
+  - >
+    destEnv=$DEST_ENV .ci-utils/push-to-aptly.sh
+
 docker-image:master-portus:
   stage: docker-image
   variables:
     DEST_ENV: int
+  cache:
+    paths: []
+    policy: pull
   tags:
   - rust
   - hyena
@@ -197,6 +222,52 @@ test:tests:
     #- hyena-bench
     #script:
     #- cargo bench --all
+
+deploy:int:
+  stage: deploy
+  variables:
+    DEST_ENV: int
+    HOST_KEY: |
+      # int01.cs.int:22 SSH-2.0-OpenSSH_7.2p2 CSprobe
+      int01.cs.int ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCn9GzoSQUoOb3e/OWPvvtp9yMUTU4/lRFFnQeKBkaOkeX1181YitPvFqhWcaqOjeVG3fyFCHrLVD3KZ/NAyFzaaZkoQzy6/kL77Y5IatHGwVz8LxvBhyrkv8/dBghrYOOaOmRuG29wBDnMJ1H3H9/5td+14hthZyJ9FJbxawBfBAW81lom+UZPVSNlW51v/dSrIQUvLZOQJulIeJzQjCKNFCYO35VKlZ0lLwYAtBDtYAdaicW9lUCJQ152GZPLTQHBVN9yKN/pLG5uPZKB7z5Eu/izW87bwPl+PAyBnamvNsKmppKa64KPtoKYLwuBnukFkwbD0vkoyzoJLJAqo4MF
+  cache:
+    paths: []
+    policy: pull
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  - ci_changes
+  script:
+  - echo "$HOST_KEY" >> ~/.ssh/known_hosts
+  - echo "$INT_DEPLOY_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  - >
+    echo "Deploying to INT";
+    ssh -2 jenkins@int01.cs.int hyena;
+
+deploy:int02:
+  stage: deploy
+  variables:
+    DEST_ENV: int
+    HOST_KEY: |
+      # int02.cs.int:22 SSH-2.0-OpenSSH_7.2p2 CSprobe
+      int02.cs.int ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDTuXN1Rc/z6dQYm5h8mRjIUNW75Evs4Paw8qrmLKNZBUQbzXgbZ65oJ9o44EP+COnhnzEzHaGukWPuPIBBnGCIKOWeKGzkunsVaXJB/rRw7s8IO7jW3AgXTRaI0kJ40KlSmAthBVB2bId1ddEqgH8jbAzlp96Z7LwMZnoNds2XljVR1Vq3qRmn3lzTWnnk5AF3GNJenLOkBL7ssNldjIHVSIj+AJGP5UDO3a3IfHCpuGESd6WOaLItFXVOTS5ckmyHaVNh/md8Zws0qQmLDKkkk0/ZfBSu8BPTyJu1xgnsqVmyAIZsbLkhMF4KPOM8TdN+croHhpnEPActj+7q9CDX
+  cache:
+    paths: []
+    policy: pull
+  tags:
+  - rust
+  - hyena
+  only:
+  - master
+  - ci_changes
+  script:
+  - echo "$HOST_KEY" >> ~/.ssh/known_hosts
+  - echo "$INT_DEPLOY_KEY" | tr -d '\r' | ssh-add - > /dev/null
+  - >
+    echo "Deploying to INT2";
+    ssh -2 jenkins@int02.cs.int hyena;
 
 bench:master-std:
   stage: bench
