@@ -51,4 +51,4 @@ optional = false
 default = []
 nightly = ["hyena-common/nightly", "hyena-engine/nightly"]
 debug = ["hyena-engine/debug"]
-
+validate_append = ["hyena-engine/validate_append"]
