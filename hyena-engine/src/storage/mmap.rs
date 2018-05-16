@@ -6,7 +6,7 @@ use memmap::{MmapMut, MmapOptions};
 use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
 
-use super::Storage;
+use super::{Storage, Realloc, ByteStorage};
 
 use hyena_common::map_type::{map_type, map_type_mut};
 
@@ -42,6 +42,18 @@ impl MemmapStorage {
     }
 }
 
+impl Default for MemmapStorage {
+    fn default() -> Self {
+        MemmapStorage {
+            // TODO: this is very suboptimal, as it still causes a full page to be allocated
+            mmap: MmapOptions::new().len(1).map_anon()
+                    .with_context(|_| "empty memmap failed")
+                    .unwrap(),
+            path: Default::default(),
+        }
+    }
+}
+
 impl<'stor, T: 'stor> Storage<'stor, T> for MemmapStorage {
     fn sync(&mut self) -> Result<()> {
         self.mmap
@@ -50,6 +62,8 @@ impl<'stor, T: 'stor> Storage<'stor, T> for MemmapStorage {
             .map_err(|e| e.into())
     }
 }
+
+impl<'stor> ByteStorage<'stor> for MemmapStorage {}
 
 impl<T> AsRef<[T]> for MemmapStorage {
     fn as_ref(&self) -> &[T] {
@@ -60,6 +74,26 @@ impl<T> AsRef<[T]> for MemmapStorage {
 impl<T> AsMut<[T]> for MemmapStorage {
     fn as_mut(&mut self) -> &mut [T] {
         map_type_mut(&mut self.mmap, PhantomData)
+    }
+}
+
+impl Realloc for MemmapStorage {
+    // Realloc (grow/shrink) the storage
+    //
+    // TODO: Currently this is done in a suboptimal manner
+    // as on Linux we have mremap(2), which is not available in memmap-rs
+
+    fn realloc(self, size: usize) -> Result<Self> {
+        // close current mapping
+        let MemmapStorage { mmap, path } = self;
+        drop(mmap);
+
+        // remap the file
+        Self::new(path, size)
+    }
+
+    fn realloc_size(&self) -> usize {
+        <Self as ByteStorage>::size(self)
     }
 }
 
@@ -146,5 +180,53 @@ mod tests {
 
         assert_eq!(&TEST_BYTES[..], &buf[..TEST_BYTES_LEN]);
         assert_eq!(&TEST_BYTES[..], &buf[TEST_BYTES_LEN..TEST_BYTES_LEN * 2]);
+    }
+
+    #[test]
+    fn it_shrinks_mapping() {
+        let (_dir, file) = tempfile!(prefix TEMPDIR_PREFIX);
+
+        {
+            let mut storage = MemmapStorage::new(&file, FILE_SIZE)
+                .with_context(|_| "unable to create MemmapStorage")
+                .unwrap();
+
+            &mut storage.as_mut()[..TEST_BYTES_LEN].copy_from_slice(&TEST_BYTES[..]);
+
+            // realloc
+            storage.realloc(FILE_SIZE / 2)
+                .with_context(|_| "unable to realloc MemmapStorage")
+                .unwrap();
+        }
+
+        assert_file_size!(file, FILE_SIZE / 2);
+
+        let buf: [u8; TEST_BYTES_LEN] = ensure_read!(file, [0; TEST_BYTES_LEN], FILE_SIZE);
+
+        assert_eq!(&TEST_BYTES[..], &buf[..]);
+    }
+
+    #[test]
+    fn it_grows_mapping() {
+        let (_dir, file) = tempfile!(prefix TEMPDIR_PREFIX);
+
+        {
+            let mut storage = MemmapStorage::new(&file, FILE_SIZE)
+                .with_context(|_| "unable to create MemmapStorage")
+                .unwrap();
+
+            &mut storage.as_mut()[..TEST_BYTES_LEN].copy_from_slice(&TEST_BYTES[..]);
+
+            // realloc
+            storage.realloc(FILE_SIZE * 2)
+                .with_context(|_| "unable to realloc MemmapStorage")
+                .unwrap();
+        }
+
+        assert_file_size!(file, FILE_SIZE * 2);
+
+        let buf: [u8; TEST_BYTES_LEN] = ensure_read!(file, [0; TEST_BYTES_LEN], FILE_SIZE);
+
+        assert_eq!(&TEST_BYTES[..], &buf[..]);
     }
 }
