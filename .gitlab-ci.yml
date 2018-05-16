@@ -177,7 +177,6 @@ publish:master-aptly:
   - hyena
   only:
   - master
-  - ci_changes
   script:
   - |
     APTLY_HTTP="http://${APTLY_SERVER}:8080"
@@ -254,7 +253,6 @@ publish:master-portus:
     - hyena
     only:
     - master
-    - ci_changes
     script:
     - >
       sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
@@ -297,9 +295,9 @@ test:tests:
 
 deploy:int01:
   stage: deploy
-  #environment:
-    #name: int01
-    #url: https://int01.cs.int
+  environment:
+    name: int01
+    url: https://int01.cs.int
   variables:
     DEST_ENV: int
     HOST_KEY: |
@@ -313,7 +311,6 @@ deploy:int01:
   - hyena
   only:
   - master
-  - ci_changes
   script:
   - echo "$HOST_KEY" >> ~/.ssh/known_hosts
   - echo "$INT_DEPLOY_KEY" | tr -d '\r' | ssh-add - > /dev/null
@@ -323,9 +320,9 @@ deploy:int01:
 
 deploy:int02:
   stage: deploy
-  #environment:
-    #name: int02
-    #url: https://int02.cs.int
+  environment:
+    name: int02
+    url: https://int02.cs.int
   variables:
     DEST_ENV: int
     HOST_KEY: |
@@ -339,7 +336,6 @@ deploy:int02:
   - hyena
   only:
   - master
-  - ci_changes
   script:
   - echo "$HOST_KEY" >> ~/.ssh/known_hosts
   - echo "$INT_DEPLOY_KEY" | tr -d '\r' | ssh-add - > /dev/null
