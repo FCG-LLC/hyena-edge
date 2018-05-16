@@ -40,6 +40,14 @@ extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 
+#[cfg(feature = "debug")]
+extern crate prettytable;
+#[cfg(feature = "debug")]
+extern crate term;
+
+#[cfg(feature = "debug")]
+pub mod debug;
+
 pub(crate) mod params;
 
 mod error;
