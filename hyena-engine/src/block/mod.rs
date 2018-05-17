@@ -5,8 +5,10 @@ use extprim::u128::u128;
 #[macro_use]
 mod macros;
 mod numeric;
+mod string;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
+// pub(crate) use self::string::DenseStringBlock;
 pub use self::numeric::SparseIndex;
 
 // This will probably get merged into BlockData
