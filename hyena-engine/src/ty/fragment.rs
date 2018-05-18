@@ -23,6 +23,8 @@ pub enum Fragment {
     U64Dense(Vec<u64>),
     U128Dense(Vec<u128>),
 
+    StringDense(Vec<String>),
+
     // Sparse, Signed
     I8Sparse(Vec<i8>, Vec<SparseIndex>),
     I16Sparse(Vec<i16>, Vec<SparseIndex>),
@@ -52,6 +54,8 @@ pub enum FragmentRef<'frag> {
     U32Dense(&'frag [u32]),
     U64Dense(&'frag [u64]),
     U128Dense(&'frag [u128]),
+
+    StringDense(&'frag [String]),
 
     // Sparse, Signed
     I8Sparse(&'frag [i8], &'frag [SparseIndex]),
@@ -131,7 +135,8 @@ macro_rules! frag_apply {
         $other_block: ident, $other_idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ merge $self, $other, $self_block, $self_idx, $other_block, $other_idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -140,7 +145,8 @@ macro_rules! frag_apply {
     (mut $self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ mut $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -149,7 +155,8 @@ macro_rules! frag_apply {
     ($self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -303,12 +310,12 @@ impl Fragment {
 
         frag_apply!(*self, blk, idx, {
             FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(*v))
+                .map(|v| Value::from(v.clone()))
                 .enumerate()), PhantomData)
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
             ), PhantomData)
         })
     }
@@ -402,12 +409,12 @@ impl<'fragref> FragmentRef<'fragref> {
 
         frag_apply!(*self, blk, idx, {
             FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(*v))
+                .map(|v| Value::from(v.clone()))
                 .enumerate()), PhantomData)
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(*blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
             ), PhantomData)
         })
     }
@@ -498,6 +505,20 @@ fragment_variant_impl!(sparse
                        U32Sparse, u32;
                        U64Sparse, u64;
                        U128Sparse, u128;);
+
+// string fragment impls
+
+impl From<Vec<String>> for Fragment {
+    fn from(source: Vec<String>) -> Fragment {
+        Fragment::StringDense(source)
+    }
+}
+
+impl<'frag> From<&'frag [String]> for FragmentRef<'frag> {
+    fn from(source: &'frag [String]) -> FragmentRef<'frag> {
+        FragmentRef::StringDense(source)
+    }
+}
 
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
