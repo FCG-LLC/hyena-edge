@@ -8,7 +8,7 @@ mod numeric;
 mod string;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
-// pub(crate) use self::string::DenseStringBlock;
+pub(crate) use self::string::{DenseStringBlock, RelativeSlice};
 pub use self::numeric::SparseIndex;
 
 // This will probably get merged into BlockData
@@ -122,9 +122,22 @@ pub trait BlockData<'block, T: 'block, I: 'block>
         self.head()
     }
 
+    /// The length of the whole data buffer
+    ///
+    /// This should be interpreted as self.data[..]
+
     #[inline]
     fn size(&self) -> usize {
         self.as_ref().len()
+    }
+
+    /// The length of the free data buffer
+    ///
+    /// This should be interpreted as self.data[self.head..]
+
+    #[inline]
+    fn free_len(&self) -> usize {
+        self.size().saturating_sub(self.len())
     }
 
     #[inline]
@@ -162,6 +175,9 @@ pub enum BlockType {
     U64Dense,
     U128Dense,
 
+    // UTF-8 String
+    StringDense,
+
     // Sparse, Signed
     I8Sparse,
     I16Sparse,
@@ -189,6 +205,7 @@ impl BlockType {
             I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
             I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
             I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
+            StringDense => size_of::<RelativeSlice>(),
         }
     }
 
@@ -202,6 +219,8 @@ impl BlockType {
             I32Dense | U32Dense |
             I64Dense | U64Dense => false,
             I128Dense | U128Dense => false,
+
+            StringDense => false,
 
             I8Sparse | U8Sparse |
             I16Sparse | U16Sparse |
