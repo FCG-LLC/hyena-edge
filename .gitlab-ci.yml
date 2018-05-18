@@ -286,6 +286,13 @@ test:tests:
   script:
   - cargo test --all
 
+test:protocol:
+  stage: test
+  tags:
+  - docker
+  script:
+  - sudo docker run --rm --env HYENA_COMMIT="$CI_COMMIT_SHA" --env HYENA_PRIVATE_KEY="$HYENA_PROTOTEST_PRIVATE_KEY" portus.cs.int:5000/dev/hyena-proto-test
+
 #bench:criterion:
     #stage: bench
     #tags:
