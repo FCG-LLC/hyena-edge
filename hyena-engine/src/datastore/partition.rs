@@ -159,6 +159,17 @@ impl<'part> Partition<'part> {
                     blk.set_written(slen).with_context(|_| "set_written failed")?;
 
                     slen
+                }, {
+                    // dense string handler
+
+                    // destination bounds checking intentionally left out in release builds
+                    let slen = frg.len();
+
+                    frg
+                        .iter()
+                        .map(|value| blk.append_string(value))
+                        .sum::<Result<usize>>()
+                        .with_context(|_| "string block append failed")?
                 });
 
                 written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
@@ -262,6 +273,9 @@ impl<'part> Partition<'part> {
                                         }
                                     });
                             });
+                    }, {
+                        // pooled
+                        // noop
                     })
                 }
 
@@ -431,6 +445,10 @@ impl<'part> Partition<'part> {
                             };
 
                             Fragment::from((d, i))
+                        }, {
+                            // pooled
+                            // noop
+                            Fragment::from(Vec::<u32>::new())
                         }))
                     ))
                 } else {
@@ -781,7 +799,7 @@ mod tests {
                             // destination bounds checking intentionally left out
                             assert_eq!(_blk.len(), _frg.len());
                             assert_eq!(_blk.as_slice(), _frg.as_slice());
-                        }, {}).unwrap()
+                        }, {}, {}).unwrap()
                     },
                 );
         };
@@ -829,7 +847,7 @@ mod tests {
                         _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
                         _blk.set_written(count).unwrap();
 
-                    }, {}).unwrap()
+                    }, {}, {}).unwrap()
                 },
                 );
         }
@@ -1014,6 +1032,8 @@ mod tests {
 
                         }, {
                             // sparse writes are intentionally not implemented
+                        }, {
+                            // pooled dense writes are intentionally not implemented
                         }).unwrap()
                     },
                 );
