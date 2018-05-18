@@ -6,7 +6,7 @@ use std::path::Path;
 //use fs::ensure_file;
 use std::mem::size_of;
 //use std::fs::remove_file;
-use params::BLOCK_SIZE;
+use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -29,6 +29,24 @@ impl<'block> Block<'block> {
         let data = root.join(format!("block_{}.data", id));
 
         MemmapStorage::new(data, size)
+    }
+
+    #[inline]
+    pub(crate) fn prepare_dense_pool_storage<P: AsRef<Path>>(
+        root: P,
+        id: BlockId,
+        size: usize,
+    ) -> Result<(MemmapStorage, MemmapStorage)> {
+
+        let root = root.as_ref();
+        let slice_stor = Block::prepare_dense_storage(&root, id, size)?;
+
+        let pool = root.join(format!("block_{}.pool", id));
+
+        let pool_stor = MemmapStorage::new(pool, STRING_POOL_SIZE)
+            .with_context(|_| "Failed to create pool block for dense string storage")?;
+
+        Ok((slice_stor, pool_stor))
     }
 
     #[inline]
@@ -104,6 +122,21 @@ impl<'block> Block<'block> {
             BlockType::U32Dense => prepare_mmap_dense!(U32DenseBlock<'block, _>),
             BlockType::U64Dense => prepare_mmap_dense!(U64DenseBlock<'block, _>),
             BlockType::U128Dense => prepare_mmap_dense!(U128DenseBlock<'block, _>),
+
+            // String
+            BlockType::StringDense => {
+                let (slice_storage, pool_storage) = Block::prepare_dense_pool_storage(
+                    &root,
+                    block_id,
+                    BLOCK_SIZE
+                )
+                    .with_context(|_| "Failed to create dense string storage")
+                    .unwrap();
+
+                StringDenseBlock::<'block, _, _>::new(slice_storage, pool_storage)
+                    .with_context(|_| "Failed to create block")?
+                    .into()
+            }
 
             // Sparse
             BlockType::I8Sparse => prepare_mmap_sparse!(I8SparseBlock<'block, _, _>, i8),
