@@ -83,6 +83,9 @@ macro_rules! block_apply {
                     U64Dense(ref mut $physblock) => $what,
                     U128Dense(ref mut $physblock) => $what,
 
+                    // String
+                    StringDense(ref mut $physblock) => $what,
+
                     // Sparse, Signed
                     I8Sparse(ref mut $physblock) => $what,
                     I16Sparse(ref mut $physblock) => $what,
@@ -115,6 +118,9 @@ macro_rules! block_apply {
                     U32Dense(ref mut $physblock) => $what,
                     U64Dense(ref mut $physblock) => $what,
                     U128Dense(ref mut $physblock) => $what,
+
+                    // String
+                    StringDense(ref mut $physblock) => $what,
 
                     // Sparse, Signed
                     I8Sparse(ref mut $physblock) => $what,
@@ -158,6 +164,9 @@ macro_rules! block_apply {
                     U64Dense(ref $physblock) => $what,
                     U128Dense(ref $physblock) => $what,
 
+                    // String
+                    StringDense(ref $physblock) => $what,
+
                     // Sparse, Signed
                     I8Sparse(ref $physblock) => $what,
                     I16Sparse(ref $physblock) => $what,
@@ -190,6 +199,9 @@ macro_rules! block_apply {
                     U32Dense(ref $physblock) => $what,
                     U64Dense(ref $physblock) => $what,
                     U128Dense(ref $physblock) => $what,
+
+                    // String
+                    StringDense(ref $physblock) => $what,
 
                     // Sparse, Signed
                     I8Sparse(ref $physblock) => $what,
@@ -249,13 +261,14 @@ macro_rules! map_block {
         $block: expr,
         $bid: ident,
         $dense: block,
-        $sparse: block) => {{
+        $sparse: block,
+        $pooled_dense: block) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        map_block!(@cfg map $block, $bid, $dense, $sparse, $pooled_dense,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -266,7 +279,7 @@ macro_rules! map_block {
             } else {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        map_block!(@cfg map $block, $bid, $dense, $sparse, $pooled_dense,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         mut)
                     }};
@@ -284,13 +297,14 @@ macro_rules! map_block {
         $block: expr,
         $bid: ident,
         $dense: block,
-        $sparse: block) => {{
+        $sparse: block,
+        $pooled_dense: block) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        map_block!(@cfg map $block, $bid, $dense, $sparse, $pooled_dense,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -301,7 +315,7 @@ macro_rules! map_block {
             } else {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_block!(@cfg map $block, $bid, $dense, $sparse,
+                        map_block!(@cfg map $block, $bid, $dense, $sparse, $pooled_dense,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         map)
                     }};
@@ -321,88 +335,55 @@ macro_rules! map_block {
         $bid: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
         $modifiers: tt) => {{
 
-        cfg_if! {
-            if #[cfg(feature = "block_128")] {
-                macro_rules! __cond {
-                    (map) => {{
-                        map_block!(@ map $block, $bid, $dense, $sparse,
-                            $(
-                                $bvars, $use,
+        macro_rules! __cond {
+            (map) => {{
+                map_block!(@ map $block, $bid, $dense, $sparse, $pooled_dense,
+                    $(
+                        $bvars, $use,
 
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
+                        dense [
+                            I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                        ]
 
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
+                        sparse [
+                            I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                            U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                        ]
 
-                    (mut) => {{
-                        map_block!(@ mut map $block, $bid, $dense, $sparse,
-                            $(
-                                $bvars, $use,
+                        pooled dense [
+                            StringDense
+                        ]
+                    )*
+                )
+            }};
 
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
-
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
-                }
-            } else {
-                macro_rules! __cond {
-                    (map) => {{
-                        map_block!(@ map $block, $bid, $dense, $sparse,
-                            $(
-                                $bvars, $use,
-
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
-
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
-
-                    (mut) => {{
-                        map_block!(@ mut map $block, $bid, $dense, $sparse,
-                            $(
-                                $bvars, $use,
+            (mut) => {{
+                map_block!(@ mut map $block, $bid, $dense, $sparse, $pooled_dense,
+                    $(
+                        $bvars, $use,
 
 
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
+                        dense [
+                            I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
+                        ]
 
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
-                }
-            }
+                        sparse [
+                            I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                            U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                        ]
+
+                        pooled dense [
+                            StringDense
+                        ]
+                    )*
+                )
+            }};
         }
 
         __cond!($modifiers)
@@ -415,11 +396,13 @@ macro_rules! map_block {
         $bid: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $(
             $variant: path,
             $use: item,
             dense [ $($dense_var: ident),+ $(,)* ]
             sparse [ $($sparse_var: ident),+ $(,)* ]
+            pooled dense [ $($pooled_dense_var: ident),+ $(,)* ]
         )*
 
     ) => {{
@@ -445,6 +428,11 @@ macro_rules! map_block {
                     $(
                     $sparse_var(ref mut $bid) => $sparse,
                     )+
+
+                    // Pooled dense
+                    $(
+                    $pooled_dense_var(ref mut $bid) => $pooled_dense,
+                    )+
                 }
             }
             )*
@@ -458,11 +446,13 @@ macro_rules! map_block {
         $bid: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $(
             $variant: path,
             $use: item,
             dense [ $($dense_var: ident),+ $(,)* ]
             sparse [ $($sparse_var: ident),+ $(,)* ]
+            pooled dense [ $($pooled_dense_var: ident),+ $(,)* ]
         )*
     )
         => {{
@@ -484,6 +474,11 @@ macro_rules! map_block {
 
                     $(
                     $sparse_var(ref $bid) => $sparse,
+                    )+
+
+                    // Pooled dense
+                    $(
+                    $pooled_dense_var(ref $bid) => $pooled_dense,
                     )+
                 }
             }
@@ -523,8 +518,10 @@ macro_rules! map_fragment {
         $fid: ident,
         $fidx: ident,
         $dense: block,
-        $sparse: block) => {
-        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, Fragment)
+        $sparse: block,
+        $pooled_dense: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx,
+            $dense, $sparse, $pooled_dense, Fragment)
     };
 
     (map owned
@@ -534,8 +531,10 @@ macro_rules! map_fragment {
         $fid: ident,
         $fidx: ident,
         $dense: block,
-        $sparse: block) => {
-        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, Fragment)
+        $sparse: block,
+        $pooled_dense: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx,
+            $dense, $sparse, $pooled_dense, Fragment)
     };
 
     (mut map ref
@@ -545,8 +544,10 @@ macro_rules! map_fragment {
         $fid: ident,
         $fidx: ident,
         $dense: block,
-        $sparse: block) => {
-        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, FragmentRef)
+        $sparse: block,
+        $pooled_dense: block) => {
+        map_fragment!(mut map $block, $frag, $bid, $fid, $fidx,
+            $dense, $sparse, $pooled_dense, FragmentRef)
     };
 
     (map ref
@@ -556,8 +557,10 @@ macro_rules! map_fragment {
         $fid: ident,
         $fidx: ident,
         $dense: block,
-        $sparse: block) => {
-        map_fragment!(map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, FragmentRef)
+        $sparse: block,
+        $pooled_dense: block) => {
+        map_fragment!(map $block, $frag, $bid, $fid, $fidx,
+            $dense, $sparse, $pooled_dense, FragmentRef)
     };
 
     // `public`, map mutable block
@@ -571,14 +574,15 @@ macro_rules! map_fragment {
         $fidx: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                        $ty,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
+                        $dense, $sparse, $pooled_dense, $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -589,8 +593,8 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap_mut {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                        $ty,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
+                        $dense, $sparse, $pooled_dense, $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         mut)
                     }};
@@ -612,14 +616,15 @@ macro_rules! map_fragment {
         $fidx: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $ty: ident) => {{
 
         cfg_if! {
             if #[cfg(feature = "mmap")] {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                        $ty,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
+                        $dense, $sparse, $pooled_dense, $ty,
                         [
                             [ Block::Memory, use ty::block::memory::Block::*; ],
                             [ Block::Memmap, use ty::block::mmap::Block::*; ]
@@ -630,8 +635,8 @@ macro_rules! map_fragment {
             } else {
                 macro_rules! __cond_mmap {
                     () => {{
-                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                        $ty,
+                        map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
+                        $dense, $sparse, $pooled_dense, $ty,
                         [ [ Block::Memory, use ty::block::memory::Block::*; ] ],
                         map)
                     }};
@@ -654,49 +659,56 @@ macro_rules! map_fragment {
         $fidx: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $ty: ident,
         [ $( [ $bvars: path, $use: item ] ),* $(,)* ],
         $modifiers: tt) => {{
 
-                macro_rules! __cond {
-                    (map) => {{
-                        map_fragment!(@ map $block, $frag, $bid, $fid, $fidx, $dense, $sparse, $ty,
+        macro_rules! __cond {
+            (map) => {{
+                map_fragment!(@ map $block, $frag, $bid, $fid, $fidx,
+                    $dense, $sparse, $pooled_dense, $ty,
 
-                            $(
-                                $bvars, $use,
+                    $(
+                        $bvars, $use,
 
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
+                        dense [
+                            I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                        ]
 
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
+                        sparse [
+                            I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                            U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                        ]
 
-                    (mut) => {{
-                        map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx, $dense, $sparse,
-                            $ty,
-                            $(
-                                $bvars, $use,
+                        pooled dense [ StringDense ]
+                    )*
+                )
+            }};
 
-                                dense [
-                                    I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                                    U8Dense, U16Dense, U32Dense, U64Dense, U128Dense
-                                ]
+            (mut) => {{
+                map_fragment!(@ mut map $block, $frag, $bid, $fid, $fidx,
+                    $dense, $sparse, $pooled_dense, $ty,
+                    $(
+                        $bvars, $use,
 
-                                sparse [
-                                    I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
-                                    U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
-                                ]
-                            )*
-                        )
-                    }};
-                }
+                        dense [
+                            I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                        ]
+
+                        sparse [
+                            I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
+                            U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
+                        ]
+
+                        pooled dense [ StringDense ]
+
+                    )*
+                )
+            }};
+        }
 
         __cond!($modifiers)
     }};
@@ -711,12 +723,14 @@ macro_rules! map_fragment {
         $fidx: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $ty: ident,
         $(
             $variant: path,
             $use: item,
             dense [ $($dense_var: ident),+ $(,)* ]
             sparse [ $($sparse_var: ident),+ $(,)* ]
+            pooled dense [ $($pooled_dense_var: ident),+ $(,)* ]
         )*
 
         ) => {{
@@ -755,6 +769,18 @@ macro_rules! map_fragment {
                         }
                     }
                     )+
+
+                    // Pooled dense (e.g. String)
+
+                    $(
+                    $pooled_dense_var(ref mut $bid) => {
+                        if let $ty::$pooled_dense_var(ref $fid) = *$frag {
+                            Ok($pooled_dense)
+                        } else {
+                            Err::<_, Error>(err_msg("Incompatible block and fragment types"))
+                        }
+                    }
+                    )+
                 }
             }
             )*
@@ -771,12 +797,14 @@ macro_rules! map_fragment {
         $fidx: ident,
         $dense: block,
         $sparse: block,
+        $pooled_dense: block,
         $ty: ident,
         $(
             $variant: path,
             $use: item,
             dense [ $($dense_var: ident),+ $(,)* ]
             sparse [ $($sparse_var: ident),+ $(,)* ]
+            pooled dense [ $($pooled_dense_var: ident),+ $(,)* ]
         )*
     )
         => {{
@@ -811,6 +839,18 @@ macro_rules! map_fragment {
                             Ok($sparse)
                         } else {
                             Err(err_msg("Incompatible block and fragment types"))
+                        }
+                    }
+                    )+
+
+                    // Pooled dense (e.g. String)
+
+                    $(
+                    $pooled_dense_var(ref $bid) => {
+                        if let $ty::$pooled_dense_var(ref $fid) = *$frag {
+                            Ok($pooled_dense)
+                        } else {
+                            Err::<_, Error>(err_msg("Incompatible block and fragment types"))
                         }
                     }
                     )+
