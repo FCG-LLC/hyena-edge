@@ -20,7 +20,7 @@ use error::*;
 
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
-ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment,
+ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment, Regex,
 ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
 
 use hyena_common::ty::{Uuid, Timestamp};
@@ -113,6 +113,11 @@ pub enum ScanComparison {
     GtEq,
     Gt,
     NotEq,
+    In,
+    StartsWith,
+    EndsWith,
+    Contains,
+    Matches,
 }
 
 impl ScanComparison {
@@ -126,6 +131,21 @@ impl ScanComparison {
             ScanComparison::GtEq => HScanFilterOp::GtEq(val),
             ScanComparison::Gt => HScanFilterOp::Gt(val),
             ScanComparison::NotEq => HScanFilterOp::NotEq(val),
+            ScanComparison::In => unimplemented!(),
+            ScanComparison::StartsWith |
+            ScanComparison::EndsWith   |
+            ScanComparison::Contains   |
+            ScanComparison::Matches => unimplemented!(), // Use to_scan_filter_op_str
+        }
+    }
+
+    fn to_scan_filter_op_str(&self, val: String) -> HScanFilterOp<String> {
+        match *self {
+            ScanComparison::StartsWith => HScanFilterOp::StartsWith(val),
+            ScanComparison::EndsWith => HScanFilterOp::EndsWith(val),
+            ScanComparison::Contains => HScanFilterOp::Contains(val),
+            ScanComparison::Matches => HScanFilterOp::Matches(Regex::new(&val).unwrap()),
+            _ => unimplemented!(),
         }
     }
 }
@@ -141,7 +161,8 @@ pub enum FilterVal {
     U16(u16),
     U32(u32),
     U64(u64),
-    U128(u128)
+    U128(u128),
+    String(String),
 }
 
 impl FilterVal {
@@ -157,6 +178,7 @@ impl FilterVal {
             FilterVal::I32(val) => HScanFilter::I32(op.to_scan_filter_op(val)),
             FilterVal::I64(val) => HScanFilter::I64(op.to_scan_filter_op(val)),
             FilterVal::I128(val) => HScanFilter::I128(op.to_scan_filter_op(val)),
+            FilterVal::String(ref val) => HScanFilter::from(op.to_scan_filter_op_str(val.to_string())),
         }
     }
 }
