@@ -4,6 +4,8 @@ use std::marker::PhantomData;
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
 use storage::{Realloc, Storage};
+use ty::RowId;
+
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
@@ -179,6 +181,22 @@ where
 {
     fn as_mut(&mut self) -> &mut [RelativeSlice] {
         self.storage.as_mut()
+    }
+}
+
+impl<'block, S, P> ::std::ops::Index<RowId> for DenseStringBlock<'block, S, P>
+where
+    S: 'block + Storage<'block, RelativeSlice>,
+    P: 'block + Storage<'block, u8> + Realloc + Default,
+{
+    type Output = str;
+
+    fn index(&self, rowid: RowId) -> &Self::Output {
+        let slice = self.as_slice()[rowid];
+
+        let base = self.pool.as_ptr();
+
+        unsafe { slice.to_str_ptr(base) }
     }
 }
 
