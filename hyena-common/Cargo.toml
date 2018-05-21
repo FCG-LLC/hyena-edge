@@ -16,6 +16,10 @@ rand = "0.4.1"
 fxhash = "0.2.1"
 rayon = "1.0.1"
 
+[dependencies.regex]
+optional = false
+version = "1.0.0"
+
 [dependencies.uuid]
 features = [
     "serde",
@@ -26,4 +30,4 @@ version = "0.5.1"
 
 [features]
 default = []
-nightly = []
+nightly = ["regex/unstable"]
