@@ -27,7 +27,7 @@ use hyena_common::ty::{Uuid, Timestamp};
 
 use hyena_common::collections::{HashMap, HashSet};
 use std::convert::From;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::result::Result;
 use extprim::i128::i128;
@@ -117,7 +117,7 @@ pub enum ScanComparison {
 
 impl ScanComparison {
     fn to_scan_filter_op<T>(&self, val: T) -> HScanFilterOp<T>
-        where T: Debug + Clone + PartialEq + PartialOrd + Eq + Hash
+        where T: Display + Debug + Clone + PartialEq + PartialOrd + Eq + Hash
     {
         match *self {
             ScanComparison::Lt => HScanFilterOp::Lt(val),
