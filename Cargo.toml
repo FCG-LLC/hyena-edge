@@ -36,6 +36,10 @@ path = "hyena-test"
 optional = false
 path = "hyena-api"
 
+[dependencies.hyena-bloom-filter]
+optional = false
+path = "hyena-bloom-filter"
+
 [dependencies.colored_logger]
 git = "ssh://git@gitlab.cs.int/rust/colored-logger.git"
 optional = false
