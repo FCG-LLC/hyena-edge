@@ -275,7 +275,22 @@ impl<'part> Partition<'part> {
                             });
                     }, {
                         // pooled
-                        // noop
+                        blk.iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(&val)) {
+                                                result.insert(rowid);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
                     })
                 }
 
@@ -447,8 +462,22 @@ impl<'part> Partition<'part> {
                             Fragment::from((d, i))
                         }, {
                             // pooled
-                            // noop
-                            Fragment::from(Vec::<u32>::new())
+                            Fragment::from(if blk.is_empty() {
+                                    Vec::new()
+                                } else {
+                                    if let Some(rowids) = rowids {
+                                        rowids.iter()
+                                            .map(|rowid| String::from(&blk[*rowid]))
+                                            .collect::<Vec<_>>()
+                                    } else {
+                                        // materialize full block
+
+                                        blk
+                                            .iter()
+                                            .map(String::from)
+                                            .collect::<Vec<_>>()
+                                    }
+                                })
                         }))
                     ))
                 } else {
