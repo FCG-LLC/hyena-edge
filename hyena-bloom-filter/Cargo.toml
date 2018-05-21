@@ -6,3 +6,7 @@ authors = ["Jacek Całusiński <forger@forger.pl>"]
 [dependencies]
 fnv = "1.0.6"
 fxhash = "0.2.1"
+
+[features]
+default = []
+nightly = []

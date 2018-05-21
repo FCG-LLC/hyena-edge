@@ -53,6 +53,6 @@ optional = false
 
 [features]
 default = []
-nightly = ["hyena-common/nightly", "hyena-engine/nightly"]
+nightly = ["hyena-common/nightly", "hyena-engine/nightly", "hyena-bloom-filter/nightly"]
 debug = ["hyena-engine/debug"]
 validate_append = ["hyena-engine/validate_append"]
