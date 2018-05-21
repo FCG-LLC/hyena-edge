@@ -88,7 +88,7 @@
 use error::*;
 use ty::ColumnId;
 use hyena_common::collections::{HashMap, HashSet};
-use std::fmt::Debug;
+use std::fmt::{Display, Debug};
 use std::hash::Hash;
 use std::ops::Deref;
 use datastore::PartitionId;
@@ -97,6 +97,8 @@ use ty::fragment::Fragment;
 use hyena_common::ty::Timestamp;
 use extprim::i128::i128;
 use extprim::u128::u128;
+
+pub use hyena_common::ty::Regex;
 
 pub type ScanFilters = OrScanFilters;
 pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
@@ -176,7 +178,7 @@ impl ScanTsRange {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ScanFilterOp<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> {
+pub enum ScanFilterOp<T: Display + Debug + Clone + PartialEq + PartialOrd + Hash + Eq> {
     Lt(T),
     LtEq(T),
     Eq(T),
@@ -184,23 +186,22 @@ pub enum ScanFilterOp<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> {
     Gt(T),
     NotEq(T),
     In(HashSet<T>),
-}
 
-impl<T: Debug + Clone + PartialEq + PartialOrd + Hash + Eq> ScanFilterOp<T> {
-    #[inline]
-    fn apply(&self, tested: &T) -> bool {
-        use self::ScanFilterOp::*;
+    // String ops
 
-        match *self {
-            Lt(ref v) => tested < v,
-            LtEq(ref v) => tested <= v,
-            Eq(ref v) => tested == v,
-            GtEq(ref v) => tested >= v,
-            Gt(ref v) => tested > v,
-            NotEq(ref v) => tested != v,
-            In(ref v) => v.contains(&tested),
-        }
-    }
+    /// For String column, test if the haystack starts with the needle
+    /// For other types, cast to String and then do the test, so potentially much slower
+    /// as it needs to alloc
+    StartsWith(T),
+    /// For String column, test if the haystack ends with the needle
+    /// For other types, cast to String and then do the test, so potentially much slower
+    /// as it needs to alloc
+    EndsWith(T),
+    /// For String column, test if the haystack starts with the needle
+    /// For other types, cast to String and then do the test, so potentially much slower
+    /// as it needs to alloc
+    Contains(T),
+    Matches(Regex),
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -323,6 +324,62 @@ impl IntoIterator for ScanResult {
 
 macro_rules! scan_filter_impl {
 
+    // separate ScanFilterOp impl, as for some types (String)
+    // a custom impl is required
+    (ops $( $ty: ty, $variant: ident, $varname: expr ),+ $(,)*) => {
+        $(
+        impl ScanFilterOp<$ty> {
+            #[inline]
+            fn apply(&self, tested: &$ty) -> bool {
+                use self::ScanFilterOp::*;
+
+                match *self {
+                    Lt(ref v) => tested < v,
+                    LtEq(ref v) => tested <= v,
+                    Eq(ref v) => tested == v,
+                    GtEq(ref v) => tested >= v,
+                    Gt(ref v) => tested > v,
+                    NotEq(ref v) => tested != v,
+                    In(ref v) => v.contains(&tested),
+                    StartsWith(ref v) => {
+                        let tested = tested.to_string();
+                        let v = v.to_string();
+
+                        tested.starts_with(&v)
+                    }
+                    EndsWith(ref v) => {
+                        let tested = tested.to_string();
+                        let v = v.to_string();
+
+                        tested.ends_with(&v)
+                    }
+                    Contains(ref v) => {
+                        let tested = tested.to_string();
+                        let v = v.to_string();
+
+                        tested.contains(&v)
+                    }
+                    Matches(ref reg) => {
+                        let tested = tested.to_string();
+
+                        reg.is_match(&tested)
+                    }
+                }
+            }
+        }
+        )+
+
+        $(
+
+        impl From<ScanFilterOp<$ty>> for ScanFilter {
+            fn from(source: ScanFilterOp<$ty>) -> ScanFilter {
+                ScanFilter::$variant(source)
+            }
+        }
+
+        )+
+    };
+
     ($( $ty: ty, $variant: ident, $varname: expr ),+ $(,)*) => {
         #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
         pub enum ScanFilter {
@@ -364,20 +421,24 @@ macro_rules! scan_filter_impl {
                 }
             }
         }
-
-        $(
-
-        impl From<ScanFilterOp<$ty>> for ScanFilter {
-            fn from(source: ScanFilterOp<$ty>) -> ScanFilter {
-                ScanFilter::$variant(source)
-            }
-        }
-
-        )+
     };
 }
 
 scan_filter_impl! {
+    u8, U8, "U8",
+    u16, U16, "U16",
+    u32, U32, "U32",
+    u64, U64, "U64",
+    u128, U128, "U128",
+    String, String, "String",
+    i8, I8, "I8",
+    i16, I16, "I16",
+    i32, I32, "I32",
+    i64, I64, "I64",
+    i128, I128, "I128",
+}
+
+scan_filter_impl! { ops
     u8, U8, "U8",
     u16, U16, "U16",
     u32, U32, "U32",
@@ -389,6 +450,54 @@ scan_filter_impl! {
     i64, I64, "I64",
     i128, I128, "I128",
 }
+
+
+// String
+
+impl ScanFilterOp<String> {
+    #[inline]
+    fn apply(&self, tested: &str) -> bool {
+        use self::ScanFilterOp::*;
+
+        match *self {
+            Lt(ref v) => tested < <String as AsRef<str>>::as_ref(v),
+            LtEq(ref v) => tested <= <String as AsRef<str>>::as_ref(v),
+            Eq(ref v) => tested == <String as AsRef<str>>::as_ref(v),
+            GtEq(ref v) => tested >= <String as AsRef<str>>::as_ref(v),
+            Gt(ref v) => tested > <String as AsRef<str>>::as_ref(v),
+            NotEq(ref v) => tested != <String as AsRef<str>>::as_ref(v),
+            In(ref v) => v.contains(tested),
+            StartsWith(ref v) => tested.starts_with(<String as AsRef<str>>::as_ref(v)),
+            EndsWith(ref v) => tested.ends_with(<String as AsRef<str>>::as_ref(v)),
+            Contains(ref v) => tested.contains(<String as AsRef<str>>::as_ref(v)),
+            Matches(ref v) => v.is_match(tested),
+        }
+    }
+}
+
+impl From<ScanFilterOp<String>> for ScanFilter {
+    fn from(source: ScanFilterOp<String>) -> ScanFilter {
+        ScanFilter::String(source)
+    }
+}
+
+impl<'a> ScanFilterApply<&'a str> for ScanFilter {
+    #[inline]
+    fn apply(&self, tested: &&'a str) -> bool {
+        if let ScanFilter::String(ref op) = *self {
+            op.apply(*tested)
+        } else {
+            // fail hard in debug builds
+            debug_assert!(false,
+                "Wrong scan filter variant for the column, expected {:?}, got String",
+                self.variant_name());
+
+            error!("unable to apply filter op");
+            false
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
