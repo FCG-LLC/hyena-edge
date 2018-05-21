@@ -1,5 +1,5 @@
 use error::*;
-use regex::Regex as RegexImpl;
+use regex::{Regex as RegexImpl, escape};
 use std::str::FromStr;
 use std::ops::Deref;
 use std::fmt::{Display, Formatter, self};
@@ -13,6 +13,10 @@ pub struct Regex(RegexImpl);
 impl Regex {
     pub fn new(regex: &str) -> Result<Regex> {
         Ok(Regex(RegexImpl::new(regex)?))
+    }
+
+    pub fn with_escaped(literal: &str) -> Result<Regex> {
+        Regex::new(&escape(literal))
     }
 }
 
