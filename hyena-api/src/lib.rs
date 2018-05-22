@@ -188,7 +188,6 @@ pub struct ScanFilter {
     pub column: ColumnId,
     pub op: ScanComparison,
     pub typed_val: FilterVal,
-    pub str_val: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -1039,7 +1038,6 @@ mod tests {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::I8(10),
-                                      str_val: "".into(),
                                   }]],
                 };
 
@@ -1065,7 +1063,6 @@ mod tests {
                                       column: 1,
                                       op: op,
                                       typed_val: FilterVal::String("hello".into()),
-                                      str_val: "".into(),
                                   }]],
                 };
 
@@ -1100,7 +1097,6 @@ mod tests {
                                       column: 1,
                                       op: op,
                                       typed_val: FilterVal::I8(10),
-                                      str_val: "".into(),
                                   }]],
                 };
 
@@ -1136,7 +1132,6 @@ mod tests {
                                       column: 1,
                                       op: ScanComparison::Gt,
                                       typed_val: FilterVal::String("hello".into()),
-                                      str_val: "".into(),
                                   }]],
                 };
 
@@ -1189,7 +1184,6 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1209,13 +1203,11 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1238,19 +1230,16 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
 
                     ]]);
@@ -1277,19 +1266,16 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
 
                     ], vec![
@@ -1297,7 +1283,6 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                     ]]);
 
@@ -1328,32 +1313,27 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
                     ], vec![
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U32(10),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1390,38 +1370,32 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
                     ], vec![
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U32(10),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 2,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::I8(2),
-                            str_val: "".into(),
                         }
 
                     ]]);
@@ -1473,7 +1447,6 @@ mod tests {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::U32(10),
-                                      str_val: "".into(),
                                   }]],
                 };
 
