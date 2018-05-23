@@ -13,6 +13,12 @@ fn validate_port(port_string: String) -> Result<(), String> {
     }
 }
 
+fn validate_uid_gid(input: String) -> Result<(), String> {
+    input.parse::<u32>()
+        .map(|_| ())
+        .map_err(|_| "Invalid id value, required an int, e.g. 1000".to_owned())
+}
+
 pub fn app() -> App<'static, 'static> {
     app_from_crate!()
         .arg(Arg::with_name("data_dir")
@@ -59,6 +65,33 @@ pub fn app() -> App<'static, 'static> {
              .default_value("/tmp")
              .short("s")
              .long("session-ipc-path"))
+        .arg(Arg::with_name("ipc_socket_owner")
+             .takes_value(true)
+             .help("Change uid of the owner of all IPC sockets. Requires CAP_CHOWN capability")
+             .required(false)
+             .short("u")
+             .validator(validate_uid_gid)
+             .long("ipc-owner"))
+        .arg(Arg::with_name("ipc_socket_group")
+             .takes_value(true)
+             .help("Change gid of the group of all IPC sockets. \
+             Requires CAP_CHOWN capability for groups that current user doesn't belong to")
+             .required(false)
+             .short("g")
+             .validator(validate_uid_gid)
+             .long("ipc-group"))
+        .arg(Arg::with_name("ipc_socket_permissions")
+             .takes_value(true)
+             .help("Set permissions mask of the group of all IPC sockets. \
+             Should be provided in the octal format, UGO, e.g. 764")
+             .required(false)
+             .short("P")
+             .validator(|input| {
+                u32::from_str_radix(&input, 8)
+                    .map(|_| ())
+                    .map_err(|_| "Required a three-digit octal value, e.g. 764".to_owned())
+             })
+             .long("ipc-permissions"))
 }
 
 #[cfg(test)]
