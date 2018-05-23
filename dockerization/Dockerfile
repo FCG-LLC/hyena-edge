@@ -15,7 +15,9 @@ RUN echo "deb http://aptly.cs.int/public xenial $destEnv" >> /etc/apt/sources.li
 	&& printf "Package: * \nPin: release a=xenial, o=aptly.cs.int \nPin-Priority: 1600 \n" > /etc/apt/preferences
 
 RUN groupadd -g 10033 hyena \
-	&& adduser --no-create-home --system --shell /bin/false --gecos 'hyena dedicated user' --uid 10033 --gid 10033 --disabled-password hyena
+	&& groupadd -g 10036 hyena-tmp \
+	&& adduser --no-create-home --system --shell /bin/false --gecos 'hyena dedicated user' --uid 10033 --gid 10033 --disabled-password hyena \
+	&& usermod -a -G hyena-tmp hyena
 
 COPY *.deb /tmp
 
