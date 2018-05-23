@@ -11,12 +11,23 @@ It supports parallel scans and appends execution with limited mutation support f
 ## Command line options
 
 ```
--d, --data-directory <data_dir>    Directory to store data in. [default: data]
--h, --hostname <hostname>          Address to bind nanomsg socket [default: *]
--i, --ipc-path <ipc_path>          Path of nanomsg ipc socket [default: /tmp/hyena.ipc]
--p, --port <port>                  Port number to bind nanomsg socket [default: 4433]
--t, --transport <transport>        Nanomsg transport [default: ipc]  [possible values: tcp, ipc, ws]
-```
+-d, --data-directory <data_dir>                   Directory to store data in. [default: data]
+-h, --hostname <hostname>                         Address to bind nanomsg socket [default: *]
+-i, --ipc-path <ipc_path>                         Path of nanomsg ipc socket [default: /tmp/hyena.ipc]
+-g, --ipc-group <ipc_socket_group>
+		Change gid of the group of all IPC sockets. Requires CAP_CHOWN capability for groups that current user
+		doesn't belong to
+-u, --ipc-owner <ipc_socket_owner>
+		Change uid of the owner of all IPC sockets. Requires CAP_CHOWN capability
+
+-P, --ipc-permissions <ipc_socket_permissions>
+		Set permissions mask of the group of all IPC sockets. Should be provided in the octal format, UGO, e.g. 764
+
+-p, --port <port>                                 Port number to bind nanomsg socket [default: 4433]
+-s, --session-ipc-path <session_ipc_path>
+		A directory where session ipc sockets will be created [default: /tmp]
+
+-t, --transport <transport>                       Nanomsg transport [default: ipc]  [possible values: tcp, ipc, ws]```
 
 ## Compile-time feature flags
 
