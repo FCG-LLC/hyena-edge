@@ -61,16 +61,36 @@ pub fn run(matches: clap::ArgMatches) {
 
     info!("Starting socket server");
 
-    let server = MultiServer::new(
-        address.as_ref(),
-        SessionTimeout::default(),
-        GcInterval::default(),
-        move |session_id| {
-            let path = session_ipc_path.join(format!("hyena-session-{}.ipc", session_id));
-            format!("ipc://{}", path.display())
-        },
-        handle.clone(),
-    );
+    let server = {
+        let mut server = MultiServer::new(
+            address.as_ref(),
+            SessionTimeout::default(),
+            GcInterval::default(),
+            move |session_id| {
+                let path = session_ipc_path.join(format!("hyena-session-{}.ipc", session_id));
+                format!("ipc://{}", path.display())
+            },
+            handle.clone(),
+        );
+
+        // socket permissions
+
+        let owner = matches
+            .value_of("ipc_socket_owner")
+            .map(|uid| uid.parse().expect("Invalid UID provided"));
+
+        let group = matches
+            .value_of("ipc_socket_group")
+            .map(|gid| gid.parse().expect("Invalid GID provided"));
+
+        let permissions = matches
+            .value_of("ipc_socket_permissions")
+            .map(|perms| u32::from_str_radix(perms, 8).expect("Invalid permissions provided"));
+
+        server.set_socket_permissions(owner, group, permissions);
+
+        server
+    };
 
     info!("Listening on {}", address);
 
