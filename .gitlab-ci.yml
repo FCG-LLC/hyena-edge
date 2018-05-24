@@ -161,6 +161,7 @@ package:master-deb:
   artifacts:
     paths:
     - build/*.deb
+    - build/*.ddeb
     expire_in: 1 week
 
 publish:master-aptly:
