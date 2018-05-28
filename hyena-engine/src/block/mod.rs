@@ -6,10 +6,13 @@ use extprim::u128::u128;
 mod macros;
 mod numeric;
 mod string;
+mod relative;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
-pub(crate) use self::string::{DenseStringBlock, RelativeSlice};
+pub(crate) use self::string::DenseStringBlock;
 pub use self::numeric::SparseIndex;
+pub(crate) use self::relative::RelativeSlice;
+
 
 // This will probably get merged into BlockData
 
@@ -35,6 +38,18 @@ where
     fn as_mut_index(&mut self) -> &mut T;
 }
 
+pub(crate) trait SliceOffset {
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn to_slice<'buffer, T>(&self, buffer: &'buffer [T]) -> &'buffer [T];
+    fn to_str<'buffer>(&self, buffer: &'buffer [u8]) -> &'buffer str;
+
+}
 
 
 /// Base trait for all Blocks
