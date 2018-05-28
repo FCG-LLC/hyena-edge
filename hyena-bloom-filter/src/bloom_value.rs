@@ -34,6 +34,21 @@ impl BloomValue {
         (0..BIT_LENGTH)
             .map(move |bit| self.get(bit))
     }
+
+    #[inline]
+    pub fn contains(&self, other: BloomValue) -> bool {
+        !bool::from(*self & other ^ other)
+    }
+
+    #[inline]
+    pub fn zero() -> BloomValue {
+        BloomValue::default()
+    }
+
+    #[inline]
+    pub fn one() -> BloomValue {
+        !BloomValue::default()
+    }
 }
 
 impl Not for BloomValue {

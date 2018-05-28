@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter, self};
 use std::marker::PhantomData;
 use bloom_value::{BloomValue, BIT_LENGTH};
 use ngram::{Ngram, Trigram};
-
+use std::iter::once;
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]
 pub struct BloomFilter<H1, H2, N = Trigram>
@@ -55,7 +55,7 @@ where
                 let h1 = Self::hash::<H1, _>(value) % BIT_LENGTH as u64;
                 let h2 = Self::hash::<H2, _>(value) % BIT_LENGTH as u64;
 
-                ::std::iter::once(h1).chain(::std::iter::once(h2))
+                once(h1).chain(once(h2))
             })
             .fold(BloomValue::default(), |mut bloom, bit| {
                 bloom.set(bit as usize);
@@ -75,7 +75,7 @@ where
 
     #[inline]
     pub fn lookup_encoded(&self, value: BloomValue) -> bool {
-        !bool::from(self.value & value ^ value)
+        self.value.contains(value)
     }
 
     #[inline]
