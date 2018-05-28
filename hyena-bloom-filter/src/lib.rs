@@ -5,6 +5,8 @@ extern crate test;
 
 extern crate fnv;
 extern crate fxhash;
+#[macro_use]
+extern crate serde_derive;
 
 mod bloom_value;
 mod bloom_filter;

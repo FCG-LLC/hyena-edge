@@ -5,7 +5,7 @@ use std::ops::{BitAnd, BitOr, BitXor, Not};
 pub(crate) const BIT_LENGTH: usize = ::std::mem::size_of::<BloomValue>() * 8;
 pub(crate) const BASE_BIT_LENGTH: usize = ::std::mem::size_of::<u128>() * 8;
 
-#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd, Hash, Default, Serialize, Deserialize)]
 pub struct BloomValue([u128; 2]);
 
 impl BloomValue {
