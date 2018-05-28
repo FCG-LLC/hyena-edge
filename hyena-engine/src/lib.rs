@@ -19,6 +19,7 @@ extern crate serde_derive;
 extern crate serde;
 #[macro_use]
 extern crate hyena_common;
+extern crate hyena_bloom_filter;
 
 #[cfg(test)]
 #[macro_use]

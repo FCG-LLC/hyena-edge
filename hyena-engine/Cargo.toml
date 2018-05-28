@@ -19,6 +19,7 @@ extprim = "1.4.0"
 failure = "0.1.1"
 failure_derive = "0.1.1"
 hyena-common = { path = "../hyena-common" }
+hyena-bloom-filter = { path = "../hyena-bloom-filter" }
 strum = "0.8.0"
 strum_macros = "0.8.0"
 
