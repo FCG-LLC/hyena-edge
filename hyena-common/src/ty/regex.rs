@@ -18,6 +18,10 @@ impl Regex {
     pub fn with_escaped(literal: &str) -> Result<Regex> {
         Regex::new(&escape(literal))
     }
+
+    pub fn escape(literal: &str) -> String {
+        escape(literal)
+    }
 }
 
 impl From<RegexImpl> for Regex {
