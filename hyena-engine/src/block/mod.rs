@@ -22,6 +22,21 @@ pub trait BufferHead {
 
     #[inline]
     fn mut_head(&mut self) -> &mut usize;
+
+    #[inline]
+    fn pool_head(&self) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn set_pool_head(&mut self, head: usize) {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn is_pooled(&self) -> bool {
+        self.pool_head().is_some()
+    }
 }
 
 pub trait IndexRef<T>

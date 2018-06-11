@@ -2,8 +2,8 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType, ColumnId,
-RowId};
+use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType,
+ColumnId, RowId};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -696,7 +696,10 @@ impl<'part> Partition<'part> {
                 (
                     *blockid,
                     block_apply!(map physical block, blk, pb, {
-                    pb.head()
+                    BlockHeads {
+                        head: pb.head(),
+                        pool_head: pb.pool_head(),
+                    }
                 }),
                 )
             })
@@ -733,7 +736,10 @@ impl<'part> Partition<'part> {
                 let head = heads.get(blockid)
                     .ok_or_else(||
                         format_err!("Unable to read block head ptr of partition {}", partid))?;
-                *(pb.mut_head()) = *head;
+                *(pb.mut_head()) = head.head;
+                if let Some(head) = head.pool_head {
+                    pb.set_pool_head(head);
+                }
             })
         }
 

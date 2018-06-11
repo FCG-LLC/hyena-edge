@@ -102,6 +102,18 @@ where
     fn mut_head(&mut self) -> &mut usize {
         &mut self.head
     }
+
+    fn pool_head(&self) -> Option<usize> {
+        Some(self.pool_head)
+    }
+
+    fn set_pool_head(&mut self, head: usize) {
+        assert!(head <= self.pool.len(),
+            "head pointer for the pool block exceeds the block size; \
+            perhaps pool file is corrupt?");
+
+        self.pool_head = head;
+    }
 }
 
 impl<'block, S, P> BlockData<'block, RelativeSlice, DenseIndex> for DenseStringBlock<'block, S, P>
@@ -178,6 +190,15 @@ mod tests {
         use std::mem::{size_of, size_of_val};
         use storage::ByteStorage;
 
+        pub(super) fn string_data_gen(payload_len: usize) -> Vec<u8> {
+            [b'X', b'x', b'Y']
+                .into_iter()
+                .cycle()
+                .take(payload_len)
+                .cloned()
+                .collect()
+        }
+
         pub(super) fn block_string<'block, S, P>(
             storage: S,
             pool: P,
@@ -191,13 +212,7 @@ mod tests {
                 .with_context(|_| "failed to create string block")
                 .unwrap();
 
-            let s = [b'X', b'x', b'Y'];
-            let source_str = s
-                .into_iter()
-                .cycle()
-                .take(payload_len)
-                .cloned()
-                .collect::<Vec<_>>();
+            let source_str = string_data_gen(payload_len);
 
             assert_eq!(source_str.len(), payload_len);
 
@@ -217,8 +232,8 @@ mod tests {
             }
         }
 
-        const PAGE_4K: usize = 1 << 12;
-        const BLOCK_1M: usize = PAGE_4K * 256;
+        pub(super) const PAGE_4K: usize = 1 << 12;
+        pub(super) const BLOCK_1M: usize = PAGE_4K * 256;
         const RELATIVE_SLICE_SIZE: usize = size_of::<RelativeSlice>();
 
         pub(super) fn single<'block, F, P, S>(slice_storage: F, pool_storage: P)
@@ -416,6 +431,43 @@ mod tests {
                 |size| make_storage(&dir, "str_overflow_slice", size),
                 |size| make_storage(&dir, "str_overflow_pool", size),
             );
+        }
+
+        #[test]
+        fn reopen() {
+            use super::generic::{BLOCK_1M, PAGE_4K};
+
+            let dir = tempdir!();
+
+            let slice_storage = |size| make_storage(&dir, "str_full_realloc_slice", size);
+            let pool_storage = |size| make_storage(&dir, "str_full_realloc_pool", size);
+
+            let value_count = 4096;
+            let payload_len = 10;
+
+            super::generic::block_string(
+                slice_storage(BLOCK_1M),
+                pool_storage(PAGE_4K),
+                payload_len,
+                value_count,
+            );
+
+            let storage = slice_storage(BLOCK_1M);
+            let pool = pool_storage(PAGE_4K);
+
+            let mut block = DenseStringBlock::new(storage, pool)
+                .with_context(|_| "failed to create string block")
+                .unwrap();
+
+            let source_str = super::generic::string_data_gen(payload_len);
+
+            assert_eq!(source_str.len(), payload_len);
+
+            let source_str = String::from_utf8(source_str).unwrap();
+
+            for value in block.iter() {
+                assert_eq!(value, source_str);
+            }
         }
     }
 }

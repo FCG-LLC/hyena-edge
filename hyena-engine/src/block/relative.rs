@@ -46,14 +46,22 @@ impl SliceOffset for RelativeSlice {
     }
 
     fn to_slice<'buffer, T>(&self, buffer: &'buffer [T]) -> &'buffer [T] {
+        // todo: profile assert vs debug_assert
         debug_assert!(buffer.len() >= self.base + self.length);
 
+        // this can crash if the above assertion is not true
+        // but for performance reasons we set it to debug only
+        // in case of SIGSEGV during string operations, start looking here
         unsafe { self.to_slice_ptr(buffer.as_ptr()) }
     }
 
     fn to_str<'buffer>(&self, buffer: &'buffer [u8]) -> &'buffer str {
+        // todo: profile assert vs debug_assert
         debug_assert!(buffer.len() >= self.base + self.length);
 
+        // this can crash if the above assertion is not true
+        // but for performance reasons we set it to debug only
+        // in case of SIGSEGV during string operations, start looking here
         unsafe { self.to_str_ptr(buffer.as_ptr()) }
     }
 
