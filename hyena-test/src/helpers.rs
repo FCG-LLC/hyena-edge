@@ -28,13 +28,13 @@ macro_rules! assert_variant {
 
 #[macro_export]
 macro_rules! ensure_read {
-    ($file: expr, $buf: expr, $size: expr) => {{
+    ($file: expr, $buf: expr, $size: expr, $existing_size: expr) => {{
         use fs::ensure_file;
         use std::io::Read;
 
 
         let mut buf = $buf;
-        let mut file = ensure_file(&$file, $size)
+        let mut file = ensure_file(&$file, $size, $existing_size)
             .with_context(|_| "unable to create file")
             .unwrap();
 
@@ -43,16 +43,20 @@ macro_rules! ensure_read {
             .unwrap();
         buf
     }};
+
+    ($file: expr, $buf: expr, $size: expr) => {
+        ensure_read!($file, $buf, $size, None)
+    };
 }
 
 #[macro_export]
 macro_rules! ensure_write {
-    ($file: expr, $w: expr, $size: expr) => {{
+    ($file: expr, $w: expr, $size: expr, $existing_size: expr) => {{
         use fs::ensure_file;
         use std::io::Write;
 
 
-        let mut file = ensure_file(&$file, $size)
+        let mut file = ensure_file(&$file, $size, $existing_size)
             .with_context(|_| "unable to create file")
             .unwrap();
 
@@ -60,4 +64,8 @@ macro_rules! ensure_write {
             .with_context(|_| "unable to write test data")
             .unwrap();
     }};
+
+    ($file: expr, $w: expr, $size: expr) => {
+        ensure_write!($file, $w, $size, None)
+    };
 }

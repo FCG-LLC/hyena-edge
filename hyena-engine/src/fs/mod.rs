@@ -8,7 +8,11 @@ mod hole_punch;
 use self::hole_punch::punch_hole;
 
 
-pub fn ensure_file<P: AsRef<Path>>(path: P, size: usize) -> Result<File> {
+pub fn ensure_file<P: AsRef<Path>>(
+    path: P,
+    create_size: usize,
+    existing_size: Option<usize>
+) -> Result<File> {
 
     // check if file exists
     let exists = path.as_ref().exists();
@@ -19,10 +23,14 @@ pub fn ensure_file<P: AsRef<Path>>(path: P, size: usize) -> Result<File> {
         .create(true)
         .open(path)?;
 
-    file.set_len(size as u64)?;
-
     if !exists {
-        #[cfg(feature = "hole_punching")] punch_hole(&file, size)?;
+        file.set_len(create_size as u64)?;
+        #[cfg(feature = "hole_punching")] punch_hole(&file, create_size)?;
+    } else {
+        if let Some(size) = existing_size {
+            // todo: punch hole after enlarging the file
+            file.set_len(size as u64)?;
+        }
     }
 
     Ok(file)

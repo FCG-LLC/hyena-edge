@@ -11,8 +11,9 @@ use super::{Storage, Realloc, ByteStorage};
 use hyena_common::map_type::{map_type, map_type_mut};
 
 
-pub fn map_file<P: AsRef<Path>>(path: P, size: usize) -> Result<MmapMut> {
-    let file = ensure_file(path, size)?;
+pub fn map_file<P: AsRef<Path>>(path: P, create_size: usize, existing_size: Option<usize>)
+-> Result<MmapMut> {
+    let file = ensure_file(path, create_size, existing_size)?;
 
     unsafe {
         MmapOptions::new()
@@ -30,9 +31,22 @@ pub struct MemmapStorage {
 
 impl MemmapStorage {
     pub fn new<P: AsRef<Path>>(file: P, size: usize) -> Result<MemmapStorage> {
+        Self::with_size_hint(file, size, None)
+    }
+
+    pub fn with_resized<P: AsRef<Path>>(file: P, size: usize) -> Result<MemmapStorage> {
+        Self::with_size_hint(file, size, Some(size))
+    }
+
+    pub fn with_size_hint<P: AsRef<Path>>(
+        file: P,
+        create_size: usize,
+        existing_size: Option<usize>
+    ) -> Result<MemmapStorage> {
         let path = file.as_ref().to_path_buf();
 
-        let mmap = map_file(&path, size).with_context(|_| "unable to mmap file")?;
+        let mmap = map_file(&path, create_size, existing_size)
+            .with_context(|_| "unable to mmap file")?;
 
         Ok(Self { mmap, path })
     }
@@ -89,7 +103,7 @@ impl Realloc for MemmapStorage {
         drop(mmap);
 
         // remap the file
-        Self::new(path, size)
+        Self::with_resized(path, size)
     }
 
     fn realloc_size(&self) -> usize {
