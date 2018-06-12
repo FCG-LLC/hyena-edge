@@ -10,6 +10,7 @@ num = "0.1.41"
 rand = "0.4.1"
 failure = "0.1.1"
 hyena-common = { path = "../hyena-common" }
+lipsum = "0.5.0"
 
 [dependencies.flame]
 version = "0.2.0"
