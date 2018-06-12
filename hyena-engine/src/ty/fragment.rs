@@ -829,4 +829,71 @@ mod tests {
             assert_eq!(frag.0, &buf[..]);
         }
     }
+
+    mod string {
+        use super::*;
+        use hyena_test::string::ipsum_text;
+
+        mod dense {
+            use super::*;
+
+            #[test]
+            fn is_eq() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                assert_variant!(frag, Fragment::StringDense(val), &val[..] == &buf[..])
+            }
+
+            #[test]
+            fn is_sparse() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                assert!(!frag.is_sparse());
+            }
+
+            #[test]
+            #[should_panic(expected = "split_at_idx called on a dense block")]
+            fn split_at_idx() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                frag.split_at_idx(100).unwrap();
+            }
+
+            #[test]
+            fn sort() {
+                let buf = text!(gen random 1000);
+
+                let mut expected = buf.clone();
+                expected.sort();
+                let expected = Fragment::from(expected);
+
+                let mut frag = Fragment::from(buf);
+                frag.sort_unstable();
+
+                assert_eq!(frag, expected);
+            }
+
+            #[test]
+            fn iter() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                let v = frag.iter().collect::<Vec<_>>();
+
+                let expected = buf.iter()
+                    .enumerate()
+                    .map(|(idx, val)| (idx, Value::from(val.clone())))
+                    .collect::<Vec<_>>();
+
+                assert_eq!(expected, v);
+            }
+        }
+    }
 }
