@@ -1,4 +1,4 @@
-use block::{BlockData, BufferHead, IndexMut, IndexRef, SliceOffset, RelativeSlice};
+use block::{BlockData, BufferHead, IndexMut, IndexRef, RelativeSlice};
 use error::*;
 use std::marker::PhantomData;
 use storage::{Realloc, Storage};
@@ -186,8 +186,7 @@ mod tests {
 
     mod generic {
         use super::*;
-        use std::fmt::Debug;
-        use std::mem::{size_of, size_of_val};
+        use std::mem::size_of;
         use storage::ByteStorage;
 
         pub(super) fn string_data_gen(payload_len: usize) -> Vec<u8> {
@@ -218,7 +217,7 @@ mod tests {
 
             let source_str = String::from_utf8(source_str).unwrap();
 
-            let written = ::std::iter::repeat(())
+            let _written = ::std::iter::repeat(())
                 .take(value_count)
                 .map(|_| block.append_string(&source_str))
                 .sum::<Result<usize>>()
@@ -455,7 +454,7 @@ mod tests {
             let storage = slice_storage(BLOCK_1M);
             let pool = pool_storage(PAGE_4K);
 
-            let mut block = DenseStringBlock::new(storage, pool)
+            let block = DenseStringBlock::new(storage, pool)
                 .with_context(|_| "failed to create string block")
                 .unwrap();
 
