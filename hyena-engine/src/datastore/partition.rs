@@ -162,9 +162,6 @@ impl<'part> Partition<'part> {
                 }, {
                     // dense string handler
 
-                    // destination bounds checking intentionally left out in release builds
-                    let slen = frg.len();
-
                     frg
                         .iter()
                         .map(|value| blk.append_string(value))

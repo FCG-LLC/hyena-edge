@@ -177,8 +177,7 @@ macro_rules! append_test_impl {
 
         let (td, part_ids) = {
 
-
-        let init = append_test_impl!(init $partition_groups, columns.clone(), now);
+            let init = append_test_impl!(init $partition_groups, columns.clone(), now);
             let cat = init.1;
 
             $(
@@ -267,6 +266,16 @@ macro_rules! append_test_impl {
                             id,
                             part_id);
                     }
+
+                    if (*col).is_pooled() {
+                        assert!(td.exists_file(
+                                part_root.as_ref().join(format!("block_{}.pool", id))
+                            ),
+                            "couldn't find block {} pool data of partition {:?}",
+                            id,
+                            part_id);
+                    }
+
                 }
             });
 
@@ -283,15 +292,82 @@ macro_rules! append_test_impl {
                             .with_context(|_| "unable to read block data")
                             .unwrap();
 
-                        let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
+                        let col = columns.get(&id).unwrap();
 
-                        assert_eq!(
-                            &mapped[..],
-                            &bdata[..mapped.len()],
-                            "dense block {} of partition {} ({}) data verification failed",
-                            id,
-                            part_id,
-                            pidx);
+                        if (*col).is_pooled() {
+                            use block::RelativeSlice;
+
+                            let expected_data = if let Fragment::StringDense(ref sblk) = *frag {
+                                // assert data slice
+                                sblk
+                                    .iter()
+                                    .scan(0, |start, ref s| {
+                                        let len = s.len();
+
+                                        let ret = Some(RelativeSlice::new(*start, len));
+
+                                        *start = *start + len;
+
+                                        ret
+                                    })
+                                    .collect::<Vec<_>>()
+                            } else {
+                                unreachable!("pooled storage not a string");
+                            };
+
+                            let expected_data = serialize!(buf expected_data)
+                                .with_context(|_| "unable to serialize expected pool slice data")
+                                .unwrap();
+                            // skip over the serialized Vec length
+                            let expected_data = &expected_data[::std::mem::size_of::<usize>()..];
+                            let expected_data_len = expected_data.len();
+                            let bdata_len = bdata.len();
+
+                            assert!(expected_data_len <= bdata_len,
+                                "dense block {} of partition {} ({}) has too small data block \
+                                in pool got {}, expected at least {}",
+                                id,
+                                part_id,
+                                pidx,
+                                bdata_len,
+                                expected_data_len);
+
+                            assert_eq!(expected_data, &bdata[..expected_data_len]);
+
+                            // assert pool
+
+                            let pool_block = format!("block_{}.pool", id);
+                            let pool_data = td.read_vec(part_root.as_ref().join(pool_block))
+                                .with_context(|_| "unable to read block pool data")
+                                .unwrap();
+
+                            let blob = join!(&blk[..]);
+                            let blob_bytes = blob.as_bytes();
+                            let blob_len = blob_bytes.len();
+                            let pool_len = pool_data.len();
+
+                            assert!(blob_len <= pool_len,
+                                "dense block {} of partition {} ({}) has too small pool block \
+                                got {}, expected at least {}",
+                                id,
+                                part_id,
+                                pidx,
+                                pool_len,
+                                blob_len);
+
+                            assert_eq!(blob_bytes, &pool_data[..blob_len]);
+                        } else {
+
+                            let mapped = unsafe { transmute::<_, &[u8]>(blk.as_slice()) };
+
+                            assert_eq!(
+                                &mapped[..],
+                                &bdata[..mapped.len()],
+                                "dense block {} of partition {} ({}) data verification failed",
+                                id,
+                                part_id,
+                                pidx);
+                        }
                     },
                     {
                         let block = format!("block_{}.data", id);
@@ -476,6 +552,44 @@ mod benches {
             3 => random!(gen u32, record_count).into(),
         };
 
+
+        let init = append_test_impl!(init columns);
+
+        let ts = RandomTimestampGen::iter_range_from(init.2)
+            .take(record_count)
+            .collect::<Vec<Timestamp>>()
+            .into();
+
+        let append = Append {
+            ts,
+            source_id: 1,
+            data,
+        };
+
+        let cat = init.1;
+
+        b.iter(|| cat.append(&append).expect("unable to append fragment"));
+    }
+
+    #[bench]
+    fn small_string(b: &mut Bencher) {
+        use block::BlockType as BlockTy;
+        use ty::block::BlockStorage::Memmap;
+
+        let record_count = 100;
+        let text_length = 120;
+
+        let columns = hashmap! {
+            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+            2 => Column::new(Memmap(BlockTy::U64Dense), "col1"),
+            3 => Column::new(Memmap(BlockTy::StringDense), "col2"),
+        };
+
+        let data = hashmap! {
+            2 => random!(gen u64, record_count).into(),
+            3 => text!(gen frag random record_count, text_length).into(),
+        };
 
         let init = append_test_impl!(init columns);
 
@@ -1415,6 +1529,134 @@ mod sparse {
         fn even_40_partitions() {
             test_impl(40, true);
         }
+    }
+}
+
+mod string {
+    use super::*;
+    use ty::block::BlockStorage::Memmap;
+
+
+    mod dense {
+        use super::*;
+
+
+        #[test]
+        fn current_only() {
+            let now = <Timestamp as Default>::default();
+
+            let record_count = 100;
+            let string_len = 120;
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let data = hashmap! {
+                2 => Fragment::from(seqfill!(vec u64, record_count)),
+                3 => Fragment::from(text!(gen frag record_count, string_len)),
+            };
+
+            let mut expected = data.clone();
+
+            expected.insert(0, Fragment::from(v.clone()));
+
+            append_test_impl!(
+                hashmap! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    2 => Column::new(Memmap(BlockTy::U64Dense), "col1"),
+                    3 => Column::new(Memmap(BlockTy::StringDense), "col2"),
+                },
+                now,
+                vec![expected],
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {
+                        2 => (record_count, 0, 0),
+                        3 => (record_count, 0, 0),
+                    },
+                    data
+                ]
+            );
+        }
+
+        #[test]
+        fn long() {
+            let now = <Timestamp as Default>::default();
+
+            let record_count = 100;
+            let string_len = 2_000_000; // 2 M words ~= 13 MiB
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let data = hashmap! {
+                2 => Fragment::from(text!(gen frag record_count, string_len)),
+            };
+
+            let mut expected = data.clone();
+
+            expected.insert(0, Fragment::from(v.clone()));
+
+            append_test_impl!(
+                hashmap! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    2 => Column::new(Memmap(BlockTy::StringDense), "col1"),
+                },
+                now,
+                vec![expected],
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {
+                        2 => (record_count, 0, 0)
+                    },
+                    data
+                ]
+            );
+        }
+
+        #[test]
+        fn utf8() {
+            let now = <Timestamp as Default>::default();
+
+            let record_count = 5;
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let data = hashmap! {
+                2 => Fragment::from(vec![
+                    "❤❤❤".to_owned(),
+                    "🚲🚑⛄🚑".to_owned(),
+                    "⌚".to_owned(),
+                    "test".to_owned(),
+                    "hyena⌚hyena".to_owned()
+                ]),
+            };
+
+            let mut expected = data.clone();
+
+            expected.insert(0, Fragment::from(v.clone()));
+
+            append_test_impl!(
+                hashmap! {
+                    0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                    2 => Column::new(Memmap(BlockTy::StringDense), "col1"),
+                },
+                now,
+                vec![expected],
+                [
+                    v.into(),
+                    record_count,
+                    hashmap! {
+                        2 => (record_count, 0, 0),
+                    },
+                    data
+                ]
+            );
+        }
+
     }
 }
 

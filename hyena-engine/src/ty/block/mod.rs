@@ -116,6 +116,12 @@ impl BlockStorage {
         block_map_expr!(*self, block, { block.is_sparse() })
     }
 
+    pub fn is_pooled(&self) -> bool {
+        use self::BlockStorage::*;
+
+        block_map_expr!(*self, block, { block.is_pooled() })
+    }
+
     pub fn storage_type(&self) -> BlockStorageType {
         self.into()
     }
@@ -142,6 +148,13 @@ impl<'block> Block<'block> {
         use self::Block::*;
 
         block_map_expr!(*self, blk, { blk.is_empty() })
+    }
+
+    #[inline]
+    pub fn is_pooled(&self) -> bool {
+        use self::Block::*;
+
+        block_map_expr!(*self, block, { block.is_pooled() })
     }
 
     #[inline]

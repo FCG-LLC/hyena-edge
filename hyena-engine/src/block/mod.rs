@@ -29,7 +29,7 @@ pub trait BufferHead {
     }
 
     #[inline]
-    fn set_pool_head(&mut self, head: usize) {
+    fn set_pool_head(&mut self, _head: usize) {
         unimplemented!()
     }
 
@@ -257,6 +257,27 @@ impl BlockType {
             I32Sparse | U32Sparse |
             I64Sparse | U64Sparse  => true,
             I128Sparse | U128Sparse => true,
+        }
+    }
+
+    #[inline]
+    pub fn is_pooled(&self) -> bool {
+        use self::BlockType::*;
+
+        match *self {
+            I8Dense | U8Dense |
+            I16Dense | U16Dense |
+            I32Dense | U32Dense |
+            I64Dense | U64Dense => false,
+            I128Dense | U128Dense => false,
+
+            StringDense => true,
+
+            I8Sparse | U8Sparse |
+            I16Sparse | U16Sparse |
+            I32Sparse | U32Sparse |
+            I64Sparse | U64Sparse  => false,
+            I128Sparse | U128Sparse => false,
         }
     }
 }

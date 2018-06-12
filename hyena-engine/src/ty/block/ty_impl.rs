@@ -73,6 +73,11 @@ macro_rules! block_impl {
             }
 
             #[inline]
+            pub(crate) fn is_pooled(&self) -> bool {
+                BlockType::from(self).is_sparse()
+            }
+
+            #[inline]
             pub fn is_sparse(&self) -> bool {
                 BlockType::from(self).is_sparse()
             }
