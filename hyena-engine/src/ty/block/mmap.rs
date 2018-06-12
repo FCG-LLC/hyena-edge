@@ -36,6 +36,7 @@ impl<'block> Block<'block> {
         root: P,
         id: BlockId,
         size: usize,
+        pool_size: usize
     ) -> Result<(MemmapStorage, MemmapStorage)> {
 
         let root = root.as_ref();
@@ -43,7 +44,7 @@ impl<'block> Block<'block> {
 
         let pool = root.join(format!("block_{}.pool", id));
 
-        let pool_stor = MemmapStorage::new(pool, STRING_POOL_SIZE)
+        let pool_stor = MemmapStorage::new(pool, pool_size)
             .with_context(|_| "Failed to create pool block for dense string storage")?;
 
         Ok((slice_stor, pool_stor))
@@ -128,7 +129,8 @@ impl<'block> Block<'block> {
                 let (slice_storage, pool_storage) = Block::prepare_dense_pool_storage(
                     &root,
                     block_id,
-                    BLOCK_SIZE
+                    BLOCK_SIZE,
+                    STRING_POOL_SIZE
                 )
                     .with_context(|_| "Failed to create dense string storage")
                     .unwrap();
@@ -163,7 +165,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
 
     #[test]
@@ -276,4 +278,46 @@ mod tests {
     fn prepare_sparse_u128() {
         prepare_sparse::<u128>(1280);
     }
+
+    #[test]
+    fn prepare_dense_string() {
+        let root = tempdir!();
+        let blockid = 137659;
+
+        let data_path = root.as_ref().join(format!("block_{}.data", blockid));
+        let pool_path = root.as_ref().join(format!("block_{}.pool", blockid));
+
+        let (data_stor, pool_stor) =
+            Block::prepare_dense_pool_storage(&root, blockid, BLOCK_SIZE, STRING_POOL_SIZE)
+                .with_context(|_| {
+                    format!("Failed to prepare dense string storage")
+                })
+                .unwrap();
+
+        assert_eq!(data_stor.file_path(), data_path);
+        assert_eq!(pool_stor.file_path(), pool_path);
+        assert!(data_path.exists());
+        assert!(data_path.is_file());
+        assert!(pool_path.exists());
+        assert!(pool_path.is_file());
+
+        assert_eq!(
+            data_path
+                .metadata()
+                .with_context(|_| "Unable to get metadata for data file")
+                .unwrap()
+                .len() as usize,
+            BLOCK_SIZE
+        );
+
+        assert_eq!(
+            pool_path
+                .metadata()
+                .with_context(|_| "Unable to get metadata for pool file")
+                .unwrap()
+                .len() as usize,
+            STRING_POOL_SIZE
+        );
+    }
+
 }
