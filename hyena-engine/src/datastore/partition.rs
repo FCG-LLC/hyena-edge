@@ -89,11 +89,16 @@ impl<'part> Partition<'part> {
     pub(crate) fn append<'frag>(
         &mut self,
         blockmap: &BlockStorageMap,
+        indexmap: &ColumnIndexStorageMap,
         frags: &BlockRefData<'frag>,
         offset: SparseIndex,
     ) -> Result<usize> {
         self.ensure_blocks(&blockmap)
             .with_context(|_| "Unable to create block map")
+            .unwrap();
+
+        self.ensure_column_indexes(&indexmap)
+            .with_context(|_| "Unable to create index map")
             .unwrap();
 
         // ts range update
@@ -103,8 +108,11 @@ impl<'part> Partition<'part> {
         let written = {
             let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
                 if let Some(block) = self.blocks.get(blk_idx) {
-                    trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
-                    Some((block, frags.get(blk_idx).unwrap()))
+                    let idx = self.indexes.get(blk_idx);
+
+                    trace!("writing block {} with frag len {} {}",
+                        blk_idx, (*frag).len(), idx.map_or("", |_ | "and column index"));
+                    Some((block, frags.get(blk_idx).unwrap(), idx))
                 } else {
                     None
                 }
@@ -112,8 +120,9 @@ impl<'part> Partition<'part> {
 
             let mut written: usize = 0;
 
-            for (ref mut block, ref data) in ops {
+            for (ref mut block, ref data, mut colidx) in ops {
                 let b = acquire!(write block);
+                let mut colidx = colidx.map(|ref mut lock| acquire!(raw write lock));
 
                 let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                     // dense block handler
@@ -165,9 +174,17 @@ impl<'part> Partition<'part> {
                 }, {
                     // dense string handler
 
+                    // check if the column is indexed
+
                     frg
                         .iter()
-                        .map(|value| blk.append_string(value))
+                        .map(|value| {
+                            if let Some(ref mut colidx) = colidx {
+                                colidx.append_value(&value);
+                            }
+
+                            blk.append_string(value)
+                        })
                         .sum::<Result<usize>>()
                         .with_context(|_| "string block append failed")?
                 });
@@ -1077,11 +1094,13 @@ mod tests {
             0 => Fragment::from(ts),
         };
 
+        let indexes = hashmap! {}.into();
+
         let refs = frags.iter()
             .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
             .collect();
 
-        part.append(&blocks, &refs, 0).expect("Partition append failed");
+        part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
 
         assert_eq!(part.ts_min, Timestamp::from(ts_min));
         assert_eq!(part.ts_max, Timestamp::from(ts_max));
@@ -1206,11 +1225,13 @@ mod tests {
                     ])),
                 };
 
+                let indexes = hashmap! {}.into();
+
                 let refs = frags.iter()
                     .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
                     .collect();
 
-                part.append(&blocks, &refs, 0).expect("Partition append failed");
+                part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
 
                 (root, part, ts)
             }};
@@ -1589,11 +1610,13 @@ mod tests {
                         0 => Fragment::from(ts),
                     };
 
+                    let indexes = hashmap! {}.into();
+
                     let refs = frags.iter()
                         .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
                         .collect();
 
-                    part.append(&blocks, &refs, 0).expect("Partition append failed");
+                    part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
                 )+
 
                 (root, part)
