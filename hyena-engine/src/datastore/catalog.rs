@@ -17,8 +17,7 @@ use super::partition_group::PartitionGroup;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
-    pub(crate) columns: ColumnMap,
-
+    pub(crate) colmap: ColumnMap,
     pub(crate) groups: PartitionGroupMap<'cat>,
     pub(crate) indexes: ColumnIndexStorageMap,
 
@@ -37,7 +36,7 @@ impl<'cat> Catalog<'cat> {
         }
 
         let mut catalog = Catalog {
-            columns: Default::default(),
+            colmap: Default::default(),
             groups: Default::default(),
             indexes: Default::default(),
             data_root: root,
@@ -68,6 +67,10 @@ impl<'cat> Catalog<'cat> {
 
     pub fn open_or_create<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         Catalog::with_data(root.as_ref()).or_else(|_| Catalog::new(root.as_ref()))
+    }
+
+    pub fn columns(&self) -> &ColumnMap {
+        &self.colmap
     }
 
     #[cfg(feature = "validate_append")]
@@ -168,7 +171,7 @@ impl<'cat> Catalog<'cat> {
     /// so it allows redefinition of a column type.
     /// Use this feature with great caution.
     pub(crate) fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
-        self.columns.extend(type_map);
+        self.colmap.extend(type_map);
 
         Ok(())
     }
@@ -182,10 +185,10 @@ impl<'cat> Catalog<'cat> {
         for (id, column) in column_map.iter() {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
 
-            if self.columns.contains_key(id) {
+            if self.colmap.contains_key(id) {
                 bail!("Column Id already exists {}", *id);
             }
-            if self.columns.values().any(|col| col.name == column.name) {
+            if self.colmap.values().any(|col| col.name == column.name) {
                 bail!("Column Name already exists '{}'", column.name);
             }
         }
@@ -210,7 +213,7 @@ impl<'cat> Catalog<'cat> {
     /// todo: rethink this approach (max() every time)
     pub fn next_id(&self) -> usize {
         let default = 0;
-        *self.columns.keys().max().unwrap_or(&default) + 1
+        *self.colmap.keys().max().unwrap_or(&default) + 1
     }
 
     /// Calculate an empty partition's capacity for given column set
@@ -219,7 +222,7 @@ impl<'cat> Catalog<'cat> {
 
         indices.iter()
             .filter_map(|col_id| {
-                if let Some(column) = self.columns.get(col_id) {
+                if let Some(column) = self.colmap.get(col_id) {
                     Some(BLOCK_SIZE / column.size_of())
                 } else {
                     None
@@ -327,7 +330,7 @@ impl<'cat> Drop for Catalog<'cat> {
 
 impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
     fn as_ref(&self) -> &ColumnMap {
-        &self.columns
+        &self.colmap
     }
 }
 
