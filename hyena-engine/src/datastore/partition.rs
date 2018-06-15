@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use std::iter::FromIterator;
 use ty::fragment::{Fragment, TimestampFragmentRef};
 use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange};
+use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange, BloomFilterValues};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -213,7 +213,10 @@ impl<'part> Partition<'part> {
         // full ts range
 
         let rowids = if let Some(ref filters) = scan.filters {
-            let rowids = self.filter(filters, scan.or_clauses_count)?;
+            let rowids = self.filter(
+                filters,
+                scan.bloom_filters.as_ref(),
+                scan.or_clauses_count)?;
 
             // this is superfluous if we're dealing with dense blocks only
             // as it doesn't matter if rowids are sorted then
@@ -244,13 +247,18 @@ impl<'part> Partition<'part> {
     /// `HashSet` with matching `RowId`s
 
     #[inline]
-    fn filter(&self, filters: &ScanFilters, or_clauses_count: usize) -> Result<HashSet<usize>> {
+    fn filter(&self,
+        filters: &ScanFilters,
+        column_filters: Option<&BloomFilterValues>,
+        or_clauses_count: usize
+    ) -> Result<HashSet<usize>> {
         let result = filters
             .par_iter()
             .fold(|| vec![Some(HashSet::new()); or_clauses_count],
                 |mut acc, (block_id, or_filters)| {
                 if let Some(block) = self.blocks.get(block_id) {
                     let block = acquire!(read block);
+                    let index = self.indexes.get(block_id).map(|ref lock| acquire!(raw read lock));
 
                     map_block!(map block, blk, {
                         blk.as_slice().iter()
@@ -292,22 +300,64 @@ impl<'part> Partition<'part> {
                             });
                     }, {
                         // pooled
-                        blk.iter()
-                            .enumerate()
-                            .for_each(|(rowid, val)| {
-                                or_filters
-                                    .iter()
-                                    .zip(acc.iter_mut())
-                                    .for_each(|(and_filters, result)| {
-                                        if let Some(ref mut result) = *result {
-                                            if and_filters.iter().all(|f| f.apply(&val)) {
-                                                result.insert(rowid);
+
+                        if let Some(ref index) = index {
+                            blk
+                                .iter()
+                                .enumerate()
+                                .zip(index.iter())
+                                .filter_map(|((rowid, value), bloom)| {
+                                    // bloom
+
+                                    if let Some(filters) = column_filters {
+                                        if let Some(filters) = filters.get(&block_id) {
+                                            if filters
+                                                .iter()
+                                                .any(|tested| bloom.contains(*tested)) {
+                                                Some((rowid, value))
+                                            } else {
+                                                None
                                             }
                                         } else {
-                                            unreachable!()
+                                            Some((rowid, value))
                                         }
-                                    });
-                            });
+                                    } else {
+                                        Some((rowid, value))
+                                    }
+                                })
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(&val)) {
+                                                    result.insert(rowid);
+                                                }
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+                        } else {
+                            blk
+                                .iter()
+                                .enumerate()
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(&val)) {
+                                                    result.insert(rowid);
+                                                }
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+                        }
                     })
                 }
 
@@ -1261,7 +1311,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1289,7 +1339,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1321,7 +1371,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1356,7 +1406,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1384,7 +1434,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1403,7 +1453,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1424,7 +1474,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1447,7 +1497,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
