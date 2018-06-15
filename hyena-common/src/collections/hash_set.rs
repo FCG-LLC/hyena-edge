@@ -87,11 +87,9 @@ where V: Hash + Eq
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[cfg(all(feature = "nightly", test))]
     mod benches {
-        use super::*;
+        use super::super::*;
         use test::{Bencher, black_box};
 
         fn data(count: usize, distance: usize) -> Vec<usize> {
