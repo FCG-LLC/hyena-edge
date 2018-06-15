@@ -1,5 +1,5 @@
 use error::*;
-use ty::BlockStorage;
+use ty::{BlockStorage, ColumnIndexStorageMap};
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use hyena_common::collections::HashMap;
@@ -20,6 +20,7 @@ pub struct Catalog<'cat> {
     pub(crate) columns: ColumnMap,
 
     pub(crate) groups: PartitionGroupMap<'cat>,
+    pub(crate) indexes: ColumnIndexStorageMap,
 
     #[serde(skip)]
     pub(crate) data_root: PathBuf,
@@ -38,6 +39,7 @@ impl<'cat> Catalog<'cat> {
         let mut catalog = Catalog {
             columns: Default::default(),
             groups: Default::default(),
+            indexes: Default::default(),
             data_root: root,
         };
 
@@ -189,6 +191,18 @@ impl<'cat> Catalog<'cat> {
         }
 
         self.ensure_columns(column_map)
+    }
+
+    /// Extend internal index map without any sanitization checks.
+    ///
+    /// This function uses `std::iter::Extend` internally,
+    /// so it allows redefinition of a index type.
+    /// Also, the index' support for a given column is not checked.
+    /// Use this feature with great caution.
+    pub fn ensure_index(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
+        self.indexes.extend(&*index_map);
+
+        Ok(())
     }
 
     /// Fetch the first non-occupied column index
