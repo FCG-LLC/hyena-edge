@@ -2,8 +2,8 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType,
-ColumnId, RowId};
+use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
+ColumnId, RowId, ColumnIndexMap, ColumnIndexStorage, ColumnIndexStorageMap};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -30,6 +30,8 @@ pub struct Partition<'part> {
     #[serde(skip)]
     blocks: BlockMap<'part>,
     #[serde(skip)]
+    indexes: ColumnIndexMap<'part>,
+    #[serde(skip)]
     data_root: PathBuf,
 }
 
@@ -54,6 +56,7 @@ impl<'part> Partition<'part> {
             ts_min: ts,
             ts_max: ts,
             blocks: Default::default(),
+            indexes: Default::default(),
             data_root: root,
         })
     }
@@ -626,12 +629,33 @@ impl<'part> Partition<'part> {
                     Some((*block_id, *block_type))
                 }
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>().into();
 
         let blocks = Partition::prepare_blocks(&self.data_root, &fmap)
             .with_context(|_| "Unable to create block map")?;
 
         self.blocks.extend(blocks);
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn ensure_column_indexes(&mut self, storage_map: &ColumnIndexStorageMap) -> Result<()> {
+        let fmap = storage_map
+            .iter()
+            .filter_map(|(block_id, index_type)| {
+                if self.indexes.contains_key(block_id) {
+                    None
+                } else {
+                    Some((*block_id, *index_type))
+                }
+            })
+            .collect::<HashMap<_, _>>().into();
+
+        let blocks = Partition::prepare_indexes(&self.data_root, &fmap)
+            .with_context(|_| "Unable to create block map")?;
+
+        self.indexes.extend(blocks);
 
         Ok(())
     }
@@ -644,7 +668,7 @@ impl<'part> Partition<'part> {
     // TODO: to be benched
     fn prepare_blocks<'i, P>(
         root: P,
-        storage_map: &'i BlockStorageMapType,
+        storage_map: &'i BlockStorageMap,
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
@@ -675,6 +699,40 @@ impl<'part> Partition<'part> {
             .collect()
     }
 
+    // TODO: to be benched
+    fn prepare_indexes<'i, P>(
+        root: P,
+        storage_map: &'i ColumnIndexStorageMap,
+    ) -> Result<ColumnIndexMap<'part>>
+    where
+        P: AsRef<Path> + Sync,
+//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
+    {
+
+        storage_map
+            .iter()
+            .map(|(block_id, index_type)| match *index_type {
+                ColumnIndexStorage::Memory(colidx) => {
+                    use ty::index::memory::ColumnIndex;
+
+                    ColumnIndex::create(colidx)
+                        .map(|block| (*block_id, locked!(rw block.into())))
+                        .with_context(|_| "Unable to create in-memory column index block")
+                        .map_err(|e| e.into())
+                }
+                ColumnIndexStorage::Memmap(colidx) => {
+                    use ty::index::mmap::ColumnIndex;
+
+                    ColumnIndex::create(&root, colidx, *block_id)
+                        .map(|block| (*block_id, locked!(rw block.into())))
+                        .with_context(|_| "Unable to create mmap column index block")
+                        .map_err(|e| e.into())
+                }
+            })
+            .collect()
+    }
+
     pub(crate) fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(PARTITION_METADATA);
@@ -686,6 +744,7 @@ impl<'part> Partition<'part> {
         let meta = meta.as_ref();
 
         let blocks: BlockStorageMap = (&partition.blocks).into();
+        let indexes: ColumnIndexStorageMap = (&partition.indexes).into();
         let heads = partition
             .blocks
             .iter()
@@ -702,7 +761,7 @@ impl<'part> Partition<'part> {
             })
             .collect::<BlockHeadMap>();
 
-        let data = (partition, blocks, heads);
+        let data = (partition, blocks, indexes, heads);
 
         serialize!(file meta, &data)
             .with_context(|_| "Failed to serialize partition metadata")
@@ -719,12 +778,16 @@ impl<'part> Partition<'part> {
             bail!("Cannot find partition metadata {:?}", meta);
         }
 
-        let (mut partition, blocks, heads): (Partition, BlockStorageMap, BlockHeadMap) =
+        let (mut partition, blocks, indexes, heads):
+            (Partition, BlockStorageMap, ColumnIndexStorageMap,  BlockHeadMap) =
             deserialize!(file meta)
                 .with_context(|_| "Failed to read partition metadata")?;
 
-        partition.blocks = Partition::prepare_blocks(&root, &*blocks)
+        partition.blocks = Partition::prepare_blocks(&root, &blocks)
             .with_context(|_| "Failed to read block data")?;
+
+        partition.indexes = Partition::prepare_indexes(&root, &indexes)
+            .with_context(|_| "Failed to read column index block data")?;
 
         let partid = partition.id;
 
@@ -736,6 +799,15 @@ impl<'part> Partition<'part> {
                 *(pb.mut_head()) = head.head;
                 if let Some(head) = head.pool_head {
                     pb.set_pool_head(head);
+                }
+
+                // check for this block's index
+                if let Some(mut index) = partition.indexes.get(&blockid) {
+                    let index = acquire!(write index);
+                    index.set_head(head.head)
+                        .with_context(|_|
+                            format_err!("Unable to set column index block head ptr of partition {}",
+                                partid))?;
                 }
             })
         }
