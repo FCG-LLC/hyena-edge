@@ -1,5 +1,5 @@
 use error::*;
-use uuid::Uuid;
+use hyena_common::ty::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
 use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
@@ -729,7 +729,7 @@ impl<'part> Partition<'part> {
 
     #[inline]
     pub fn gen_id() -> PartitionId {
-        Uuid::new_v4()
+        Uuid::new()
     }
 
     // TODO: to be benched
