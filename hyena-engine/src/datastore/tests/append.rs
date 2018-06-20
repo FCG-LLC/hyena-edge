@@ -608,6 +608,53 @@ mod benches {
 
         b.iter(|| cat.append(&append).expect("unable to append fragment"));
     }
+
+    #[bench]
+    fn small_string_bloom(b: &mut Bencher) {
+        use block::{BlockType as BlockTy, ColumnIndexType};
+        use ty::block::BlockStorage::Memmap;
+        use ty::index::ColumnIndexStorage;
+
+
+
+        let record_count = 100;
+        let text_length = 120;
+
+        let columns = hashmap! {
+            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+            2 => Column::new(Memmap(BlockTy::U64Dense), "col1"),
+            3 => Column::new(Memmap(BlockTy::StringDense), "col2"),
+        };
+
+        let data = hashmap! {
+            2 => random!(gen u64, record_count).into(),
+            3 => text!(gen frag random record_count, text_length).into(),
+        };
+
+        let init = append_test_impl!(init columns);
+
+        let ts = RandomTimestampGen::iter_range_from(init.2)
+            .take(record_count)
+            .collect::<Vec<Timestamp>>()
+            .into();
+
+        let append = Append {
+            ts,
+            source_id: 1,
+            data,
+        };
+
+        let mut cat = init.1;
+
+        cat.ensure_index(hashmap! {
+            3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
+        }.into())
+        .with_context(|_| "ensure index failed")
+        .unwrap();
+
+        b.iter(|| cat.append(&append).expect("unable to append fragment"));
+    }
 }
 
 #[test]
