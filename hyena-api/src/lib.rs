@@ -21,7 +21,8 @@ use error::*;
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
 ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment, Regex,
-ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
+ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId, ColumnIndexType,
+ColumnIndexStorage};
 
 use hyena_common::ty::{Uuid, Timestamp};
 
@@ -135,7 +136,7 @@ impl ScanComparison {
             ScanComparison::StartsWith |
             ScanComparison::EndsWith   |
             ScanComparison::Contains   | // Use to_scan_filter_op_str
-            ScanComparison::Matches => Err(Error::InvalidScanRequest("String operator for numeric data".into())), 
+            ScanComparison::Matches => Err(Error::InvalidScanRequest("String operator for numeric data".into())),
         }
     }
 
@@ -256,6 +257,12 @@ pub struct AddColumnRequest {
     pub column_type: BlockType,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Copy, Clone)]
+pub struct AddColumnIndexRequest {
+    pub column_id: ColumnId,
+    pub index_type: ColumnIndexType,
+}
+
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct PartitionInfo {
@@ -295,6 +302,7 @@ pub enum Request {
     AddColumn(AddColumnRequest),
     Flush,
     DataCompaction,
+    AddColumnIndex(AddColumnIndexRequest),
     Other,
 }
 
@@ -351,9 +359,10 @@ pub enum Reply {
     Insert(Result<usize, Error>),
     Scan(Result<ScanResultMessage, Error>),
     RefreshCatalog(RefreshCatalogResponse),
-    AddColumn(Result<usize, Error>),
+    AddColumn(Result<ColumnId, Error>),
     Flush,
     DataCompaction,
+    AddColumnIndex(Result<ColumnId, Error>),
     SerializeError(String),
     Other,
 }
@@ -413,6 +422,24 @@ impl Reply {
                 Reply::AddColumn(Ok(id))
             }
             Err(error) => Reply::AddColumn(Err(error.into())),
+        }
+    }
+
+    fn add_index(request: AddColumnIndexRequest, catalog: &mut Catalog) -> Reply {
+        let AddColumnIndexRequest { column_id, index_type } = request;
+
+        let index = ColumnIndexStorage::Memmap(index_type);
+
+        info!("Adding index {:?} with id {}",
+              index_type,
+              column_id);
+
+        match catalog.add_indexes(hashmap! { column_id => index }.into()) {
+            Ok(_) => {
+                catalog.flush().expect("failed to flush catalog");
+                Reply::AddColumnIndex(Ok(column_id))
+            }
+            Err(error) => Reply::AddColumnIndex(Err(error.into())),
         }
     }
 
@@ -612,6 +639,7 @@ pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
         Request::Insert(insert) => Reply::insert(insert, catalog),
         Request::Scan(request) => Reply::scan(request, catalog),
         Request::RefreshCatalog => Reply::get_catalog(catalog),
+        Request::AddColumnIndex(request) => Reply::add_index(request, catalog),
         _ => Reply::Other,
     }
 }
@@ -741,6 +769,69 @@ mod tests {
                 match added {
                     AddColumn(Err(_)) => {}
                     _ => panic!("Should have returned an error"),
+                }
+            }
+        }
+
+        mod add_index {
+            use super::*;
+            use super::Reply::{AddColumnIndex, AddColumn};
+            use hyena_test::tempfile::TempDir;
+
+            fn prepare_catalog<'cat>() -> (TempDir, Catalog<'cat>, ColumnId) {
+                let name: String = "a_test_column".into();
+                let request = AddColumnRequest {
+                    column_name: name.clone(),
+                    column_type: BlockType::I32Dense,
+                };
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
+                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+
+                let id = if let AddColumn(Ok(id)) = Reply::add_column(request, &mut catalog) {
+                    id
+                } else {
+                    panic!("add column failed");
+                };
+
+                (td, catalog, id)
+            }
+
+            #[test]
+            fn adds_column() {
+                let (_td, mut catalog, column_id) = prepare_catalog();
+
+                let request = AddColumnIndexRequest {
+                    column_id,
+                    index_type: ColumnIndexType::Bloom,
+                };
+
+                if let AddColumnIndex(Ok(id)) = Reply::add_index(request, &mut catalog) {
+                    assert_eq!(id, column_id, "bad column index");
+                } else {
+                    panic!("failed to add index");
+                };
+            }
+
+            #[test]
+            fn fails_on_double_insert() {
+                let (_td, mut catalog, column_id) = prepare_catalog();
+
+                let request = AddColumnIndexRequest {
+                    column_id,
+                    index_type: ColumnIndexType::Bloom,
+                };
+
+                if let AddColumnIndex(Ok(id)) = Reply::add_index(request, &mut catalog) {
+                    assert_eq!(id, column_id, "bad column index");
+                } else {
+                    panic!("failed to add index");
+                };
+
+                if let AddColumnIndex(Ok(_)) = Reply::add_index(request, &mut catalog) {
+                    panic!("second add_index didn't fail");
                 }
             }
         }
