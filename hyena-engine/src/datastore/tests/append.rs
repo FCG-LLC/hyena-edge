@@ -647,7 +647,7 @@ mod benches {
 
         let mut cat = init.1;
 
-        cat.ensure_index(hashmap! {
+        cat.ensure_indexes(hashmap! {
             3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
         }.into())
         .with_context(|_| "ensure index failed")

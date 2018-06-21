@@ -176,11 +176,11 @@ impl<'cat> Catalog<'cat> {
         Ok(())
     }
 
-    /// Adds the column to the catalog. It verifies that catalog does not already contain:
+    /// Adds a column to the catalog. It verifies that catalog does not already contain:
     /// a) column with the given id, or
     /// b) column with the given name.
     /// This function takes all-or-nothing approach:
-    /// either all columns can are added, or none gets added.
+    /// either all columns are added, or no changes are applied.
     pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
         for (id, column) in column_map.iter() {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
@@ -202,12 +202,32 @@ impl<'cat> Catalog<'cat> {
     /// so it allows redefinition of a index type.
     /// Also, the index' support for a given column is not checked.
     /// Use this feature with great caution.
-    pub fn ensure_index(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
+    pub(crate) fn ensure_indexes(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
         self.indexes.extend(&*index_map);
 
         Ok(())
     }
 
+    /// Adds index to the catalog. Verifies that catalog does not already contain:
+    /// a) index for a column with the given id, or
+    /// b) index for a column with the given name.
+    /// This function takes all-or-nothing approach:
+    /// either all indexes are added, or no changes are applied.
+    pub fn add_indexes(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
+        for (id, index) in index_map.iter() {
+            let column = self.colmap.get(id)
+                .ok_or_else(|| err_msg(format!("column not found {}", id)))?;
+
+            info!("Adding index {:?} for column {}[{}]:{:?}",
+                index, column.name, id, column.ty);
+
+            if self.indexes.contains_key(id) {
+                bail!("Index already exists {}", *id);
+            }
+        }
+
+        self.ensure_indexes(index_map)
+    }
     /// Fetch the first non-occupied column index
     ///
     /// todo: rethink this approach (max() every time)
