@@ -66,3 +66,58 @@ impl<'idx> From<ColumnIndex<'idx>> for super::ColumnIndex<'idx> {
         super::ColumnIndex::Memmap(index)
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use params::{BLOCK_SIZE};
+
+    #[test]
+    fn prepare() {
+        let root = tempdir!();
+        let blockid = 123;
+
+        let path = root.as_ref().join(format!("block_{}.bloom", blockid));
+
+        let storage = ColumnIndex::prepare_storage(&root, blockid, BLOCK_SIZE, "bloom")
+            .with_context(|_| "Failed to prepare dense storage")
+            .unwrap();
+
+        assert_eq!(storage.file_path(), path);
+        assert!(path.exists());
+        assert!(path.is_file());
+        assert_eq!(
+            path.metadata()
+                .with_context(|_| "Unable to get metadata for data file")
+                .unwrap()
+                .len() as usize,
+            BLOCK_SIZE
+        );
+    }
+
+    #[test]
+    fn prepare_bloom() {
+        let root = tempdir!();
+        let blockid = 123;
+
+        let bloom_path = root.as_ref().join(format!("block_{}.bloom", blockid));
+
+        let _index_block = ColumnIndex::create(&root, ColumnIndexType::Bloom, blockid)
+            .with_context(|_| "Failed to prepare column index storage")
+            .unwrap();
+
+        assert!(bloom_path.exists());
+        assert!(bloom_path.is_file());
+        assert_eq!(
+            bloom_path.metadata()
+                .with_context(|_| "Unable to get metadata for data file")
+                .unwrap()
+                .len() as usize,
+            // use constant to verify the correctness of relative calculations
+            // and also make this fail if BloomValue size changes
+            BLOCK_SIZE * 2
+        );
+    }
+
+}
