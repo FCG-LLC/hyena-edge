@@ -556,18 +556,13 @@ impl ScanFilterOp<String> {
         use self::ScanFilterOp::*;
 
         match *self {
-            Lt(ref v) => Some(DefaultBloomFilter::encode(v)),
-            LtEq(ref v) => Some(DefaultBloomFilter::encode(v)),
+            Lt(_) => None,
+            LtEq(_) => None,
             Eq(ref v) => Some(DefaultBloomFilter::encode(v)),
-            GtEq(ref v) => Some(DefaultBloomFilter::encode(v)),
-            Gt(ref v) => Some(DefaultBloomFilter::encode(v)),
-            NotEq(ref v) => Some(DefaultBloomFilter::encode(v)),
-            In(ref v) => {
-                Some(v
-                    .iter()
-                    .map(DefaultBloomFilter::encode)
-                    .fold(BloomValue::default(), |bv, v| bv | v))
-            },
+            GtEq(_) => None,
+            Gt(_) => None,
+            NotEq(_) => None,
+            In(_) => None,
             StartsWith(ref v) => Some(DefaultBloomFilter::encode(v)),
             EndsWith(ref v) => Some(DefaultBloomFilter::encode(v)),
             Contains(ref v) => Some(DefaultBloomFilter::encode(v)),
