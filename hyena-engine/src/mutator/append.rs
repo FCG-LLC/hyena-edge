@@ -26,6 +26,12 @@ impl Append {
     pub fn is_empty(&self) -> bool {
         self.ts.is_empty()
     }
+
+    pub fn into_parts(self) -> (TimestampFragment, SourceId, BlockData) {
+        let Append { ts, source_id, data } = self;
+
+        (ts, source_id, data)
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use error::*;
 use storage::memory::PagedMemoryStorage;
 use block::SparseIndex;
 use std::mem::size_of;
-use params::BLOCK_SIZE;
+use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -11,7 +11,8 @@ block_impl!(PagedMemoryStorage);
 impl<'block> Block<'block> {
     #[inline]
     pub(crate) fn prepare_dense_storage(size: usize) -> Result<PagedMemoryStorage> {
-        PagedMemoryStorage::new(size)
+        Ok(PagedMemoryStorage::new(size)
+            .with_context(|_| "Failed to create data block for dense storage")?)
     }
 
     #[inline]
@@ -28,6 +29,21 @@ impl<'block> Block<'block> {
             .with_context(|_| "Failed to create index block for sparse storage")?;
 
         Ok((data_stor, index_stor))
+    }
+
+    #[inline]
+    pub(crate) fn prepare_dense_pool_storage(
+        size: usize,
+        pool_size: usize
+    ) -> Result<(PagedMemoryStorage, PagedMemoryStorage)> {
+
+        let data_stor = PagedMemoryStorage::new(size)
+            .with_context(|_| "Failed to create data block for dense storage")?;
+
+        let pool_stor = PagedMemoryStorage::new(pool_size)
+            .with_context(|_| "Failed to create pool block for dense storage")?;
+
+        Ok((data_stor, pool_stor))
     }
 
     #[inline]
@@ -70,6 +86,18 @@ impl<'block> Block<'block> {
             BlockType::U64Dense => prepare_mem_dense!(U64DenseBlock<'block, _>),
             BlockType::U128Dense => prepare_mem_dense!(U128DenseBlock<'block, _>),
 
+            // String
+            BlockType::StringDense => {
+                let (slice_storage, pool_storage) =
+                    Block::prepare_dense_pool_storage(BLOCK_SIZE, STRING_POOL_SIZE)
+                    .with_context(|_| "Failed to create dense string storage")
+                    .unwrap();
+
+                StringDenseBlock::<'block, _, _>::new(slice_storage, pool_storage)
+                    .with_context(|_| "Failed to create block")?
+                    .into()
+            }
+
             // Sparse
             BlockType::I8Sparse => prepare_mem_sparse!(I8SparseBlock<'block, _, _>, i8),
             BlockType::I16Sparse => prepare_mem_sparse!(I16SparseBlock<'block, _, _>, i16),
@@ -95,7 +123,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
 
     #[test]
@@ -169,5 +197,17 @@ mod tests {
     #[test]
     fn prepare_sparse_u128() {
         prepare_sparse::<u128>();
+    }
+
+    #[test]
+    fn prepare_dense_string() {
+        let (data_stor, pool_stor) = Block::prepare_dense_pool_storage(BLOCK_SIZE, STRING_POOL_SIZE)
+            .with_context(|_| {
+                    format!("Failed to prepare dense string storage")
+            })
+            .unwrap();
+
+        assert_eq!(data_stor.len(), BLOCK_SIZE);
+        assert_eq!(pool_stor.len(), STRING_POOL_SIZE);
     }
 }

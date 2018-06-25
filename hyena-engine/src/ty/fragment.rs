@@ -23,6 +23,8 @@ pub enum Fragment {
     U64Dense(Vec<u64>),
     U128Dense(Vec<u128>),
 
+    StringDense(Vec<String>),
+
     // Sparse, Signed
     I8Sparse(Vec<i8>, Vec<SparseIndex>),
     I16Sparse(Vec<i16>, Vec<SparseIndex>),
@@ -52,6 +54,8 @@ pub enum FragmentRef<'frag> {
     U32Dense(&'frag [u32]),
     U64Dense(&'frag [u64]),
     U128Dense(&'frag [u128]),
+
+    StringDense(&'frag [String]),
 
     // Sparse, Signed
     I8Sparse(&'frag [i8], &'frag [SparseIndex]),
@@ -131,7 +135,8 @@ macro_rules! frag_apply {
         $other_block: ident, $other_idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ merge $self, $other, $self_block, $self_idx, $other_block, $other_idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -140,7 +145,8 @@ macro_rules! frag_apply {
     (mut $self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ mut $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -149,7 +155,8 @@ macro_rules! frag_apply {
     ($self: expr, $block: ident, $idx: ident, $dense: block, $sparse: block) => {
         frag_apply!(@ $self, $block, $idx
             dense [ $dense, I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
-                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense ]
+                            U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                            StringDense ]
             sparse [ $sparse, I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                               U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse ]
         )
@@ -303,12 +310,12 @@ impl Fragment {
 
         frag_apply!(*self, blk, idx, {
             FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(*v))
+                .map(|v| Value::from(v.clone()))
                 .enumerate()), PhantomData)
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
             ), PhantomData)
         })
     }
@@ -402,12 +409,12 @@ impl<'fragref> FragmentRef<'fragref> {
 
         frag_apply!(*self, blk, idx, {
             FragmentIter(Box::new(blk.iter()
-                .map(|v| Value::from(*v))
+                .map(|v| Value::from(v.clone()))
                 .enumerate()), PhantomData)
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(*blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
+                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
             ), PhantomData)
         })
     }
@@ -499,6 +506,20 @@ fragment_variant_impl!(sparse
                        U64Sparse, u64;
                        U128Sparse, u128;);
 
+// string fragment impls
+
+impl From<Vec<String>> for Fragment {
+    fn from(source: Vec<String>) -> Fragment {
+        Fragment::StringDense(source)
+    }
+}
+
+impl<'frag> From<&'frag [String]> for FragmentRef<'frag> {
+    fn from(source: &'frag [String]) -> FragmentRef<'frag> {
+        FragmentRef::StringDense(source)
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TimestampFragment(Vec<Timestamp>);
@@ -514,6 +535,10 @@ impl TimestampFragment {
 
     pub fn as_slice(&self) -> &[Timestamp] {
         self.0.as_slice()
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [Timestamp] {
+        self.0.as_mut_slice()
     }
 }
 
@@ -802,6 +827,73 @@ mod tests {
             let frag = TimestampFragment::from(buf.clone());
 
             assert_eq!(frag.0, &buf[..]);
+        }
+    }
+
+    mod string {
+        use super::*;
+        use hyena_test::string::ipsum_text;
+
+        mod dense {
+            use super::*;
+
+            #[test]
+            fn is_eq() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                assert_variant!(frag, Fragment::StringDense(val), &val[..] == &buf[..])
+            }
+
+            #[test]
+            fn is_sparse() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                assert!(!frag.is_sparse());
+            }
+
+            #[test]
+            #[should_panic(expected = "split_at_idx called on a dense block")]
+            fn split_at_idx() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                frag.split_at_idx(100).unwrap();
+            }
+
+            #[test]
+            fn sort() {
+                let buf = text!(gen random 1000);
+
+                let mut expected = buf.clone();
+                expected.sort();
+                let expected = Fragment::from(expected);
+
+                let mut frag = Fragment::from(buf);
+                frag.sort_unstable();
+
+                assert_eq!(frag, expected);
+            }
+
+            #[test]
+            fn iter() {
+                let buf = (1..100).into_iter().map(|i| ipsum_text(i)).collect::<Vec<_>>();
+
+                let frag = Fragment::from(buf.clone());
+
+                let v = frag.iter().collect::<Vec<_>>();
+
+                let expected = buf.iter()
+                    .enumerate()
+                    .map(|(idx, val)| (idx, Value::from(val.clone())))
+                    .collect::<Vec<_>>();
+
+                assert_eq!(expected, v);
+            }
         }
     }
 }

@@ -32,6 +32,35 @@ macro_rules! hashmap {
 }
 
 #[macro_export]
+macro_rules! join (
+    ($slice: expr, $sep: expr, $fmt: expr) => {{
+        use std::fmt::Write;
+        use std::string::String;
+
+        let mut it = $slice.iter().peekable();
+        let mut buf = String::with_capacity(it.size_hint().0 * $sep.len());
+
+        while let Some(e) = it.next() {
+            write!(&mut buf, $fmt, e).expect("join: iterable write error");
+
+            if it.peek().is_some() {
+                write!(&mut buf, $sep).expect("join: separator write error");
+            }
+        }
+
+        buf
+    }};
+
+    ($slice: expr, $sep: expr) => {
+        join!($slice, $sep, "{}")
+    };
+
+    ($slice: expr) => {
+        join!($slice, "", "{}")
+    };
+);
+
+#[macro_export]
 macro_rules! hashset {
     () => {{
         use $crate::collections::HashSet;

@@ -13,8 +13,14 @@ pub(crate) mod mmap;
 
 pub type BlockId = usize;
 
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub(crate) struct BlockHeads {
+    pub(crate) head: usize,
+    pub(crate) pool_head: Option<usize>
+}
+
 pub type BlockMap<'block> = HashMap<BlockId, RwLock<Block<'block>>>;
-pub(crate) type BlockHeadMap = HashMap<BlockId, usize>;
+pub(crate) type BlockHeadMap = HashMap<BlockId, BlockHeads>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BlockStorageMap(BlockStorageMapType);
@@ -110,6 +116,12 @@ impl BlockStorage {
         block_map_expr!(*self, block, { block.is_sparse() })
     }
 
+    pub fn is_pooled(&self) -> bool {
+        use self::BlockStorage::*;
+
+        block_map_expr!(*self, block, { block.is_pooled() })
+    }
+
     pub fn storage_type(&self) -> BlockStorageType {
         self.into()
     }
@@ -136,6 +148,13 @@ impl<'block> Block<'block> {
         use self::Block::*;
 
         block_map_expr!(*self, blk, { blk.is_empty() })
+    }
+
+    #[inline]
+    pub fn is_pooled(&self) -> bool {
+        use self::Block::*;
+
+        block_map_expr!(*self, block, { block.is_pooled() })
     }
 
     #[inline]

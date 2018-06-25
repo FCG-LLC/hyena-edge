@@ -11,13 +11,13 @@ use std::iter::{once, Enumerate, Peekable};
 use std::ops::Deref;
 
 
-#[macro_export]
 macro_rules! table {
     ($fragmap: expr, $header: expr, $offset: expr) => {{
         use prettytable::Table;
         use prettytable::row::Row;
         use prettytable::cell::Cell;
         use term::{color, Attr};
+
 
         let mut table = Table::new();
 

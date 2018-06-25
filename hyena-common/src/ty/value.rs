@@ -26,7 +26,7 @@ macro_rules! value_impl {
                 match *self {
                     Value::Null => write!(f, ""),
                     $(
-                    Value::$variant(v) => write!(f, "{}", v),
+                    Value::$variant(ref v) => write!(f, "{}", v),
                     )+
                 }
             }
@@ -40,6 +40,7 @@ value_impl!(U8, u8,
             U32, u32,
             U64, u64,
             U128, u128,
+            String, String,
             I8, i8,
             I16, i16,
             I32, i32,
@@ -47,3 +48,9 @@ value_impl!(U8, u8,
             I128, i128,
             Usize, usize,
             Timestamp, Timestamp);
+
+impl<'s> From<&'s str> for Value {
+    fn from(v: &'s str) -> Value {
+        Value::String(v.to_owned())
+    }
+}

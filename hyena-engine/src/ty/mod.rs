@@ -5,7 +5,8 @@ pub(super) mod block;
 pub mod fragment;
 pub(crate) mod sparse_iter;
 
-pub(crate) use self::block::{BlockHeadMap, BlockMap, BlockStorageMap, BlockStorageMapType};
+pub(crate) use self::block::{BlockHeadMap, BlockHeads, BlockMap, BlockStorageMap,
+BlockStorageMapType};
 pub use self::block::{BlockStorage, BlockStorageType};
 pub use self::fragment::{Fragment, FragmentRef, TimestampFragment};
 pub(crate) use self::sparse_iter::{SparseIter, SparseIterator};

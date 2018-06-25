@@ -11,6 +11,7 @@ extern crate num;
 extern crate rand;
 extern crate serde;
 extern crate rayon;
+extern crate regex;
 #[macro_use]
 extern crate serde_derive;
 extern crate uuid;

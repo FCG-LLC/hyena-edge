@@ -1,9 +1,9 @@
-use block::{DenseNumericBlock, SparseIndexedNumericBlock};
+use block::{DenseNumericBlock, SparseIndexedNumericBlock, DenseStringBlock};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
 macro_rules! block_impl {
-    ($ST: ty, $SI: ty) => {
+    ($ST: ty, $SI: ty, $SP: ty) => {
         use ty::block::ty_impl::*;
         use std::sync::RwLock;
         use block::BlockData;
@@ -25,6 +25,8 @@ macro_rules! block_impl {
             U32Dense(U32DenseBlock<'block, $ST>),
             U64Dense(U64DenseBlock<'block, $ST>),
             U128Dense(U128DenseBlock<'block, $ST>),
+
+            StringDense(StringDenseBlock<'block, $ST, $SP>),
 
             // Sparse, Signed
             I8Sparse(I8SparseBlock<'block, $ST, $SI>),
@@ -68,6 +70,11 @@ macro_rules! block_impl {
                 block_map_expr!(*self, blk, {
                     blk.is_empty()
                 })
+            }
+
+            #[inline]
+            pub(crate) fn is_pooled(&self) -> bool {
+                BlockType::from(self).is_sparse()
             }
 
             #[inline]
@@ -147,6 +154,14 @@ macro_rules! block_impl {
         impl<'block> From<U128DenseBlock<'block, $ST>> for Block<'block> {
             fn from(block: U128DenseBlock<'block, $ST>) -> Block<'block> {
                 Block::U128Dense(block)
+            }
+        }
+
+        // String
+
+        impl<'block> From<StringDenseBlock<'block, $ST, $SP>> for Block<'block> {
+            fn from(block: StringDenseBlock<'block, $ST, $SP>) -> Block<'block> {
+                Block::StringDense(block)
             }
         }
 
@@ -234,6 +249,10 @@ macro_rules! block_impl {
                     U64Dense(..) => BlockType::U64Dense,
                     U128Dense(..) => BlockType::U128Dense,
 
+                    // String
+
+                    StringDense(..) => BlockType::StringDense,
+
                     // Sparse, Signed
                     I8Sparse(..) => BlockType::I8Sparse,
                     I16Sparse(..) => BlockType::I16Sparse,
@@ -259,8 +278,12 @@ macro_rules! block_impl {
 
     };
 
+    ($ST: ty, $SI: ty) => {
+        block_impl!($ST, $SI, $ST);
+    };
+
     ($ST: ty) => {
-        block_impl!($ST, $ST);
+        block_impl!($ST, $ST, $ST);
     };
 }
 
@@ -278,6 +301,7 @@ macro_rules! map_block_type_variants {
                                     U32Dense,
                                     U64Dense,
                                     U128Dense,
+                                    StringDense,
                                     I8Sparse,
                                     I16Sparse,
                                     I32Sparse,
@@ -306,6 +330,7 @@ macro_rules! block_map_expr {
                         [
                         I8Dense, I16Dense, I32Dense, I64Dense, I128Dense,
                         U8Dense, U16Dense, U32Dense, U64Dense, U128Dense,
+                        StringDense,
                         I8Sparse, I16Sparse, I32Sparse, I64Sparse, I128Sparse,
                         U8Sparse, U16Sparse, U32Sparse, U64Sparse, U128Sparse
                         ]
@@ -325,6 +350,7 @@ pub(crate) type U32DenseBlock<'block, S> = DenseNumericBlock<'block, u32, S>;
 pub(crate) type U64DenseBlock<'block, S> = DenseNumericBlock<'block, u64, S>;
 pub(crate) type U128DenseBlock<'block, S> = DenseNumericBlock<'block, u128, S>;
 
+pub(crate) type StringDenseBlock<'block, S, P> = DenseStringBlock<'block, S, P>;
 
 pub(crate) type I8SparseBlock<'block, ST, SI> = SparseIndexedNumericBlock<'block, i8, ST, SI>;
 pub(crate) type I16SparseBlock<'block, ST, SI> = SparseIndexedNumericBlock<'block, i16, ST, SI>;

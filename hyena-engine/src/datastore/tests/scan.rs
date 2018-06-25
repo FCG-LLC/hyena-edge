@@ -719,7 +719,8 @@ mod minimal {
             data [ $(
                 $source_id: expr => [
                     dense [ $( $dense_idx:expr => (
-                        vec![$( $dense_data:tt )*]
+//                         vec![$( $dense_data:tt )*]
+                            $dense_data: expr
                     )),* $(,)*],
                     sparse [ $( $sparse_idx:expr => (
                         vec![$( $sparse_data:tt )*],
@@ -763,7 +764,7 @@ mod minimal {
                         let mut data = hashmap! {};
                     $(
                         data.insert($dense_idx,
-                            Fragment::from(vec![$($dense_data)*]));
+                            Fragment::from($dense_data));
                     )*
 
                     $(
@@ -1086,6 +1087,87 @@ mod minimal {
             )
         };
 
+//             +--------+-----------+-------------+--------+
+//             | rowidx | timestamp |   string1   | dense2 |
+//             +--------+-----------+-------------+--------+
+//             |   0    | 1         | Lorem       | 11     |
+//             +--------+-----------+-------------+--------+
+//             |   1    | 2         | ipsum       | 12     |
+//             +--------+-----------+-------------+--------+
+//             |   2    | 3         | dolor       | 13     |
+//             +--------+-----------+-------------+--------+
+//             |   3    | 4         | sit         | 14     |
+//             +--------+-----------+-------------+--------+
+//             |   4    | 5         | amet,       | 15     |
+//             +--------+-----------+-------------+--------+
+//             |   5    | 6         | consectetur | 16     |
+//             +--------+-----------+-------------+--------+
+//             |   6    | 7         | adipiscing  | 17     |
+//             +--------+-----------+-------------+--------+
+//             |   7    | 8         | elit,       | 18     |
+//             +--------+-----------+-------------+--------+
+//             |   8    | 9         | sed         | 19     |
+//             +--------+-----------+-------------+--------+
+//             |   9    | 10        | do          | 20     |
+//             +--------+-----------+-------------+--------+
+        (string) => {
+            scan_minimal_init!(
+                1, 10,
+                schema
+                    dense [
+                        1 => (StringDense, "string1"),
+                        2 => (U8Dense, "dense2")
+                    ],
+                    sparse [],
+                data [
+                    1 => [
+                        dense [
+                            1 => (text!(gen 10)),
+                            2 => (vec![11_u8, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
+                        ],
+                        sparse []
+                    ]
+                ]
+            )
+        };
+
+//             +--------+-----------+--------------+
+//             | rowidx | timestamp |   string1    |
+//             +--------+-----------+--------------+
+//             |   0    | 1         | ❤❤❤          |
+//             +--------+-----------+--------------+
+//             |   1    | 2         | 🚲🚑⛄🚑     |
+//             +--------+-----------+--------------+
+//             |   2    | 3         | ⌚❤❤         |
+//             +--------+-----------+--------------+
+//             |   3    | 4         | tes❤t        |
+//             +--------+-----------+--------------+
+//             |   4    | 5         | hyena⌚❤hyena|
+//             +--------+-----------+--------------+
+        (string utf8) => {
+            scan_minimal_init!(
+                1, 5,
+                schema
+                    dense [
+                        1 => (StringDense, "string1")
+                    ],
+                    sparse [],
+                data [
+                    1 => [
+                        dense [
+                            1 => (vec![
+                                "❤❤❤".to_owned(),
+                                "🚲🚑⛄🚑".to_owned(),
+                                "⌚❤❤".to_owned(),
+                                "tes❤t".to_owned(),
+                                "hyena⌚❤hyena".to_owned()
+                            ]),
+                        ],
+                        sparse []
+                    ]
+                ]
+            )
+        };
     }
 
     #[test]
@@ -1186,6 +1268,336 @@ mod minimal {
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
         assert_eq!(expected, result);
+    }
+
+    mod string {
+        use super::*;
+
+        macro_rules! strvec {
+            ($($s: expr),+ $(,)*) => {
+                vec![
+                $(
+                    $s.to_owned(),
+                )+
+                ]
+            };
+        }
+
+        #[test]
+        fn scan_lt() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![1_u64, 3, 5, 6, 7, 8, 10])),
+                1 => Some(Fragment::from(strvec!["Lorem", "dolor", "amet,", "consectetur",
+                        "adipiscing", "elit,", "do"])),
+                2 => Some(Fragment::from(vec![11_u8, 13, 15, 16, 17, 18, 20])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Lt("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_lteq() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![1_u64, 2, 3, 5, 6, 7, 8, 10])),
+                1 => Some(Fragment::from(strvec!["Lorem", "ipsum", "dolor", "amet,", "consectetur",
+                        "adipiscing", "elit,", "do"])),
+                2 => Some(Fragment::from(vec![11_u8, 12, 13, 15, 16, 17, 18, 20])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::LtEq("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_gt() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![4_u64, 9])),
+                1 => Some(Fragment::from(strvec!["sit", "sed"])),
+                2 => Some(Fragment::from(vec![14_u8, 19])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Gt("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_gteq() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![2_u64, 4, 9])),
+                1 => Some(Fragment::from(strvec!["ipsum", "sit", "sed"])),
+                2 => Some(Fragment::from(vec![12_u8, 14, 19])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::GtEq("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_eq() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![2_u64])),
+                1 => Some(Fragment::from(strvec!["ipsum"])),
+                2 => Some(Fragment::from(vec![12_u8])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Eq("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_noteq() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![1_u64, 3, 4, 5, 6, 7, 8, 9, 10])),
+                1 => Some(Fragment::from(strvec!["Lorem", "dolor", "sit", "amet,", "consectetur",
+                    "adipiscing", "elit,", "sed", "do"])),
+                2 => Some(Fragment::from(vec![11_u8, 13, 14, 15, 16, 17, 18, 19, 20])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::NotEq("ipsum".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_in() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![2_u64, 8, 9])),
+                1 => Some(Fragment::from(strvec!["ipsum", "elit,", "sed"])),
+                2 => Some(Fragment::from(vec![12_u8, 18, 19])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::In(hashset! {
+                        "ipsum".to_owned(),
+                        "elit,".to_owned(),
+                        "sed".to_owned(),
+                        "not_present".to_owned(),
+                    }))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_startswith() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![4_u64, 9])),
+                1 => Some(Fragment::from(strvec!["sit", "sed"])),
+                2 => Some(Fragment::from(vec![14_u8, 19])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::StartsWith("s".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_endswith() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![4_u64])),
+                1 => Some(Fragment::from(strvec!["sit"])),
+                2 => Some(Fragment::from(vec![14_u8])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::EndsWith("it".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_contains() {
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![6_u64, 9])),
+                1 => Some(Fragment::from(strvec!["consectetur", "sed"])),
+                2 => Some(Fragment::from(vec![16_u8, 19])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Contains("se".to_owned()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_matches() {
+            use hyena_common::ty::Regex;
+
+            let (_td, catalog, _) = scan_minimal_init!(string);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![4_u64, 5, 6, 8])),
+                1 => Some(Fragment::from(strvec!["sit", "amet,", "consectetur", "elit,"])),
+                2 => Some(Fragment::from(vec![14_u8, 15, 16, 18])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Matches(
+                        Regex::new("[ie]t").unwrap()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
+
+        #[test]
+        fn scan_matches_utf8() {
+            use hyena_common::ty::Regex;
+
+            let (_td, catalog, _) = scan_minimal_init!(string utf8);
+
+            let expected = ScanResult::from(hashmap! {
+                0 => Some(Fragment::from(vec![1_u64, 5])),
+                1 => Some(Fragment::from(strvec![
+                    "❤❤❤",
+                    "hyena⌚❤hyena"
+                ])),
+            });
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    1 => vec![vec![ScanFilter::String(ScanFilterOp::Matches(
+                        Regex::new("(❤{3,}|⌚❤[^❤])").unwrap()))]]
+                }),
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+            assert_eq!(expected, result);
+        }
     }
 
     mod and_op {

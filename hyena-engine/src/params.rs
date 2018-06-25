@@ -2,9 +2,17 @@
 #[cfg(not(test))]
 pub(crate) const BLOCK_SIZE: usize = 1 << 20; // 1 MiB
 
+/// Initial string pool block size
+#[cfg(not(test))]
+pub(crate) const STRING_POOL_SIZE: usize = 1 << 20; // 1 MiB
+
 /// The size of a single block file for test code
 #[cfg(test)]
 pub(crate) const BLOCK_SIZE: usize = 1 << 20; // 1 MiB
+
+/// Initial string pool block size
+#[cfg(test)]
+pub(crate) const STRING_POOL_SIZE: usize = 1 << 20; // 1 MiB
 
 /// The name of partition metadata file
 pub(crate) const PARTITION_METADATA: &str = "meta.data";

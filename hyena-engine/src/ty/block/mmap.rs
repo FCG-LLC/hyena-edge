@@ -6,7 +6,7 @@ use std::path::Path;
 //use fs::ensure_file;
 use std::mem::size_of;
 //use std::fs::remove_file;
-use params::BLOCK_SIZE;
+use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -29,6 +29,25 @@ impl<'block> Block<'block> {
         let data = root.join(format!("block_{}.data", id));
 
         MemmapStorage::new(data, size)
+    }
+
+    #[inline]
+    pub(crate) fn prepare_dense_pool_storage<P: AsRef<Path>>(
+        root: P,
+        id: BlockId,
+        size: usize,
+        pool_size: usize
+    ) -> Result<(MemmapStorage, MemmapStorage)> {
+
+        let root = root.as_ref();
+        let slice_stor = Block::prepare_dense_storage(&root, id, size)?;
+
+        let pool = root.join(format!("block_{}.pool", id));
+
+        let pool_stor = MemmapStorage::new(pool, pool_size)
+            .with_context(|_| "Failed to create pool block for dense string storage")?;
+
+        Ok((slice_stor, pool_stor))
     }
 
     #[inline]
@@ -105,6 +124,22 @@ impl<'block> Block<'block> {
             BlockType::U64Dense => prepare_mmap_dense!(U64DenseBlock<'block, _>),
             BlockType::U128Dense => prepare_mmap_dense!(U128DenseBlock<'block, _>),
 
+            // String
+            BlockType::StringDense => {
+                let (slice_storage, pool_storage) = Block::prepare_dense_pool_storage(
+                    &root,
+                    block_id,
+                    BLOCK_SIZE,
+                    STRING_POOL_SIZE
+                )
+                    .with_context(|_| "Failed to create dense string storage")
+                    .unwrap();
+
+                StringDenseBlock::<'block, _, _>::new(slice_storage, pool_storage)
+                    .with_context(|_| "Failed to create block")?
+                    .into()
+            }
+
             // Sparse
             BlockType::I8Sparse => prepare_mmap_sparse!(I8SparseBlock<'block, _, _>, i8),
             BlockType::I16Sparse => prepare_mmap_sparse!(I16SparseBlock<'block, _, _>, i16),
@@ -130,7 +165,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
 
     #[test]
@@ -243,4 +278,46 @@ mod tests {
     fn prepare_sparse_u128() {
         prepare_sparse::<u128>(1280);
     }
+
+    #[test]
+    fn prepare_dense_string() {
+        let root = tempdir!();
+        let blockid = 137659;
+
+        let data_path = root.as_ref().join(format!("block_{}.data", blockid));
+        let pool_path = root.as_ref().join(format!("block_{}.pool", blockid));
+
+        let (data_stor, pool_stor) =
+            Block::prepare_dense_pool_storage(&root, blockid, BLOCK_SIZE, STRING_POOL_SIZE)
+                .with_context(|_| {
+                    format!("Failed to prepare dense string storage")
+                })
+                .unwrap();
+
+        assert_eq!(data_stor.file_path(), data_path);
+        assert_eq!(pool_stor.file_path(), pool_path);
+        assert!(data_path.exists());
+        assert!(data_path.is_file());
+        assert!(pool_path.exists());
+        assert!(pool_path.is_file());
+
+        assert_eq!(
+            data_path
+                .metadata()
+                .with_context(|_| "Unable to get metadata for data file")
+                .unwrap()
+                .len() as usize,
+            BLOCK_SIZE
+        );
+
+        assert_eq!(
+            pool_path
+                .metadata()
+                .with_context(|_| "Unable to get metadata for pool file")
+                .unwrap()
+                .len() as usize,
+            STRING_POOL_SIZE
+        );
+    }
+
 }

@@ -2,8 +2,8 @@ use error::*;
 use uuid::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType, ColumnId,
-RowId};
+use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType,
+ColumnId, RowId};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -159,6 +159,14 @@ impl<'part> Partition<'part> {
                     blk.set_written(slen).with_context(|_| "set_written failed")?;
 
                     slen
+                }, {
+                    // dense string handler
+
+                    frg
+                        .iter()
+                        .map(|value| blk.append_string(value))
+                        .sum::<Result<usize>>()
+                        .with_context(|_| "string block append failed")?
                 });
 
                 written = written.saturating_add(r.with_context(|_| "map_fragment failed")?);
@@ -256,6 +264,24 @@ impl<'part> Partition<'part> {
                                             if and_filters.iter().all(|f| f.apply(val)) {
                                                 // this is a safe cast u32 -> usize
                                                 result.insert(idx[rowid] as usize);
+                                            }
+                                        } else {
+                                            unreachable!()
+                                        }
+                                    });
+                            });
+                    }, {
+                        // pooled
+                        blk.iter()
+                            .enumerate()
+                            .for_each(|(rowid, val)| {
+                                or_filters
+                                    .iter()
+                                    .zip(acc.iter_mut())
+                                    .for_each(|(and_filters, result)| {
+                                        if let Some(ref mut result) = *result {
+                                            if and_filters.iter().all(|f| f.apply(&val)) {
+                                                result.insert(rowid);
                                             }
                                         } else {
                                             unreachable!()
@@ -431,6 +457,24 @@ impl<'part> Partition<'part> {
                             };
 
                             Fragment::from((d, i))
+                        }, {
+                            // pooled
+                            Fragment::from(if blk.is_empty() {
+                                    Vec::new()
+                                } else {
+                                    if let Some(rowids) = rowids {
+                                        rowids.iter()
+                                            .map(|rowid| String::from(&blk[*rowid]))
+                                            .collect::<Vec<_>>()
+                                    } else {
+                                        // materialize full block
+
+                                        blk
+                                            .iter()
+                                            .map(String::from)
+                                            .collect::<Vec<_>>()
+                                    }
+                                })
                         }))
                     ))
                 } else {
@@ -649,7 +693,10 @@ impl<'part> Partition<'part> {
                 (
                     *blockid,
                     block_apply!(map physical block, blk, pb, {
-                    pb.head()
+                    BlockHeads {
+                        head: pb.head(),
+                        pool_head: pb.pool_head(),
+                    }
                 }),
                 )
             })
@@ -686,7 +733,10 @@ impl<'part> Partition<'part> {
                 let head = heads.get(blockid)
                     .ok_or_else(||
                         format_err!("Unable to read block head ptr of partition {}", partid))?;
-                *(pb.mut_head()) = *head;
+                *(pb.mut_head()) = head.head;
+                if let Some(head) = head.pool_head {
+                    pb.set_pool_head(head);
+                }
             })
         }
 
@@ -781,7 +831,7 @@ mod tests {
                             // destination bounds checking intentionally left out
                             assert_eq!(_blk.len(), _frg.len());
                             assert_eq!(_blk.as_slice(), _frg.as_slice());
-                        }, {}).unwrap()
+                        }, {}, {}).unwrap()
                     },
                 );
         };
@@ -829,7 +879,7 @@ mod tests {
                         _blk.as_mut_slice_append()[..slen].copy_from_slice(&_frg[..]);
                         _blk.set_written(count).unwrap();
 
-                    }, {}).unwrap()
+                    }, {}, {}).unwrap()
                 },
                 );
         }
@@ -1014,6 +1064,8 @@ mod tests {
 
                         }, {
                             // sparse writes are intentionally not implemented
+                        }, {
+                            // pooled dense writes are intentionally not implemented
                         }).unwrap()
                     },
                 );

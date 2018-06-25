@@ -5,9 +5,14 @@ use extprim::u128::u128;
 #[macro_use]
 mod macros;
 mod numeric;
+mod string;
+mod relative;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
+pub(crate) use self::string::DenseStringBlock;
 pub use self::numeric::SparseIndex;
+pub(crate) use self::relative::RelativeSlice;
+
 
 // This will probably get merged into BlockData
 
@@ -17,6 +22,21 @@ pub trait BufferHead {
 
     #[inline]
     fn mut_head(&mut self) -> &mut usize;
+
+    #[inline]
+    fn pool_head(&self) -> Option<usize> {
+        None
+    }
+
+    #[inline]
+    fn set_pool_head(&mut self, _head: usize) {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn is_pooled(&self) -> bool {
+        self.pool_head().is_some()
+    }
 }
 
 pub trait IndexRef<T>
@@ -33,6 +53,18 @@ where
     fn as_mut_index(&mut self) -> &mut T;
 }
 
+pub(crate) trait SliceOffset {
+
+    fn len(&self) -> usize;
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn to_slice<'buffer, T>(&self, buffer: &'buffer [T]) -> &'buffer [T];
+    fn to_str<'buffer>(&self, buffer: &'buffer [u8]) -> &'buffer str;
+
+}
 
 
 /// Base trait for all Blocks
@@ -120,9 +152,22 @@ pub trait BlockData<'block, T: 'block, I: 'block>
         self.head()
     }
 
+    /// The length of the whole data buffer
+    ///
+    /// This should be interpreted as self.data[..]
+
     #[inline]
     fn size(&self) -> usize {
         self.as_ref().len()
+    }
+
+    /// The length of the free data buffer
+    ///
+    /// This should be interpreted as self.data[self.head..]
+
+    #[inline]
+    fn free_len(&self) -> usize {
+        self.size().saturating_sub(self.len())
     }
 
     #[inline]
@@ -160,6 +205,9 @@ pub enum BlockType {
     U64Dense,
     U128Dense,
 
+    // UTF-8 String
+    StringDense,
+
     // Sparse, Signed
     I8Sparse,
     I16Sparse,
@@ -187,6 +235,7 @@ impl BlockType {
             I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
             I64Dense | U64Dense | I64Sparse | U64Sparse => size_of::<u64>(),
             I128Dense | U128Dense | I128Sparse | U128Sparse => size_of::<u128>(),
+            StringDense => size_of::<RelativeSlice>(),
         }
     }
 
@@ -201,11 +250,34 @@ impl BlockType {
             I64Dense | U64Dense => false,
             I128Dense | U128Dense => false,
 
+            StringDense => false,
+
             I8Sparse | U8Sparse |
             I16Sparse | U16Sparse |
             I32Sparse | U32Sparse |
             I64Sparse | U64Sparse  => true,
             I128Sparse | U128Sparse => true,
+        }
+    }
+
+    #[inline]
+    pub fn is_pooled(&self) -> bool {
+        use self::BlockType::*;
+
+        match *self {
+            I8Dense | U8Dense |
+            I16Dense | U16Dense |
+            I32Dense | U32Dense |
+            I64Dense | U64Dense => false,
+            I128Dense | U128Dense => false,
+
+            StringDense => true,
+
+            I8Sparse | U8Sparse |
+            I16Sparse | U16Sparse |
+            I32Sparse | U32Sparse |
+            I64Sparse | U64Sparse  => false,
+            I128Sparse | U128Sparse => false,
         }
     }
 }
