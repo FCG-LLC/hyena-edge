@@ -20,8 +20,9 @@ use error::*;
 
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
-ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment,
-ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId};
+ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment, Regex,
+ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId, ColumnIndexType,
+ColumnIndexStorage};
 
 use hyena_common::ty::{Uuid, Timestamp};
 
@@ -113,19 +114,39 @@ pub enum ScanComparison {
     GtEq,
     Gt,
     NotEq,
+    In,
+    StartsWith,
+    EndsWith,
+    Contains,
+    Matches,
 }
 
 impl ScanComparison {
-    fn to_scan_filter_op<T>(&self, val: T) -> HScanFilterOp<T>
+    fn to_scan_filter_op<T>(&self, val: T) -> Result<HScanFilterOp<T>, Error>
         where T: Display + Debug + Clone + PartialEq + PartialOrd + Eq + Hash
     {
         match *self {
-            ScanComparison::Lt => HScanFilterOp::Lt(val),
-            ScanComparison::LtEq => HScanFilterOp::LtEq(val),
-            ScanComparison::Eq => HScanFilterOp::Eq(val),
-            ScanComparison::GtEq => HScanFilterOp::GtEq(val),
-            ScanComparison::Gt => HScanFilterOp::Gt(val),
-            ScanComparison::NotEq => HScanFilterOp::NotEq(val),
+            ScanComparison::Lt => Ok(HScanFilterOp::Lt(val)),
+            ScanComparison::LtEq => Ok(HScanFilterOp::LtEq(val)),
+            ScanComparison::Eq => Ok(HScanFilterOp::Eq(val)),
+            ScanComparison::GtEq => Ok(HScanFilterOp::GtEq(val)),
+            ScanComparison::Gt => Ok(HScanFilterOp::Gt(val)),
+            ScanComparison::NotEq => Ok(HScanFilterOp::NotEq(val)),
+            ScanComparison::In => unimplemented!(),
+            ScanComparison::StartsWith |
+            ScanComparison::EndsWith   |
+            ScanComparison::Contains   | // Use to_scan_filter_op_str
+            ScanComparison::Matches => Err(Error::InvalidScanRequest("String operator for numeric data".into())),
+        }
+    }
+
+    fn to_scan_filter_op_str(&self, val: String) -> Result<HScanFilterOp<String>, Error> {
+        match *self {
+            ScanComparison::StartsWith => Ok(HScanFilterOp::StartsWith(val)),
+            ScanComparison::EndsWith => Ok(HScanFilterOp::EndsWith(val)),
+            ScanComparison::Contains => Ok(HScanFilterOp::Contains(val)),
+            ScanComparison::Matches => Ok(HScanFilterOp::Matches(Regex::new(&val).unwrap())),
+            _ => Err(Error::InvalidScanRequest("Numeric operator for string data".into())),
         }
     }
 }
@@ -141,22 +162,24 @@ pub enum FilterVal {
     U16(u16),
     U32(u32),
     U64(u64),
-    U128(u128)
+    U128(u128),
+    String(String),
 }
 
 impl FilterVal {
-    fn to_scan_filter(&self, op: &ScanComparison) -> HScanFilter {
+    fn to_scan_filter(&self, op: &ScanComparison) -> Result<HScanFilter, Error> {
         match *self {
-            FilterVal::U8(val) => HScanFilter::U8(op.to_scan_filter_op(val)),
-            FilterVal::U16(val) => HScanFilter::U16(op.to_scan_filter_op(val)),
-            FilterVal::U32(val) => HScanFilter::U32(op.to_scan_filter_op(val)),
-            FilterVal::U64(val) => HScanFilter::U64(op.to_scan_filter_op(val)),
-            FilterVal::U128(val) => HScanFilter::U128(op.to_scan_filter_op(val)),
-            FilterVal::I8(val) => HScanFilter::I8(op.to_scan_filter_op(val)),
-            FilterVal::I16(val) => HScanFilter::I16(op.to_scan_filter_op(val)),
-            FilterVal::I32(val) => HScanFilter::I32(op.to_scan_filter_op(val)),
-            FilterVal::I64(val) => HScanFilter::I64(op.to_scan_filter_op(val)),
-            FilterVal::I128(val) => HScanFilter::I128(op.to_scan_filter_op(val)),
+            FilterVal::U8(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::U16(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::U32(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::U64(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::U128(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::I8(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::I16(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::I32(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::I64(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::I128(val) => Ok(HScanFilter::from(op.to_scan_filter_op(val)?)),
+            FilterVal::String(ref val) => Ok(HScanFilter::from(op.to_scan_filter_op_str(val.to_string())?)),
         }
     }
 }
@@ -166,7 +189,6 @@ pub struct ScanFilter {
     pub column: ColumnId,
     pub op: ScanComparison,
     pub typed_val: FilterVal,
-    pub str_val: String,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -179,61 +201,66 @@ pub struct ScanRequest {
     pub filters: Vec<Vec<ScanFilter>>,
 }
 
-impl From<ScanRequest> for hyena_engine::Scan {
+fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
 
-    fn from(scan_request: ScanRequest) -> Scan {
+    let scan_range = ScanTsRange::Bounded{
+        start: Timestamp::from(scan_request.min_ts),
+        end:   Timestamp::from(scan_request.max_ts),
+    };
 
-        let scan_range = ScanTsRange::Bounded{
-            start: Timestamp::from(scan_request.min_ts),
-            end:   Timestamp::from(scan_request.max_ts),
-        };
+    let partitions =
+        if !scan_request.partition_ids.is_empty() {
+            Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
+        } else { None };
 
-        let partitions =
-            if !scan_request.partition_ids.is_empty() {
-                Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
-            } else { None };
+    let filters = if scan_request.filters.is_empty() {
+        None
+    } else {
+        Some(scan_request.filters
+             .iter()
+             .enumerate()
+             .flat_map(|(and_group, and_filters)| {
+                 and_filters
+                     .iter()
+                     .map(move |and_filter| {
+                         let op = and_filter.typed_val.to_scan_filter(&and_filter.op)?;
 
-        let filters = if scan_request.filters.is_empty() {
-            None
-        } else {
-            Some(scan_request.filters
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(and_group, and_filters)| {
-                        and_filters
-                            .iter()
-                            .map(move |and_filter| {
-                                let op = and_filter.typed_val.to_scan_filter(&and_filter.op);
+                         Ok((and_group, and_filter.column, op))
+                     })
+             })
+             .collect::<Result<Vec<(usize, usize, hyena_engine::ScanFilter)>, Error>>()?
+             .iter().cloned()
+             .fold(hyena_engine::ScanFilters::new(), |mut map, (and_group, column_id, op)| {
+                 {
+                     let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
 
-                                (and_group, and_filter.column, op)
-                            })
-                    })
-                    .fold(hyena_engine::ScanFilters::new(), |mut map, (and_group, column_id, op)| {
-                        {
-                            let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
+                     or_vec.resize(and_group + 1, Vec::new());
 
-                            or_vec.resize(and_group + 1, Vec::new());
+                     let and_vec = or_vec.get_mut(and_group).unwrap();
+                     and_vec.push(op);
+                 }
 
-                            let and_vec = or_vec.get_mut(and_group).unwrap();
-                            and_vec.push(op);
-                        }
+                 map
+             }))
+    };
 
-                        map
-                    }))
-        };
-
-        Scan::new(filters,
-                  Some(scan_request.projection),
-                  None,
-                  partitions,
-                  Some(scan_range))
-    }
+    Ok(Scan::new(filters,
+                 Some(scan_request.projection),
+                 None,
+                 partitions,
+                 Some(scan_range)))
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub struct AddColumnRequest {
     pub column_name: String,
     pub column_type: BlockType,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Copy, Clone)]
+pub struct AddColumnIndexRequest {
+    pub column_id: ColumnId,
+    pub index_type: ColumnIndexType,
 }
 
 
@@ -275,6 +302,7 @@ pub enum Request {
     AddColumn(AddColumnRequest),
     Flush,
     DataCompaction,
+    AddColumnIndex(AddColumnIndexRequest),
     Other,
 }
 
@@ -331,9 +359,10 @@ pub enum Reply {
     Insert(Result<usize, Error>),
     Scan(Result<ScanResultMessage, Error>),
     RefreshCatalog(RefreshCatalogResponse),
-    AddColumn(Result<usize, Error>),
+    AddColumn(Result<ColumnId, Error>),
     Flush,
     DataCompaction,
+    AddColumnIndex(Result<ColumnId, Error>),
     SerializeError(String),
     Other,
 }
@@ -393,6 +422,24 @@ impl Reply {
                 Reply::AddColumn(Ok(id))
             }
             Err(error) => Reply::AddColumn(Err(error.into())),
+        }
+    }
+
+    fn add_index(request: AddColumnIndexRequest, catalog: &mut Catalog) -> Reply {
+        let AddColumnIndexRequest { column_id, index_type } = request;
+
+        let index = ColumnIndexStorage::Memmap(index_type);
+
+        info!("Adding index {:?} with id {}",
+              index_type,
+              column_id);
+
+        match catalog.add_indexes(hashmap! { column_id => index }.into()) {
+            Ok(_) => {
+                catalog.flush().expect("failed to flush catalog");
+                Reply::AddColumnIndex(Ok(column_id))
+            }
+            Err(error) => Reply::AddColumnIndex(Err(error.into())),
         }
     }
 
@@ -472,10 +519,13 @@ impl Reply {
                 .into())));
         }
 
-        let scan = Reply::build_scan(scan_request);
+        let scan = match from_sr(scan_request) {
+            Ok(scan) => scan,
+            Err(e) => return Reply::Scan(Err(e))
+        };
         let result = match catalog.scan(&scan) {
+            Ok(r) => r,
             Err(e) => return Reply::Scan(Err(Error::ScanError(e.to_string()))),
-            Ok(r) => r
         };
 
         let cm: &ColumnMap = catalog.as_ref();
@@ -502,10 +552,6 @@ impl Reply {
             .collect::<Vec<DataTriple>>();
 
         Reply::Scan(Ok(ScanResultMessage::from(srm)))
-    }
-
-    fn build_scan(scan_request: ScanRequest) -> Scan {
-        Scan::from(scan_request)
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
@@ -593,6 +639,7 @@ pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
         Request::Insert(insert) => Reply::insert(insert, catalog),
         Request::Scan(request) => Reply::scan(request, catalog),
         Request::RefreshCatalog => Reply::get_catalog(catalog),
+        Request::AddColumnIndex(request) => Reply::add_index(request, catalog),
         _ => Reply::Other,
     }
 }
@@ -722,6 +769,69 @@ mod tests {
                 match added {
                     AddColumn(Err(_)) => {}
                     _ => panic!("Should have returned an error"),
+                }
+            }
+        }
+
+        mod add_index {
+            use super::*;
+            use super::Reply::{AddColumnIndex, AddColumn};
+            use hyena_test::tempfile::TempDir;
+
+            fn prepare_catalog<'cat>() -> (TempDir, Catalog<'cat>, ColumnId) {
+                let name: String = "a_test_column".into();
+                let request = AddColumnRequest {
+                    column_name: name.clone(),
+                    column_type: BlockType::I32Dense,
+                };
+
+                let td = tempdir!();
+
+                let mut catalog = Catalog::new(&td)
+                    .unwrap_or_else(|e| panic!("Could not crate catalog {}", e));
+
+                let id = if let AddColumn(Ok(id)) = Reply::add_column(request, &mut catalog) {
+                    id
+                } else {
+                    panic!("add column failed");
+                };
+
+                (td, catalog, id)
+            }
+
+            #[test]
+            fn adds_column() {
+                let (_td, mut catalog, column_id) = prepare_catalog();
+
+                let request = AddColumnIndexRequest {
+                    column_id,
+                    index_type: ColumnIndexType::Bloom,
+                };
+
+                if let AddColumnIndex(Ok(id)) = Reply::add_index(request, &mut catalog) {
+                    assert_eq!(id, column_id, "bad column index");
+                } else {
+                    panic!("failed to add index");
+                };
+            }
+
+            #[test]
+            fn fails_on_double_insert() {
+                let (_td, mut catalog, column_id) = prepare_catalog();
+
+                let request = AddColumnIndexRequest {
+                    column_id,
+                    index_type: ColumnIndexType::Bloom,
+                };
+
+                if let AddColumnIndex(Ok(id)) = Reply::add_index(request, &mut catalog) {
+                    assert_eq!(id, column_id, "bad column index");
+                } else {
+                    panic!("failed to add index");
+                };
+
+                if let AddColumnIndex(Ok(_)) = Reply::add_index(request, &mut catalog) {
+                    panic!("second add_index didn't fail");
                 }
             }
         }
@@ -1019,7 +1129,6 @@ mod tests {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::I8(10),
-                                      str_val: "".into(),
                                   }]],
                 };
 
@@ -1030,41 +1139,114 @@ mod tests {
                 }
             }
 
-            #[test]
-            fn fails_if_filters_empty() {
+            fn test_string_filter(op: ScanComparison) {
                 let td = tempdir!();
                 let cat = Catalog::new(&td).expect("Unable to create catalog");
-
 
                 let partition_ids = hashset! { Uuid::default() };
 
                 let request = ScanRequest {
-                    min_ts: 1,
-                    max_ts: 10,
+                    min_ts: 10,
+                    max_ts: 100,
                     partition_ids: partition_ids,
                     projection: vec![1, 2, 3],
-                    filters: vec![],
+                    filters: vec![vec![ScanFilter {
+                                      column: 1,
+                                      op: op,
+                                      typed_val: FilterVal::String("hello".into()),
+                                  }]],
                 };
 
-                let _reply = Reply::scan(request, &cat);
-//                 match reply {
-//                     Reply::Scan(Err(Error::InvalidScanRequest(_))) => (), /* OK, do nothing */
-//                     _ => panic!("Should have rejected the scan request")
-//                 }
+                let reply = Reply::scan(request, &cat);
+                match reply {
+                    Reply::Scan(Ok(_)) =>  { /* OK, do nothing */ }
+                    Reply::Scan(Err(_)) => panic!("Should not have rejected the scan request"),
+                    _ => panic!("Wrong Reply type"),
+                }
             }
+
+            #[test]
+            fn parses_string_operators() {
+                test_string_filter(ScanComparison::StartsWith);
+                test_string_filter(ScanComparison::EndsWith);
+                test_string_filter(ScanComparison::Contains);
+                test_string_filter(ScanComparison::Matches);
+            }
+
+            fn test_if_string_filter_has_numeric_value(op: ScanComparison) {
+                let td = tempdir!();
+                let cat = Catalog::new(&td).expect("Unable to create catalog");
+
+                let partition_ids = hashset! { Uuid::default() };
+
+                let request = ScanRequest {
+                    min_ts: 10,
+                    max_ts: 100,
+                    partition_ids: partition_ids,
+                    projection: vec![1, 2, 3],
+                    filters: vec![vec![ScanFilter {
+                                      column: 1,
+                                      op: op,
+                                      typed_val: FilterVal::I8(10),
+                                  }]],
+                };
+
+                let reply = Reply::scan(request, &cat);
+                match reply {
+                    Reply::Scan(Ok(_)) => panic!("Should have rejected the scan request"),
+                    Reply::Scan(Err(_)) => { /* OK, do nothing */ }
+                    _ => panic!("Wrong Reply type"),
+                }
+            }
+
+            #[test]
+            fn fails_if_string_filter_has_numeric_value() {
+                test_if_string_filter_has_numeric_value(ScanComparison::StartsWith);
+                test_if_string_filter_has_numeric_value(ScanComparison::EndsWith);
+                test_if_string_filter_has_numeric_value(ScanComparison::Contains);
+                test_if_string_filter_has_numeric_value(ScanComparison::Matches);
+            }
+
+            #[test]
+            fn fails_if_numeric_filter_has_string_value() {
+                let td = tempdir!();
+                let cat = Catalog::new(&td).expect("Unable to create catalog");
+
+                let partition_ids = hashset! { Uuid::default() };
+
+                let request = ScanRequest {
+                    min_ts: 10,
+                    max_ts: 100,
+                    partition_ids: partition_ids,
+                    projection: vec![1, 2, 3],
+                    filters: vec![vec![ScanFilter {
+                                      column: 1,
+                                      op: ScanComparison::Gt,
+                                      typed_val: FilterVal::String("hello".into()),
+                                  }]],
+                };
+
+                let reply = Reply::scan(request, &cat);
+                match reply {
+                    Reply::Scan(Ok(_)) => panic!("Should have rejected the scan request"),
+                    Reply::Scan(Err(_)) => { /* OK, do nothing */ }
+                    _ => panic!("Wrong Reply type"),
+                }
+            }
+
 
             mod or {
                 use super::*;
                 use hyena_engine::{ScanFilter as EngineFilter, ScanFilterOp, ScanFilters};
 
                 fn build_scan(filters: Vec<Vec<ScanFilter>>) -> Scan {
-                    Scan::from(ScanRequest {
+                    from_sr(ScanRequest {
                         min_ts: 1,
                         max_ts: 10,
                         partition_ids: Default::default(),
                         projection: vec![1, 2, 3],
                         filters,
-                    })
+                    }).unwrap()
                 }
 
                 #[inline]
@@ -1093,7 +1275,6 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1113,13 +1294,11 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1142,19 +1321,16 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
 
                     ]]);
@@ -1181,19 +1357,16 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
 
                     ], vec![
@@ -1201,7 +1374,6 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                     ]]);
 
@@ -1232,32 +1404,27 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
                     ], vec![
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U32(10),
-                            str_val: "".into(),
                         }
                     ]]);
 
@@ -1294,38 +1461,32 @@ mod tests {
                             column: 0,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U64(12),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Lt,
                             typed_val: FilterVal::U64(30),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U32(12),
-                            str_val: "".into(),
                         }
                     ], vec![
                         ScanFilter {
                             column: 0,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::U64(7),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 1,
                             op: ScanComparison::Gt,
                             typed_val: FilterVal::U32(10),
-                            str_val: "".into(),
                         },
                         ScanFilter {
                             column: 2,
                             op: ScanComparison::Eq,
                             typed_val: FilterVal::I8(2),
-                            str_val: "".into(),
                         }
 
                     ]]);
@@ -1377,7 +1538,6 @@ mod tests {
                                       column: 1,
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::U32(10),
-                                      str_val: "".into(),
                                   }]],
                 };
 

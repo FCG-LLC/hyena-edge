@@ -290,6 +290,13 @@ fn gen_vec<T: rand::Rand>(rows: usize) -> Vec<T> {
     (0..rows).map(|_| rand::thread_rng().gen()).collect()
 }
 
+fn gen_string_vec(rows: usize) -> Vec<String> {
+    (0..rows).map(|_| {
+        let length: u8 = rand::thread_rng().gen();
+        rand::thread_rng().gen_ascii_chars().take(length as usize).collect::<String>()
+    }).collect()
+}
+
 fn gen_fragment(rows: usize, block_type: BlockType) -> Fragment {
 
     match block_type {
@@ -303,6 +310,7 @@ fn gen_fragment(rows: usize, block_type: BlockType) -> Fragment {
         BlockType::U32Dense => Fragment::U32Dense(gen_vec(rows)),
         BlockType::U64Dense => Fragment::U64Dense(gen_vec(rows)),
         BlockType::U128Dense => Fragment::U128Dense(gen_vec(rows)),
+        BlockType::StringDense => Fragment::StringDense(gen_string_vec(rows)),
         BlockType::I8Sparse => Fragment::I8Sparse(gen_vec(rows), gen_vec(rows)),
         BlockType::I16Sparse => Fragment::I16Sparse(gen_vec(rows), gen_vec(rows)),
         BlockType::I32Sparse => Fragment::I32Sparse(gen_vec(rows), gen_vec(rows)),
