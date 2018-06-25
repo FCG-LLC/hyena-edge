@@ -116,10 +116,6 @@ mod tests {
         });
 
         assert_eq!(generated.len(), 10);
-
-        for s in &generated {
-            assert!(s.len() >= 2);
-        }
     }
 
     #[test]
@@ -139,10 +135,6 @@ mod tests {
         let generated = text!(gen random 10);
 
         assert_eq!(generated.len(), 10);
-
-        for s in &generated {
-            assert!(s.len() >= 2);
-        }
     }
 
     #[test]

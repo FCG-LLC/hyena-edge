@@ -1,9 +1,9 @@
 use error::*;
-use uuid::Uuid;
+use hyena_common::ty::Uuid;
 
 use block::{BlockData, BufferHead, SparseIndex};
-use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap, BlockStorageMapType,
-ColumnId, RowId};
+use ty::{BlockHeads, BlockHeadMap, BlockMap, BlockStorage, BlockStorageMap,
+ColumnId, RowId, ColumnIndexMap, ColumnIndexStorage, ColumnIndexStorageMap};
 use hyena_common::ty::Timestamp;
 use std::path::{Path, PathBuf};
 use std::cmp::{max, min};
@@ -15,7 +15,7 @@ use std::sync::RwLock;
 use std::iter::FromIterator;
 use ty::fragment::{Fragment, TimestampFragmentRef};
 use mutator::BlockRefData;
-use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange};
+use scanner::{Scan, ScanFilterApply, ScanResult, ScanFilters, ScanTsRange, BloomFilterValues};
 
 
 pub(crate) type PartitionId = Uuid;
@@ -29,6 +29,8 @@ pub struct Partition<'part> {
 
     #[serde(skip)]
     blocks: BlockMap<'part>,
+    #[serde(skip)]
+    indexes: ColumnIndexMap<'part>,
     #[serde(skip)]
     data_root: PathBuf,
 }
@@ -54,6 +56,7 @@ impl<'part> Partition<'part> {
             ts_min: ts,
             ts_max: ts,
             blocks: Default::default(),
+            indexes: Default::default(),
             data_root: root,
         })
     }
@@ -86,11 +89,16 @@ impl<'part> Partition<'part> {
     pub(crate) fn append<'frag>(
         &mut self,
         blockmap: &BlockStorageMap,
+        indexmap: &ColumnIndexStorageMap,
         frags: &BlockRefData<'frag>,
         offset: SparseIndex,
     ) -> Result<usize> {
         self.ensure_blocks(&blockmap)
             .with_context(|_| "Unable to create block map")
+            .unwrap();
+
+        self.ensure_column_indexes(&indexmap)
+            .with_context(|_| "Unable to create index map")
             .unwrap();
 
         // ts range update
@@ -100,8 +108,11 @@ impl<'part> Partition<'part> {
         let written = {
             let ops = frags.iter().filter_map(|(ref blk_idx, ref frag)| {
                 if let Some(block) = self.blocks.get(blk_idx) {
-                    trace!("writing block {} with frag len {}", blk_idx, (*frag).len());
-                    Some((block, frags.get(blk_idx).unwrap()))
+                    let idx = self.indexes.get(blk_idx);
+
+                    trace!("writing block {} with frag len {} {}",
+                        blk_idx, (*frag).len(), idx.map_or("", |_ | "and column index"));
+                    Some((block, frags.get(blk_idx).unwrap(), idx))
                 } else {
                     None
                 }
@@ -109,8 +120,9 @@ impl<'part> Partition<'part> {
 
             let mut written: usize = 0;
 
-            for (ref mut block, ref data) in ops {
+            for (ref mut block, ref data, mut colidx) in ops {
                 let b = acquire!(write block);
+                let mut colidx = colidx.map(|ref mut lock| acquire!(raw write lock));
 
                 let r = map_fragment!(mut map ref b, *data, blk, frg, fidx, {
                     // dense block handler
@@ -162,9 +174,17 @@ impl<'part> Partition<'part> {
                 }, {
                     // dense string handler
 
+                    // check if the column is indexed
+
                     frg
                         .iter()
-                        .map(|value| blk.append_string(value))
+                        .map(|value| {
+                            if let Some(ref mut colidx) = colidx {
+                                colidx.append_value(&value);
+                            }
+
+                            blk.append_string(value)
+                        })
                         .sum::<Result<usize>>()
                         .with_context(|_| "string block append failed")?
                 });
@@ -193,7 +213,10 @@ impl<'part> Partition<'part> {
         // full ts range
 
         let rowids = if let Some(ref filters) = scan.filters {
-            let rowids = self.filter(filters, scan.or_clauses_count)?;
+            let rowids = self.filter(
+                filters,
+                scan.bloom_filters.as_ref(),
+                scan.or_clauses_count)?;
 
             // this is superfluous if we're dealing with dense blocks only
             // as it doesn't matter if rowids are sorted then
@@ -224,13 +247,18 @@ impl<'part> Partition<'part> {
     /// `HashSet` with matching `RowId`s
 
     #[inline]
-    fn filter(&self, filters: &ScanFilters, or_clauses_count: usize) -> Result<HashSet<usize>> {
+    fn filter(&self,
+        filters: &ScanFilters,
+        column_filters: Option<&BloomFilterValues>,
+        or_clauses_count: usize
+    ) -> Result<HashSet<usize>> {
         let result = filters
             .par_iter()
             .fold(|| vec![Some(HashSet::new()); or_clauses_count],
                 |mut acc, (block_id, or_filters)| {
                 if let Some(block) = self.blocks.get(block_id) {
                     let block = acquire!(read block);
+                    let index = self.indexes.get(block_id).map(|ref lock| acquire!(raw read lock));
 
                     map_block!(map block, blk, {
                         blk.as_slice().iter()
@@ -272,22 +300,64 @@ impl<'part> Partition<'part> {
                             });
                     }, {
                         // pooled
-                        blk.iter()
-                            .enumerate()
-                            .for_each(|(rowid, val)| {
-                                or_filters
-                                    .iter()
-                                    .zip(acc.iter_mut())
-                                    .for_each(|(and_filters, result)| {
-                                        if let Some(ref mut result) = *result {
-                                            if and_filters.iter().all(|f| f.apply(&val)) {
-                                                result.insert(rowid);
+
+                        if let Some(ref index) = index {
+                            blk
+                                .iter()
+                                .enumerate()
+                                .zip(index.iter())
+                                .filter_map(|((rowid, value), bloom)| {
+                                    // bloom
+
+                                    if let Some(filters) = column_filters {
+                                        if let Some(filters) = filters.get(&block_id) {
+                                            if filters
+                                                .iter()
+                                                .any(|tested| bloom.contains(*tested)) {
+                                                Some((rowid, value))
+                                            } else {
+                                                None
                                             }
                                         } else {
-                                            unreachable!()
+                                            Some((rowid, value))
                                         }
-                                    });
-                            });
+                                    } else {
+                                        Some((rowid, value))
+                                    }
+                                })
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(&val)) {
+                                                    result.insert(rowid);
+                                                }
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+                        } else {
+                            blk
+                                .iter()
+                                .enumerate()
+                                .for_each(|(rowid, val)| {
+                                    or_filters
+                                        .iter()
+                                        .zip(acc.iter_mut())
+                                        .for_each(|(and_filters, result)| {
+                                            if let Some(ref mut result) = *result {
+                                                if and_filters.iter().all(|f| f.apply(&val)) {
+                                                    result.insert(rowid);
+                                                }
+                                            } else {
+                                                unreachable!()
+                                            }
+                                        });
+                                });
+                        }
                     })
                 }
 
@@ -626,7 +696,7 @@ impl<'part> Partition<'part> {
                     Some((*block_id, *block_type))
                 }
             })
-            .collect::<HashMap<_, _>>();
+            .collect::<HashMap<_, _>>().into();
 
         let blocks = Partition::prepare_blocks(&self.data_root, &fmap)
             .with_context(|_| "Unable to create block map")?;
@@ -637,14 +707,35 @@ impl<'part> Partition<'part> {
     }
 
     #[inline]
+    pub fn ensure_column_indexes(&mut self, storage_map: &ColumnIndexStorageMap) -> Result<()> {
+        let fmap = storage_map
+            .iter()
+            .filter_map(|(block_id, index_type)| {
+                if self.indexes.contains_key(block_id) {
+                    None
+                } else {
+                    Some((*block_id, *index_type))
+                }
+            })
+            .collect::<HashMap<_, _>>().into();
+
+        let blocks = Partition::prepare_indexes(&self.data_root, &fmap)
+            .with_context(|_| "Unable to create block map")?;
+
+        self.indexes.extend(blocks);
+
+        Ok(())
+    }
+
+    #[inline]
     pub fn gen_id() -> PartitionId {
-        Uuid::new_v4()
+        Uuid::new()
     }
 
     // TODO: to be benched
     fn prepare_blocks<'i, P>(
         root: P,
-        storage_map: &'i BlockStorageMapType,
+        storage_map: &'i BlockStorageMap,
     ) -> Result<BlockMap<'part>>
     where
         P: AsRef<Path> + Sync,
@@ -675,6 +766,40 @@ impl<'part> Partition<'part> {
             .collect()
     }
 
+    // TODO: to be benched
+    fn prepare_indexes<'i, P>(
+        root: P,
+        storage_map: &'i ColumnIndexStorageMap,
+    ) -> Result<ColumnIndexMap<'part>>
+    where
+        P: AsRef<Path> + Sync,
+//         BT: IntoParallelRefIterator<'i, Item = (&'i BlockId, &'i BlockType)> + 'i,
+//         &'i BT: IntoIterator<Item = (BlockId, BlockType)>,
+    {
+
+        storage_map
+            .iter()
+            .map(|(block_id, index_type)| match *index_type {
+                ColumnIndexStorage::Memory(colidx) => {
+                    use ty::index::memory::ColumnIndex;
+
+                    ColumnIndex::create(colidx)
+                        .map(|block| (*block_id, locked!(rw block.into())))
+                        .with_context(|_| "Unable to create in-memory column index block")
+                        .map_err(|e| e.into())
+                }
+                ColumnIndexStorage::Memmap(colidx) => {
+                    use ty::index::mmap::ColumnIndex;
+
+                    ColumnIndex::create(&root, colidx, *block_id)
+                        .map(|block| (*block_id, locked!(rw block.into())))
+                        .with_context(|_| "Unable to create mmap column index block")
+                        .map_err(|e| e.into())
+                }
+            })
+            .collect()
+    }
+
     pub(crate) fn flush(&self) -> Result<()> {
         // TODO: add dirty flag
         let meta = self.data_root.join(PARTITION_METADATA);
@@ -686,6 +811,7 @@ impl<'part> Partition<'part> {
         let meta = meta.as_ref();
 
         let blocks: BlockStorageMap = (&partition.blocks).into();
+        let indexes: ColumnIndexStorageMap = (&partition.indexes).into();
         let heads = partition
             .blocks
             .iter()
@@ -702,7 +828,7 @@ impl<'part> Partition<'part> {
             })
             .collect::<BlockHeadMap>();
 
-        let data = (partition, blocks, heads);
+        let data = (partition, blocks, indexes, heads);
 
         serialize!(file meta, &data)
             .with_context(|_| "Failed to serialize partition metadata")
@@ -719,12 +845,16 @@ impl<'part> Partition<'part> {
             bail!("Cannot find partition metadata {:?}", meta);
         }
 
-        let (mut partition, blocks, heads): (Partition, BlockStorageMap, BlockHeadMap) =
+        let (mut partition, blocks, indexes, heads):
+            (Partition, BlockStorageMap, ColumnIndexStorageMap,  BlockHeadMap) =
             deserialize!(file meta)
                 .with_context(|_| "Failed to read partition metadata")?;
 
-        partition.blocks = Partition::prepare_blocks(&root, &*blocks)
+        partition.blocks = Partition::prepare_blocks(&root, &blocks)
             .with_context(|_| "Failed to read block data")?;
+
+        partition.indexes = Partition::prepare_indexes(&root, &indexes)
+            .with_context(|_| "Failed to read column index block data")?;
 
         let partid = partition.id;
 
@@ -736,6 +866,15 @@ impl<'part> Partition<'part> {
                 *(pb.mut_head()) = head.head;
                 if let Some(head) = head.pool_head {
                     pb.set_pool_head(head);
+                }
+
+                // check for this block's index
+                if let Some(mut index) = partition.indexes.get(&blockid) {
+                    let index = acquire!(write index);
+                    index.set_head(head.head)
+                        .with_context(|_|
+                            format_err!("Unable to set column index block head ptr of partition {}",
+                                partid))?;
                 }
             })
         }
@@ -1005,11 +1144,13 @@ mod tests {
             0 => Fragment::from(ts),
         };
 
+        let indexes = hashmap! {}.into();
+
         let refs = frags.iter()
             .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
             .collect();
 
-        part.append(&blocks, &refs, 0).expect("Partition append failed");
+        part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
 
         assert_eq!(part.ts_min, Timestamp::from(ts_min));
         assert_eq!(part.ts_max, Timestamp::from(ts_max));
@@ -1134,11 +1275,13 @@ mod tests {
                     ])),
                 };
 
+                let indexes = hashmap! {}.into();
+
                 let refs = frags.iter()
                     .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
                     .collect();
 
-                part.append(&blocks, &refs, 0).expect("Partition append failed");
+                part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
 
                 (root, part, ts)
             }};
@@ -1168,7 +1311,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1196,7 +1339,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1228,7 +1371,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1263,7 +1406,7 @@ mod tests {
                             ]
                         };
 
-                    let result = part.filter(&filters, Scan::count_or_clauses(&filters))
+                    let result = part.filter(&filters, None, Scan::count_or_clauses(&filters))
                         .expect("filter failed");
 
                     assert_eq!(expected, result);
@@ -1291,7 +1434,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1310,7 +1453,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1331,7 +1474,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1354,7 +1497,7 @@ mod tests {
 
                         b.iter(|| {
                             let result = part
-                                .filter(&filters, Scan::count_or_clauses(&filters))
+                                .filter(&filters, None, Scan::count_or_clauses(&filters))
                                 .expect("Filter failed");
                             black_box(&result);
                         })
@@ -1517,11 +1660,13 @@ mod tests {
                         0 => Fragment::from(ts),
                     };
 
+                    let indexes = hashmap! {}.into();
+
                     let refs = frags.iter()
                         .map(|(blk, frag)| (*blk, FragmentRef::from(frag)))
                         .collect();
 
-                    part.append(&blocks, &refs, 0).expect("Partition append failed");
+                    part.append(&blocks, &indexes, &refs, 0).expect("Partition append failed");
                 )+
 
                 (root, part)

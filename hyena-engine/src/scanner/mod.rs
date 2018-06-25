@@ -99,6 +99,7 @@ use extprim::i128::i128;
 use extprim::u128::u128;
 
 pub use hyena_common::ty::Regex;
+use hyena_bloom_filter::{DefaultBloomFilter, BloomValue};
 
 pub type ScanFilters = OrScanFilters;
 pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
@@ -106,6 +107,7 @@ pub type ScanData = HashMap<ColumnId, Option<Fragment>>;
 pub type OrScanFilters = HashMap<ColumnId, Vec<AndScanFilters>>;
 pub type AndScanFilters = Vec<ScanFilter>;
 
+pub(crate) type BloomFilterValues = HashMap<ColumnId, Vec<BloomValue>>;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
@@ -114,6 +116,7 @@ pub struct Scan {
     pub(crate) groups: Option<Vec<SourceId>>,
     pub(crate) projection: Option<Vec<ColumnId>>,
     pub(crate) filters: Option<ScanFilters>,
+    pub(crate) bloom_filters: Option<BloomFilterValues>,    // OR/ANY
     pub(crate) or_clauses_count: usize,
 }
 
@@ -130,6 +133,12 @@ impl Scan {
             .map(|filters| Self::count_or_clauses(filters))
             .unwrap_or_default();
 
+        let bloom_filters = if let Some(ref f) = filters {
+            Self::compute_bloom_values(f)
+        } else {
+            None
+        };
+
         Scan {
             filters,
             projection,
@@ -137,11 +146,27 @@ impl Scan {
             partitions,
             ts_range,
             or_clauses_count,
+            bloom_filters,
         }
     }
 
     pub(crate) fn count_or_clauses(filters: &ScanFilters) -> usize {
         filters.iter().map(|(_, and_filters)| and_filters.len()).max().unwrap_or_default()
+    }
+
+    fn compute_bloom_values(filters: &ScanFilters) -> Option<BloomFilterValues> {
+        filters
+            .iter()
+            .map(|(colid, and_filters)| {
+                (*colid, and_filters
+                    .iter()
+                    .flat_map(|v| v.iter())
+                    .map(|v| v.bloom_value().ok_or(()))
+                    .collect::<::std::result::Result<Vec<BloomValue>, ()>>())
+            })
+            .map(|(colid, v)| v.map(|v| (colid, v)))
+            .collect::<::std::result::Result<_, ()>>()
+            .ok()
     }
 }
 
@@ -305,6 +330,13 @@ pub trait ScanFilterApply<T> {
     fn apply(&self, tested: &T) -> bool;
 }
 
+pub(crate) trait ScanFilterBloom {
+    #[inline]
+    fn bloom_value(&self) -> Option<BloomValue> {
+        None
+    }
+}
+
 impl Deref for ScanResult {
     type Target = ScanData;
 
@@ -328,6 +360,7 @@ macro_rules! scan_filter_impl {
     // a custom impl is required
     (ops $( $ty: ty, $variant: ident, $varname: expr ),+ $(,)*) => {
         $(
+
         impl ScanFilterOp<$ty> {
             #[inline]
             fn apply(&self, tested: &$ty) -> bool {
@@ -366,6 +399,38 @@ macro_rules! scan_filter_impl {
                     }
                 }
             }
+
+            #[inline]
+            fn bloom_value(&self) -> Option<BloomValue> {
+                use self::ScanFilterOp::*;
+
+                match *self {
+                    Lt(_)
+                    | LtEq(_)
+                    | Eq(_)
+                    | GtEq(_)
+                    | Gt(_)
+                    | NotEq(_) => None,
+                    In(_) => None,
+                    StartsWith(ref v) => {
+                        let v = v.to_string();
+
+                        Some(DefaultBloomFilter::encode(&v))
+                    }
+                    EndsWith(ref v) => {
+                        let v = v.to_string();
+
+                        Some(DefaultBloomFilter::encode(&v))
+                    }
+                    Contains(ref v) => {
+                        let v = v.to_string();
+
+                        Some(DefaultBloomFilter::encode(&v))
+                    }
+                    Matches(_) => None,
+                }
+            }
+
         }
         )+
 
@@ -421,6 +486,18 @@ macro_rules! scan_filter_impl {
                 }
             }
         }
+
+        impl ScanFilterBloom for ScanFilter {
+            #[inline]
+            fn bloom_value(&self) -> Option<BloomValue> {
+                match *self {
+                $(
+                    ScanFilter::$variant(ref op) => op.bloom_value(),
+                )+
+                }
+            }
+        }
+
     };
 }
 
@@ -471,6 +548,33 @@ impl ScanFilterOp<String> {
             EndsWith(ref v) => tested.ends_with(<String as AsRef<str>>::as_ref(v)),
             Contains(ref v) => tested.contains(<String as AsRef<str>>::as_ref(v)),
             Matches(ref v) => v.is_match(tested),
+        }
+    }
+
+    #[inline]
+    fn bloom_value(&self) -> Option<BloomValue> {
+        use self::ScanFilterOp::*;
+
+        match *self {
+            Lt(_) => None,
+            LtEq(_) => None,
+            Eq(ref v) => Some(DefaultBloomFilter::encode(v)),
+            GtEq(_) => None,
+            Gt(_) => None,
+            NotEq(_) => None,
+            In(_) => None,
+            StartsWith(ref v) => Some(DefaultBloomFilter::encode(v)),
+            EndsWith(ref v) => Some(DefaultBloomFilter::encode(v)),
+            Contains(ref v) => Some(DefaultBloomFilter::encode(v)),
+            Matches(ref v) => {
+                let regex_str = v.as_str();
+
+                if Regex::escape(regex_str) == regex_str {
+                    Some(DefaultBloomFilter::encode(regex_str))
+                } else {
+                    None
+                }
+            }
         }
     }
 }

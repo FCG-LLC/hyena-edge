@@ -1,5 +1,5 @@
 use error::*;
-use ty::BlockStorage;
+use ty::{BlockStorage, ColumnIndexStorageMap};
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use hyena_common::collections::HashMap;
@@ -17,9 +17,9 @@ use super::partition_group::PartitionGroup;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Catalog<'cat> {
-    pub(crate) columns: ColumnMap,
-
+    pub(crate) colmap: ColumnMap,
     pub(crate) groups: PartitionGroupMap<'cat>,
+    pub(crate) indexes: ColumnIndexStorageMap,
 
     #[serde(skip)]
     pub(crate) data_root: PathBuf,
@@ -36,8 +36,9 @@ impl<'cat> Catalog<'cat> {
         }
 
         let mut catalog = Catalog {
-            columns: Default::default(),
+            colmap: Default::default(),
             groups: Default::default(),
+            indexes: Default::default(),
             data_root: root,
         };
 
@@ -66,6 +67,10 @@ impl<'cat> Catalog<'cat> {
 
     pub fn open_or_create<P: AsRef<Path>>(root: P) -> Result<Catalog<'cat>> {
         Catalog::with_data(root.as_ref()).or_else(|_| Catalog::new(root.as_ref()))
+    }
+
+    pub fn columns(&self) -> &ColumnMap {
+        &self.colmap
     }
 
     #[cfg(feature = "validate_append")]
@@ -166,24 +171,24 @@ impl<'cat> Catalog<'cat> {
     /// so it allows redefinition of a column type.
     /// Use this feature with great caution.
     pub(crate) fn ensure_columns(&mut self, type_map: ColumnMap) -> Result<()> {
-        self.columns.extend(type_map);
+        self.colmap.extend(type_map);
 
         Ok(())
     }
 
-    /// Adds the column to the catalog. It verifies that catalog does not already contain:
+    /// Adds a column to the catalog. It verifies that catalog does not already contain:
     /// a) column with the given id, or
     /// b) column with the given name.
     /// This function takes all-or-nothing approach:
-    /// either all columns can are added, or none gets added.
+    /// either all columns are added, or no changes are applied.
     pub fn add_columns(&mut self, column_map: ColumnMap) -> Result<()> {
         for (id, column) in column_map.iter() {
             info!("Adding column {}:{:?} with id {}", column.name, column.ty, id);
 
-            if self.columns.contains_key(id) {
+            if self.colmap.contains_key(id) {
                 bail!("Column Id already exists {}", *id);
             }
-            if self.columns.values().any(|col| col.name == column.name) {
+            if self.colmap.values().any(|col| col.name == column.name) {
                 bail!("Column Name already exists '{}'", column.name);
             }
         }
@@ -191,12 +196,44 @@ impl<'cat> Catalog<'cat> {
         self.ensure_columns(column_map)
     }
 
+    /// Extend internal index map without any sanitization checks.
+    ///
+    /// This function uses `std::iter::Extend` internally,
+    /// so it allows redefinition of a index type.
+    /// Also, the index' support for a given column is not checked.
+    /// Use this feature with great caution.
+    pub(crate) fn ensure_indexes(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
+        self.indexes.extend(&*index_map);
+
+        Ok(())
+    }
+
+    /// Adds index to the catalog. Verifies that catalog does not already contain:
+    /// a) index for a column with the given id, or
+    /// b) index for a column with the given name.
+    /// This function takes all-or-nothing approach:
+    /// either all indexes are added, or no changes are applied.
+    pub fn add_indexes(&mut self, index_map: ColumnIndexStorageMap) -> Result<()> {
+        for (id, index) in index_map.iter() {
+            let column = self.colmap.get(id)
+                .ok_or_else(|| err_msg(format!("column not found {}", id)))?;
+
+            info!("Adding index {:?} for column {}[{}]:{:?}",
+                index, column.name, id, column.ty);
+
+            if self.indexes.contains_key(id) {
+                bail!("Index already exists {}", *id);
+            }
+        }
+
+        self.ensure_indexes(index_map)
+    }
     /// Fetch the first non-occupied column index
     ///
     /// todo: rethink this approach (max() every time)
     pub fn next_id(&self) -> usize {
         let default = 0;
-        *self.columns.keys().max().unwrap_or(&default) + 1
+        *self.colmap.keys().max().unwrap_or(&default) + 1
     }
 
     /// Calculate an empty partition's capacity for given column set
@@ -205,7 +242,7 @@ impl<'cat> Catalog<'cat> {
 
         indices.iter()
             .filter_map(|col_id| {
-                if let Some(column) = self.columns.get(col_id) {
+                if let Some(column) = self.colmap.get(col_id) {
                     Some(BLOCK_SIZE / column.size_of())
                 } else {
                     None
@@ -313,7 +350,7 @@ impl<'cat> Drop for Catalog<'cat> {
 
 impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
     fn as_ref(&self) -> &ColumnMap {
-        &self.columns
+        &self.colmap
     }
 }
 

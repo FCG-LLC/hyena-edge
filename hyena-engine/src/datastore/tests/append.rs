@@ -1,5 +1,6 @@
 use super::*;
 use ty::fragment::Fragment;
+use block::ColumnIndexType;
 
 pub(crate) const DEFAULT_PARTITION_GROUPS: [SourceId; 3] = [1, 5, 7];
 
@@ -16,7 +17,14 @@ macro_rules! append_test_impl {
         append_test_impl!(init DEFAULT_PARTITION_GROUPS, $columns, $ts_min)
     }};
 
-    (init $partition_groups: expr, $columns: expr, $ts_min: expr) => {{
+    (init $partition_groups: expr, $columns: expr, $ts_min: expr) => {
+        append_test_impl!(init $partition_groups,
+            $columns,
+            ::ty::ColumnIndexStorageMap::default(),
+            $ts_min)
+    };
+
+    (init $partition_groups: expr, $columns: expr, $indexes: expr, $ts_min: expr) => {{
         let ts_min = $ts_min;
 
         let source_ids = $partition_groups;
@@ -31,6 +39,12 @@ macro_rules! append_test_impl {
 
         cat.ensure_columns(
             columns.into(),
+        ).unwrap();
+
+        let indexes = $indexes;
+
+        cat.ensure_indexes(
+            indexes.into(),
         ).unwrap();
 
         for source_id in &source_ids {
@@ -74,6 +88,25 @@ macro_rules! append_test_impl {
         ])+)
     };
 
+    (default pg,
+        $schema: expr,
+        $indexes: expr,
+        $now: expr,
+        $([
+            $ts: expr,
+            $data: expr,    // HashMap
+            $source_id: expr
+            $(,)*
+        ]),+ $(,)*) => {{
+        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+
+        append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now, $([
+            $ts,
+            $data,
+            $source_id
+        ],)+)
+    }};
+
     ($schema: expr,
         $now: expr,
         $([
@@ -99,13 +132,34 @@ macro_rules! append_test_impl {
             $data: expr,    // HashMap
             $source_id: expr
             $(,)*
+        ]),+ $(,)*) => {
+
+        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(),
+        $now,
+        $([
+            $ts,
+            $data,
+            $source_id
+        ],)+)
+    };
+
+    ($partition_groups: expr,
+        $schema: expr,
+        $indexes: expr,
+        $now: expr,
+        $([
+            $ts: expr,
+            $data: expr,    // HashMap
+            $source_id: expr
+            $(,)*
         ]),+ $(,)*) => {{
 
         let columns = $schema;
+        let indexes = $indexes;
 
         let now = $now;
 
-        let init = append_test_impl!(init $partition_groups, columns.clone(), now);
+        let init = append_test_impl!(init $partition_groups, columns.clone(), indexes, now);
         let cat = init.1;
 
         $(
@@ -148,8 +202,54 @@ macro_rules! append_test_impl {
 
     }};
 
+    (default pg,
+        $schema: expr,
+        $indexes: expr,
+        $now: expr,
+        $expected_partitions: expr, // Vec<>
+        $([
+            $ts: expr,
+            $ts_count: expr,
+            $block_counts: expr,
+            $data: expr    // HashMap
+            $(,)*
+        ]),+ $(,)*) => {{
+
+        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+
+        append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now,
+            $expected_partitions, $([
+            $ts,
+            $ts_count,
+            $block_counts,
+            $data
+        ],)+)
+    }};
+
     ($partition_groups: expr,
         $schema: expr,
+        $now: expr,
+        $expected_partitions: expr, // Vec<>
+        $([
+            $ts: expr,
+            $ts_count: expr,
+            $block_counts: expr,
+            $data: expr    // HashMap
+            $(,)*
+        ]),+ $(,)*) => {
+
+        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(), $now,
+            $expected_partitions, $([
+            $ts,
+            $ts_count,
+            $block_counts,
+            $data
+        ],)+)
+    };
+
+    ($partition_groups: expr,
+        $schema: expr,
+        $indexes: expr,
         $now: expr,
         $expected_partitions: expr, // Vec<>
         $([
@@ -171,13 +271,15 @@ macro_rules! append_test_impl {
             ParallelIterator};
 
         let columns = $schema;
+        let indexes = $indexes;
         let expected_partitions = $expected_partitions;
 
         let now = $now;
 
         let (td, part_ids) = {
 
-            let init = append_test_impl!(init $partition_groups, columns.clone(), now);
+            let init = append_test_impl!(init $partition_groups,
+                columns.clone(), indexes.clone(), now);
             let cat = init.1;
 
             $(
@@ -276,6 +378,25 @@ macro_rules! append_test_impl {
                             part_id);
                     }
 
+                }
+            });
+
+            // assert column index blocks
+            indexes.par_iter().for_each(|(id, ty)| {
+                use ty::ColumnIndexStorage::Memmap;
+
+                if block_data.contains_key(&id) {
+                    match ty {
+                        Memmap(ColumnIndexType::Bloom) => assert!(td.exists_file(
+                                part_root.as_ref().join(format!("block_{}.bloom", id))
+                            ),
+                            "couldn't find bloom column index block {} of partition {:?}",
+                            id,
+                            part_id),
+                        _ => panic!("unknown column index block type"),
+                    }
+                } else {
+                    panic!("tried to create index {} for an nonexistent block", id);
                 }
             });
 
@@ -605,6 +726,53 @@ mod benches {
         };
 
         let cat = init.1;
+
+        b.iter(|| cat.append(&append).expect("unable to append fragment"));
+    }
+
+    #[bench]
+    fn small_string_bloom(b: &mut Bencher) {
+        use block::{BlockType as BlockTy, ColumnIndexType};
+        use ty::block::BlockStorage::Memmap;
+        use ty::index::ColumnIndexStorage;
+
+
+
+        let record_count = 100;
+        let text_length = 120;
+
+        let columns = hashmap! {
+            0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+            1 => Column::new(Memmap(BlockTy::U32Dense), "source"),
+            2 => Column::new(Memmap(BlockTy::U64Dense), "col1"),
+            3 => Column::new(Memmap(BlockTy::StringDense), "col2"),
+        };
+
+        let data = hashmap! {
+            2 => random!(gen u64, record_count).into(),
+            3 => text!(gen frag random record_count, text_length).into(),
+        };
+
+        let init = append_test_impl!(init columns);
+
+        let ts = RandomTimestampGen::iter_range_from(init.2)
+            .take(record_count)
+            .collect::<Vec<Timestamp>>()
+            .into();
+
+        let append = Append {
+            ts,
+            source_id: 1,
+            data,
+        };
+
+        let mut cat = init.1;
+
+        cat.ensure_indexes(hashmap! {
+            3 => ColumnIndexStorage::Memmap(ColumnIndexType::Bloom),
+        }.into())
+        .with_context(|_| "ensure index failed")
+        .unwrap();
 
         b.iter(|| cat.append(&append).expect("unable to append fragment"));
     }
@@ -1540,6 +1708,52 @@ mod string {
     mod dense {
         use super::*;
 
+        mod indexed {
+            use super::*;
+            use ty::ColumnIndexStorage::Memmap as MemmapIndex;
+
+            #[test]
+            fn current_only() {
+                let now = <Timestamp as Default>::default();
+
+                let record_count = 100;
+                let string_len = 120;
+
+                let mut v = vec![Timestamp::from(0); record_count];
+                seqfill!(Timestamp, &mut v[..], now);
+
+                let data = hashmap! {
+                    2 => Fragment::from(seqfill!(vec u64, record_count)),
+                    3 => Fragment::from(text!(gen frag record_count, string_len)),
+                };
+
+                let mut expected = data.clone();
+
+                expected.insert(0, Fragment::from(v.clone()));
+
+                append_test_impl!(default pg,
+                    hashmap! {
+                        0 => Column::new(Memmap(BlockTy::U64Dense), "ts"),
+                        2 => Column::new(Memmap(BlockTy::U64Dense), "col1"),
+                        3 => Column::new(Memmap(BlockTy::StringDense), "col2"),
+                    },
+                    hashmap! {
+                        3 => MemmapIndex(ColumnIndexType::Bloom),
+                    },
+                    now,
+                    vec![expected],
+                    [
+                        v.into(),
+                        record_count,
+                        hashmap! {
+                            2 => (record_count, 0, 0),
+                            3 => (record_count, 0, 0),
+                        },
+                        data
+                    ]
+                );
+            }
+        }
 
         #[test]
         fn current_only() {

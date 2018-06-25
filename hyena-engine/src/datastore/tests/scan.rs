@@ -674,6 +674,39 @@ mod minimal {
             $(,)*
         ) => {
             scan_minimal_init!($ts, $length,
+                    dense [$(
+                        $dense_idx => (
+                            $dense_ty,
+                            $dense_name,
+                            vec![$( $dense_data )*]
+                        ),
+                    )*],
+                    sparse [$(
+                        $sparse_idx => (
+                            $sparse_ty,
+                            $sparse_name,
+                            vec![$($sparse_data)*],
+                            vec![$($sparse_data_idx)*]
+                        ),
+                    )*],
+                    indexes []
+            )
+        };
+
+        ($ts:expr, $length:expr,
+            dense [ $( $dense_idx:expr => (
+                $dense_ty:ident,
+                $dense_name:expr,
+                vec![$($dense_data:tt)*]) ),* $(,)*],
+            sparse [ $( $sparse_idx:expr => (
+                $sparse_ty:ident,
+                $sparse_name:expr,
+                vec![$($sparse_data:tt)*],
+                vec![$($sparse_data_idx:tt)*]) ),* $(,)*],
+            indexes [ $( $column_idx:expr => $column_idx_ty:expr ),* $(,)* ]
+            $(,)*
+        ) => {
+            scan_minimal_init!($ts, $length,
                 schema
                     dense [$(
                         $dense_idx => (
@@ -687,6 +720,7 @@ mod minimal {
                             $sparse_name
                         ),
                     )*],
+                    indexes [ $( $column_idx => $column_idx_ty )* ],
                 data [
                     1 => [
                         dense [$(
@@ -719,7 +753,63 @@ mod minimal {
             data [ $(
                 $source_id: expr => [
                     dense [ $( $dense_idx:expr => (
-//                         vec![$( $dense_data:tt )*]
+                            $dense_data: expr
+                    )),* $(,)*],
+                    sparse [ $( $sparse_idx:expr => (
+                        vec![$( $sparse_data:tt )*],
+                        vec![$( $sparse_data_idx:tt )*]
+                    )),* $(,)*]
+                ]
+            ),* $(,)* ]
+        ) => {
+            scan_minimal_init!($ts, $length,
+                schema
+                    dense [$(
+                        $dense_schema_idx => (
+                            $dense_ty,
+                            $dense_name
+                        ),
+                    )*],
+                    sparse [$(
+                        $sparse_schema_idx => (
+                            $sparse_ty,
+                            $sparse_name
+                        ),
+                    )*],
+                    indexes [],
+                data [$(
+                    $source_id => [
+                        dense [$(
+                            $dense_idx => (
+                                $dense_data
+                            ),
+                        )*],
+                        sparse [$(
+                            $sparse_idx => (
+                                vec![$( $sparse_data )*],
+                                vec![$( $sparse_data_idx )*]
+                            ),
+                        )*]
+                    ],
+                )*]
+            )
+        };
+
+        ($ts:expr, $length:expr,
+            schema
+                dense [ $( $dense_schema_idx:expr => (
+                    $dense_ty:ident,
+                    $dense_name:expr
+                )),* $(,)*],
+                sparse [ $( $sparse_schema_idx:expr => (
+                    $sparse_ty:ident,
+                    $sparse_name:expr
+                )),* $(,)*],
+                indexes [ $( $column_idx:expr => $column_idx_ty:expr ),* $(,)* ],
+
+            data [ $(
+                $source_id: expr => [
+                    dense [ $( $dense_idx:expr => (
                             $dense_data: expr
                     )),* $(,)*],
                     sparse [ $( $sparse_idx:expr => (
@@ -730,6 +820,8 @@ mod minimal {
             ),* $(,)* ]
         ) => {{
             use block::BlockType;
+            use ty::ColumnIndexStorageMap;
+
 
             let now = $ts;
 
@@ -754,8 +846,15 @@ mod minimal {
 
             )*
 
-            let td = append_test_impl!(
+            let indexes = ColumnIndexStorageMap::from(hashmap! {
+                $(
+                    $column_idx => ::ty::ColumnIndexStorage::Memmap($column_idx_ty),
+                )*
+            });
+
+            let td = append_test_impl!(default pg,
                 schema,
+                indexes,
                 now,
                 $(
                 [
@@ -1110,7 +1209,7 @@ mod minimal {
 //             +--------+-----------+-------------+--------+
 //             |   9    | 10        | do          | 20     |
 //             +--------+-----------+-------------+--------+
-        (string) => {
+        (string $( $column_idx:expr => $column_idx_ty:ident ),*) => {
             scan_minimal_init!(
                 1, 10,
                 schema
@@ -1119,6 +1218,7 @@ mod minimal {
                         2 => (U8Dense, "dense2")
                     ],
                     sparse [],
+                    indexes [$( $column_idx => $column_idx_ty )*],
                 data [
                     1 => [
                         dense [
@@ -1130,6 +1230,12 @@ mod minimal {
                 ]
             )
         };
+
+        (string indexed) => {{
+            use block::ColumnIndexType::Bloom;
+
+            scan_minimal_init!(string 1 => Bloom)
+        }};
 
 //             +--------+-----------+--------------+
 //             | rowidx | timestamp |   string1    |
@@ -1144,7 +1250,7 @@ mod minimal {
 //             +--------+-----------+--------------+
 //             |   4    | 5         | hyena⌚❤hyena|
 //             +--------+-----------+--------------+
-        (string utf8) => {
+        (string utf8 $( $column_idx:expr => $column_idx_ty:ident ),*) => {
             scan_minimal_init!(
                 1, 5,
                 schema
@@ -1152,6 +1258,7 @@ mod minimal {
                         1 => (StringDense, "string1")
                     ],
                     sparse [],
+                    indexes [$( $column_idx => $column_idx_ty )*],
                 data [
                     1 => [
                         dense [
@@ -1168,6 +1275,12 @@ mod minimal {
                 ]
             )
         };
+
+        (string utf8 indexed) => {{
+            use block::ColumnIndexType::Bloom;
+
+            scan_minimal_init!(string utf8 1 => Bloom)
+        }};
     }
 
     #[test]
@@ -1283,9 +1396,12 @@ mod minimal {
             };
         }
 
-        #[test]
-        fn scan_lt() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_lt_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![1_u64, 3, 5, 6, 7, 8, 10])),
@@ -1309,9 +1425,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_lteq() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_lteq_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![1_u64, 2, 3, 5, 6, 7, 8, 10])),
@@ -1335,9 +1454,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_gt() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_gt_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![4_u64, 9])),
@@ -1360,9 +1482,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_gteq() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_gteq_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![2_u64, 4, 9])),
@@ -1385,9 +1510,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_eq() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_eq_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![2_u64])),
@@ -1410,9 +1538,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_noteq() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_noteq_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![1_u64, 3, 4, 5, 6, 7, 8, 9, 10])),
@@ -1436,9 +1567,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_in() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_in_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![2_u64, 8, 9])),
@@ -1466,9 +1600,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_startswith() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_startswith_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![4_u64, 9])),
@@ -1491,9 +1628,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_endswith() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_endswith_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![4_u64])),
@@ -1516,9 +1656,12 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_contains() {
-            let (_td, catalog, _) = scan_minimal_init!(string);
+        fn scan_contains_impl(indexed: bool) {
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![6_u64, 9])),
@@ -1541,11 +1684,14 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_matches() {
+        fn scan_matches_impl(indexed: bool) {
             use hyena_common::ty::Regex;
 
-            let (_td, catalog, _) = scan_minimal_init!(string);
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string indexed)
+            } else {
+                scan_minimal_init!(string)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![4_u64, 5, 6, 8])),
@@ -1569,11 +1715,14 @@ mod minimal {
             assert_eq!(expected, result);
         }
 
-        #[test]
-        fn scan_matches_utf8() {
+        fn scan_matches_utf8_impl(indexed: bool) {
             use hyena_common::ty::Regex;
 
-            let (_td, catalog, _) = scan_minimal_init!(string utf8);
+            let (_td, catalog, _) = if indexed {
+                scan_minimal_init!(string utf8 indexed)
+            } else {
+                scan_minimal_init!(string utf8)
+            };
 
             let expected = ScanResult::from(hashmap! {
                 0 => Some(Fragment::from(vec![1_u64, 5])),
@@ -1597,6 +1746,131 @@ mod minimal {
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
 
             assert_eq!(expected, result);
+        }
+
+        mod indexed {
+            use super::*;
+
+            #[test]
+            fn scan_lt() {
+                scan_lt_impl(true)
+            }
+
+            #[test]
+            fn scan_lteq() {
+                scan_lteq_impl(true)
+            }
+
+            #[test]
+            fn scan_gt() {
+                scan_gt_impl(true)
+            }
+
+            #[test]
+            fn scan_gteq() {
+                scan_gteq_impl(true)
+            }
+
+            #[test]
+            fn scan_eq() {
+                scan_eq_impl(true)
+            }
+
+            #[test]
+            fn scan_noteq() {
+                scan_noteq_impl(true)
+            }
+
+            #[test]
+            fn scan_in() {
+                scan_in_impl(true)
+            }
+
+            #[test]
+            fn scan_startswith() {
+                scan_startswith_impl(true)
+            }
+
+            #[test]
+            fn scan_endswith() {
+                scan_endswith_impl(true)
+            }
+
+            #[test]
+            fn scan_contains() {
+                scan_contains_impl(true)
+            }
+
+            #[test]
+            fn scan_matches() {
+                scan_matches_impl(true)
+            }
+
+            #[test]
+            fn scan_matches_utf8() {
+                scan_matches_utf8_impl(true)
+            }
+
+        }
+
+        #[test]
+        fn scan_lt() {
+            scan_lt_impl(false)
+        }
+
+        #[test]
+        fn scan_lteq() {
+            scan_lteq_impl(false)
+        }
+
+        #[test]
+        fn scan_gt() {
+            scan_gt_impl(false)
+        }
+
+        #[test]
+        fn scan_gteq() {
+            scan_gteq_impl(false)
+        }
+
+        #[test]
+        fn scan_eq() {
+            scan_eq_impl(false)
+        }
+
+        #[test]
+        fn scan_noteq() {
+            scan_noteq_impl(false)
+        }
+
+        #[test]
+        fn scan_in() {
+            scan_in_impl(false)
+        }
+
+        #[test]
+        fn scan_startswith() {
+            scan_startswith_impl(false)
+        }
+
+        #[test]
+        fn scan_endswith() {
+            scan_endswith_impl(false)
+        }
+
+        #[test]
+        fn scan_contains() {
+            scan_contains_impl(false)
+        }
+
+        #[test]
+        fn scan_matches() {
+            scan_matches_impl(false)
+        }
+
+        #[test]
+        fn scan_matches_utf8() {
+            scan_matches_utf8_impl(false)
         }
     }
 

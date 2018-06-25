@@ -7,11 +7,13 @@ mod macros;
 mod numeric;
 mod string;
 mod relative;
+pub(crate) mod index;
 
 pub(crate) use self::numeric::{DenseNumericBlock, SparseIndexedNumericBlock};
 pub(crate) use self::string::DenseStringBlock;
 pub use self::numeric::SparseIndex;
 pub(crate) use self::relative::RelativeSlice;
+pub use self::index::ColumnIndexType;
 
 
 // This will probably get merged into BlockData
@@ -173,6 +175,11 @@ pub trait BlockData<'block, T: 'block, I: 'block>
     #[inline]
     fn is_empty(&self) -> bool {
         self.as_ref().is_empty()
+    }
+
+    #[inline]
+    fn size_of() -> usize {
+        ::std::mem::size_of::<T>()
     }
 
     #[inline]

@@ -187,7 +187,7 @@ impl<'pg> PartitionGroup<'pg> {
             .zip(offsets.iter())
         {
             partition
-                .append(&typemap, &fragment, *offset as SparseIndex)
+                .append(&typemap, &catalog.indexes, &fragment, *offset as SparseIndex)
                 .with_context(|_| "partition append failed")
                 .unwrap();
         }
