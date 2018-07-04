@@ -385,7 +385,8 @@ impl<'pg> PartitionGroup<'pg> {
                         Some(a)
                     },
                 )
-                .ok_or_else(|| err_msg("partition scan failed"))
+                .or_else(|| Some(Default::default()))
+                .ok_or_else(|| unreachable!())
         }
     }
 
