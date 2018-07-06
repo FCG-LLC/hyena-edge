@@ -344,20 +344,31 @@ mod full {
             use super::*;
             use scanner::ScanTsRange;
 
-            fn ts_range_test_impl(ts_range: Option<ScanTsRange>, expected_partitions: Vec<usize>) {
-                let now = 1;
+            fn ts_range_test_impl(
+                ts_range: Option<ScanTsRange>,
+                expected_partitions: Option<Vec<usize>>,
+                ts: Option<u64>
+            ) {
+                let now = ts.unwrap_or(1);
 
                 let record_count = MAX_RECORDS * 10;
 
                 let mut v = vec![Timestamp::from(0); record_count];
                 seqfill!(Timestamp, &mut v[..], now);
 
-                let expected = v.chunks(MAX_RECORDS)
-                    .enumerate()
-                    .filter(|&(idx, _)| expected_partitions.contains(&idx))
-                    .flat_map(|(_, data)| data)
-                    .map(|t| u64::from(*t))
-                    .collect::<Vec<_>>();
+                let expected = expected_partitions.map(|expected_partitions| {
+                    let expected = v.chunks(MAX_RECORDS)
+                        .enumerate()
+                        .filter(|&(idx, _)| expected_partitions.contains(&idx))
+                        .flat_map(|(_, data)| data)
+                        .map(|t| u64::from(*t))
+                        .collect::<Vec<_>>();
+
+                    ScanResult::from(hashmap! {
+                        0 => Some(Fragment::from(expected)),
+                        1 => Some(Fragment::from(Vec::<u32>::default())),
+                    })
+                }).unwrap_or_default();
 
                 let td = append_test_impl!(
                     [1],
@@ -376,11 +387,6 @@ mod full {
                     .with_context(|_| "unable to open catalog")
                     .unwrap();
 
-                let expected = ScanResult::from(hashmap! {
-                    0 => Some(Fragment::from(expected)),
-                    1 => Some(Fragment::from(Vec::<u32>::default())),
-                });
-
                 let scan = Scan::new(
                     None,   // full scan
                     None,
@@ -396,31 +402,40 @@ mod full {
 
             #[test]
             fn default() {
-                ts_range_test_impl(None, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                ts_range_test_impl(None, Some(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), None);
             }
 
             #[test]
             fn full() {
-                ts_range_test_impl(Some(ScanTsRange::Full), vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+                ts_range_test_impl(
+                    Some(ScanTsRange::Full), Some(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), None);
             }
 
             #[test]
             fn bound() {
                 let start = Timestamp::from((MAX_RECORDS * 2 + MAX_RECORDS / 2) as u64); // 2,5 =>
                 let end = Timestamp::from((MAX_RECORDS * 6 + MAX_RECORDS / 2) as u64); // => 6,5
-                ts_range_test_impl(Some(ScanTsRange::Bounded { start, end }), vec![2, 3, 4, 5, 6]);
+                ts_range_test_impl(
+                    Some(ScanTsRange::Bounded { start, end }), Some(vec![2, 3, 4, 5, 6]), None);
             }
 
             #[test]
             fn left_bound() {
                 let start = Timestamp::from((MAX_RECORDS * 6 + MAX_RECORDS / 2) as u64); // 6,5 =>
-                ts_range_test_impl(Some(ScanTsRange::From { start }), vec![6, 7, 8, 9]);
+                ts_range_test_impl(Some(ScanTsRange::From { start }), Some(vec![6, 7, 8, 9]), None);
             }
 
             #[test]
             fn right_bound() {
                 let end = Timestamp::from((MAX_RECORDS * 3 + MAX_RECORDS / 2) as u64); // => 3,5
-                ts_range_test_impl(Some(ScanTsRange::To { end }), vec![0, 1, 2, 3]);
+                ts_range_test_impl(Some(ScanTsRange::To { end }), Some(vec![0, 1, 2, 3]), None);
+            }
+
+            #[test]
+            fn no_partitions_after_pruning() {
+                let start = Timestamp::from(50_u64);
+                let end = Timestamp::from(70_u64);
+                ts_range_test_impl(Some(ScanTsRange::Bounded { start, end }), None, Some(100));
             }
         }
     }
@@ -1372,6 +1387,36 @@ mod minimal {
 
         let scan = Scan::new(
             None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn scan_empty_result() {
+        let (_td, catalog, _) = scan_minimal_init!();
+
+        let expected = ScanResult::from(hashmap! {
+            0 => Some(Fragment::from(Vec::<u64>::default())),
+            1 => Some(Fragment::from((Vec::<u8>::default(), Vec::default()))),
+            2 => Some(Fragment::from((Vec::<u16>::default(), Vec::default()))),
+        });
+
+        let scan = Scan::new(
+            Some(hashmap! {
+                0 => vec![
+                    vec![
+                        ScanFilter::U64(ScanFilterOp::Lt(170_u64)),
+                        ScanFilter::U64(ScanFilterOp::Gt(100_u64)),
+                    ]
+                ]
+            }),
             None,
             None,
             None,
