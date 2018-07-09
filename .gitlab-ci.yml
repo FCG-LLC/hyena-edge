@@ -295,12 +295,17 @@ test:protocol:
   script:
   - sudo docker run --rm --env HYENA_COMMIT="$CI_COMMIT_SHA" --env HYENA_PRIVATE_KEY="$HYENA_PROTOTEST_PRIVATE_KEY" docker-registry.cs.int/dev/hyena-proto-test
 
-#bench:criterion:
-    #stage: bench
-    #tags:
-    #- hyena-bench
-    #script:
-    #- cargo bench --all
+bench:criterion:
+  stage: bench
+  allow_failure: true
+  tags:
+  - hyena-bench
+  script:
+  - cargo bench --all
+  artifacts:
+    paths:
+    - target/criterion
+    expire_in: 1 week
 
 deploy:int01:
   stage: deploy
