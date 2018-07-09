@@ -1,0 +1,18 @@
+[package]
+name = "hyena-benchmark"
+version = "0.1.0"
+authors = ["Jacek Całusiński <forger@forger.pl>"]
+autobenches = false
+ 
+[[bench]]
+name = "benches"
+harness = false
+
+[dependencies]
+hyena-engine = { path = "../hyena-engine" }
+hyena-common = { path = "../hyena-common" }
+failure = "0.1.1"
+
+[dev-dependencies]
+criterion = "0.2.4"
+hyena-test = { path = "../hyena-test" }
