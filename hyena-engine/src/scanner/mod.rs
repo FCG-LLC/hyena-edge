@@ -97,6 +97,7 @@ use ty::fragment::Fragment;
 use hyena_common::ty::Timestamp;
 use extprim::i128::i128;
 use extprim::u128::u128;
+use rayon::prelude::*;
 
 pub use hyena_common::ty::Regex;
 use hyena_bloom_filter::{DefaultBloomFilter, BloomValue};
@@ -274,6 +275,30 @@ impl ScanResult {
         Ok(())
     }
 
+    pub fn len(&self) -> usize {
+        self.try_dense_len()
+            .or_else(|| {
+            // all sparse columns, and here if differs from dense_len
+            // as dense len finds the expected output fragment length
+            // and len() should give us a number of distinct rows
+            // this is very heavy operation, because we have to track
+            // all rows from all of the columns
+
+            Some(self.data
+                .par_iter()
+                .map(|(_, col)| {
+                    col.as_ref()
+                        // TODO: verify that FragmentIter's Value wrapping
+                        // gets optimized out by the compiler
+                        .map_or(hashset! { 0 },
+                            |col| col.iter().map(|(idx, _)| idx).collect::<HashSet<_>>())
+                })
+                .reduce(|| HashSet::new(), |a, b| a.union(&b).into_iter().cloned().collect())
+                .len())
+        })
+        .unwrap_or_default()
+    }
+
     /// Get the length of a dense result `Fragment`
     ///
     /// This is needed for proper sparse offset calculation.
@@ -282,27 +307,14 @@ impl ScanResult {
         // try to find the first dense column
         // in most cases it should be a `ts`, which has index = 0
 
-        if let Some((_, dense)) = self.data.iter()
-            .find(|&(colidx, col)| {
-                // this is a very ugly hack
-                // that needs to be here until we get rid of source_id column
-                // treat source_id column (index == 1) as sparse
-                // as it's always empty anyway
-                *colidx != 1 &&
-
-                // this is the proper part
-                // that gets to stay
-                col.as_ref().map_or(false, |col| !col.is_sparse())
-            }) {
-
-            dense.as_ref().map_or(0, |col| col.len())
-        } else {
+        self.try_dense_len()
+            .or_else(|| {
             // all sparse columns, so we have to find the maximum index value
             // which means iterating over all columns
 
             use std::cmp::max;
 
-            self.data.iter().fold(0, |max_idx, (_, col)| {
+            Some(self.data.iter().fold(0, |max_idx, (_, col)| {
                 // all columns have to be sparse here
                 // hence why only debug-time assert
                 debug_assert!(col.as_ref().map_or(true, |col| col.is_sparse()));
@@ -313,8 +325,29 @@ impl ScanResult {
                 max(max_idx,
                     col.as_ref()
                         .map_or(0, |col| col.max_index().unwrap_or(0)))
+            }))
+        })
+        .unwrap_or_default()
+    }
+
+    #[inline]
+    fn try_dense_len(&self) -> Option<usize> {
+        self.data.iter()
+            .find(|&(colidx, col)| {
+                // this is a very ugly hack
+                // that needs to be here until we get rid of source_id column
+                // treat source_id column (index == 1) as sparse
+                // as it's always empty anyway
+                *colidx != 1 &&
+
+                // this is the proper part
+                // that gets to stay
+                col.as_ref().map_or(false, |col| !col.is_sparse())
             })
-        }
+            .map(|(_, dense)| {
+                dense.as_ref().map_or(0, |col| col.len())
+            })
+    }
 
     }
 }
