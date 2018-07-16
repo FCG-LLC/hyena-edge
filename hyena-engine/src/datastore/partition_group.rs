@@ -14,6 +14,7 @@ use scanner::{Scan, ScanResult};
 use ty::block::{BlockStorageMap, BlockStorageMapType};
 use ty::ColumnId;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::*;
 use std::iter::{once, repeat};
 use ty::fragment::FragmentRef;
 
@@ -180,17 +181,17 @@ impl<'pg> PartitionGroup<'pg> {
 
         // write data
 
-        for ((partition, fragment), offset) in partitions
-            .iter_mut()
+        partitions
+            .par_iter_mut()
             .skip(if current_is_full { curidx } else { curidx.saturating_sub(1) })
-            .zip(fragments.iter())
-            .zip(offsets.iter())
-        {
-            partition
-                .append(&typemap, &catalog.indexes, &fragment, *offset as SparseIndex)
-                .with_context(|_| "partition append failed")
-                .unwrap();
-        }
+            .zip(fragments.par_iter())
+            .zip(offsets.par_iter())
+            .for_each(|((partition, fragment), offset)| {
+                partition
+                    .append(&typemap, &catalog.indexes, &fragment, *offset as SparseIndex)
+                    .with_context(|_| "partition append failed")
+                    .unwrap();
+            });
 
         // todo: this is not very accurate, as the actual write could have failed
         Ok(fragcount)
