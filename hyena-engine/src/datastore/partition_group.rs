@@ -116,7 +116,7 @@ impl<'pg> PartitionGroup<'pg> {
             //
             // the row count we can store depends on a specific sparse columns being present
             // in the append data, so it varies between appends
-            let emptycap = catalog.space_for_blocks(&colindices);
+            let emptycap = catalog.space_for_blocks(colindices.iter());
 
             // the remaining capacity of the current partition
             // calculated for this specific append

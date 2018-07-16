@@ -1,5 +1,5 @@
 use error::*;
-use ty::{BlockStorage, ColumnIndexStorageMap};
+use ty::{BlockStorage, ColumnIndexStorageMap, ColumnId};
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use hyena_common::collections::HashMap;
@@ -237,10 +237,12 @@ impl<'cat> Catalog<'cat> {
     }
 
     /// Calculate an empty partition's capacity for given column set
-    pub(super) fn space_for_blocks(&self, indices: &[usize]) -> usize {
+    pub(super) fn space_for_blocks<'iter>(&self, indices: impl Iterator<Item = &'iter ColumnId>)
+    -> usize
+    {
         use params::BLOCK_SIZE;
 
-        indices.iter()
+        indices
             .filter_map(|col_id| {
                 if let Some(column) = self.colmap.get(col_id) {
                     Some(BLOCK_SIZE / column.size_of())
