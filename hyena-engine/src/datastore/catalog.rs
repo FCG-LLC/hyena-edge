@@ -139,12 +139,25 @@ impl<'cat> Catalog<'cat> {
         } else {
             all_groups.as_ref().unwrap()
         }
-        .par_iter()
-        .filter_map(|pgid| self.groups.get(pgid))
-        .map(|pg| pg.scan(&scan))
-        // todo: this would potentially be better with some short-circuiting combinator instead
-        // need to bench with collect_into()
-        .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
+        .chunks(2)
+        .map(|group| {
+            group
+                .par_iter()
+                .filter_map(|pgid| self.groups.get(pgid))
+                .map(|pg| pg.scan(&self, &scan))
+                // todo: this would potentially be better with some short-circuiting combinator
+                // instead
+                // need to bench with collect_into()
+                .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
+                    let mut a = a?;
+                    let b = b?;
+
+                    a.merge(b)?;
+
+                    Ok(a)
+                })
+        })
+        .fold(Ok(ScanResult::merge_identity()), |a, b| {
             let mut a = a?;
             let b = b?;
 

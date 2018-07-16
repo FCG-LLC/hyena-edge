@@ -3,6 +3,7 @@ use hyena_common::ty::Timestamp;
 use block::SparseIndex;
 use storage::manager::PartitionManager;
 use hyena_common::collections::HashMap;
+use hyena_common::iter::IteratorExt;
 use std::collections::vec_deque::VecDeque;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
@@ -10,7 +11,7 @@ use std::default::Default;
 use std::sync::RwLock;
 use params::{SourceId, PARTITION_GROUP_METADATA};
 use mutator::append::Append;
-use scanner::{Scan, ScanResult};
+use scanner::{Scan, ScanResult, StreamState};
 use ty::block::{BlockStorageMap, BlockStorageMapType};
 use ty::ColumnId;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -344,7 +345,7 @@ impl<'pg> PartitionGroup<'pg> {
         }
     }
 
-    pub fn scan(&self, scan: &Scan) -> Result<ScanResult> {
+    pub fn scan(&self, catalog: &Catalog, scan: &Scan) -> Result<ScanResult> {
         // only filters and projection for now
         // all partitions
         // full ts range
@@ -354,27 +355,129 @@ impl<'pg> PartitionGroup<'pg> {
         if partitions.is_empty() {
             Ok(Default::default())
         } else {
-            partitions
-                .par_iter()
-                .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
-                    // todo: benchmark Partition::get_id() -> &PartitionId
-                    scan_partitions.contains(&partition.get_id())
+            let partitions_len = partitions.len();
+
+            let (total_chunks, chunk_size, max_rows, threshold, mut skip) = if let Some(stream) =
+scan.stream {
+                let partition_capacity = if let Some(ref projection) = scan.projection {
+                    catalog.space_for_blocks(projection.iter())
                 } else {
-                    true
+                    catalog.space_for_blocks(catalog.columns().keys())
+                };
+
+                if partition_capacity == 0 {
+                    warn!("scan provided row limit value of 0, defaulting to full scan");
+                    (1, partitions_len, None, 0, 0)
+                } else {
+                    // TODO: replace with div_euc when stable
+                    // https://github.com/rust-lang/rust/issues/49048
+
+                    let base_count = stream.row_limit / partition_capacity;
+
+                    let remainder_count = if stream.row_limit % partition_capacity != 0 {
+                        1
+                    } else {
+                        0
+                    };
+
+                    let chunk_size = base_count + remainder_count;
+
+                    // TODO: replace with div_euc when stable
+                    // https://github.com/rust-lang/rust/issues/49048
+                    let total_chunks =
+                        partitions_len / chunk_size + if partitions_len % chunk_size == 0 {
+                            0
+                        } else {
+                            1
+                        };
+
+                    let skip = if let Some(state) = stream.state {
+                        state.skip_chunks
+                    } else {
+                        0
+                    };
+
+                    (total_chunks, chunk_size, Some(stream.row_limit), stream.threshold, skip)
+                }
+            } else {
+                (1, partitions_len, None, 0, 0)
+            };
+
+            let mut materialized_count = 0;
+
+            let slices = partitions.as_slices();
+
+            let result = slices.0
+                .chunks(chunk_size)
+                .chain(slices.1
+                    .chunks(chunk_size))
+                .skip(skip)
+                .map(|partitions| {
+                    partitions
+                        .par_iter()
+                        .filter(|partition| if let Some(ref scan_partitions) = scan.partitions {
+                            // todo: benchmark Partition::get_id() -> &PartitionId
+                            scan_partitions.contains(&partition.get_id())
+                        } else {
+                            true
+                        })
+                        .filter(|partition| match scan.ts_range {
+                            None  => true,
+                            Some(ref range) if partition.is_within_ts_range(range) => true,
+                            _ => false,
+                        })
+                        .map(|partition| {
+                            partition
+                                .scan(&scan)
+                                .with_context(|_| "partition scan failed")
+                                .ok()
+                        })
+                        .reduce(
+                            || None,
+                            |a, b| if a.is_none() {
+                                b
+                            } else if b.is_none() {
+                                a
+                            } else {
+                                let mut a = a.unwrap();
+                                let b = b.unwrap();
+                                a.merge(b).unwrap();
+                                Some(a)
+                            },
+                        )
                 })
-                .filter(|partition| match scan.ts_range {
-                    None  => true,
-                    Some(ref range) if partition.is_within_ts_range(range) => true,
-                    _ => false,
-                })
-                .map(|partition| {
-                    partition
-                        .scan(&scan)
-                        .with_context(|_| "partition scan failed")
-                        .ok()
-                })
-                .reduce(
-                    || None,
+                .threshold_take_while(|result| match (result, max_rows) {
+                        (Some(result), Some(max_rows)) => {
+                            // find the max number of rows fetched within this chunk
+
+                            let chunk_rows = result.data
+                                .values()
+                                .filter_map(|frag| frag.as_ref().map(|frag| frag.len()))
+                                .max()
+                                .unwrap_or_default();
+
+                            let batch = {materialized_count += chunk_rows; materialized_count};
+
+                            let lower = batch >= max_rows.saturating_sub(threshold);
+                            let upper = batch <= max_rows.saturating_add(threshold);
+
+                            match (lower, upper) {
+                                // past the lower, but within the upper
+                                (true, true) => Some(false),
+                                // past the lower, past the upper
+                                (true, false) => None,
+                                // below both the lower and the upper
+                                (false, true) => Some(true),
+                                // doesn't make sense
+                                (false, false) => unreachable!(),
+                            }
+                        }
+                        _ => Some(true),
+                    }
+                )
+                .inspect(|_| skip += 1)
+                .fold(
+                    None,
                     |a, b| if a.is_none() {
                         b
                     } else if b.is_none() {
@@ -386,8 +489,32 @@ impl<'pg> PartitionGroup<'pg> {
                         Some(a)
                     },
                 )
-                .or_else(|| Some(Default::default()))
-                .ok_or_else(|| unreachable!())
+                .unwrap_or_else(|| Default::default());
+
+            match
+            (
+                max_rows,
+                result.is_empty() && materialized_count > 0,
+                skip < total_chunks
+            ) {
+                (Some(max_rows), true, _) => {
+                    // this means, that we didn't include anything
+                    // but we still have data in this chunk
+                    // which means, that the limit/threshold values are too low
+
+                    Err(err_msg(format!("row_limit/threshold values too low for the data set; \
+                            found {} records with row_limit = {} and threshold = {}",
+                            materialized_count, max_rows, threshold)))
+                }
+                (Some(_), _, true) => {
+                    // we properly materialized at least one chunk
+                    // but there's still more to stream
+
+                    let state = StreamState::new(skip);
+                    Ok(ScanResult::from((result, state)))
+                }
+                _ => Ok(result) // either no streaming requested, or EOS
+            }
         }
     }
 
