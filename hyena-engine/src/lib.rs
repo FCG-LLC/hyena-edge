@@ -66,7 +66,7 @@ mod scanner;
 
 pub use self::error::{Error, Result};
 pub use self::scanner::{ScanFilters, Scan, ScanTsRange, ScanFilterOp, ScanResult, ScanFilterApply,
-    ScanFilter, ScanData, Regex};
+    ScanFilter, ScanData, Regex, StreamConfig, StreamState};
 pub use self::datastore::{Catalog, Column, ColumnMap};
 pub use self::ty::{RowId, ColumnId, BlockStorage, ColumnIndexStorage};
 pub use self::block::{BlockType, SparseIndex, ColumnIndexType};
