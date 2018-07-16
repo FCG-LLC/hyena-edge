@@ -110,6 +110,37 @@ pub type AndScanFilters = Vec<ScanFilter>;
 
 pub(crate) type BloomFilterValues = HashMap<ColumnId, Vec<BloomValue>>;
 
+#[derive(Debug, Copy, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct StreamState {
+    pub(crate) skip_chunks: usize,
+}
+
+impl StreamState {
+    pub fn new(skip_chunks: usize) -> StreamState {
+        StreamState {
+            skip_chunks,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StreamConfig {
+    pub(crate) row_limit: usize,   // TODO: use std::num::NonZeroUsize when stable
+    pub(crate) threshold: usize,
+
+    pub(crate) state: Option<StreamState>,
+}
+
+impl StreamConfig {
+    pub fn new(row_limit: usize, threshold: usize, state: Option<StreamState>) -> StreamConfig {
+        StreamConfig {
+            row_limit,
+            threshold,
+            state,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scan {
     pub(crate) ts_range: Option<ScanTsRange>,
@@ -117,6 +148,7 @@ pub struct Scan {
     pub(crate) groups: Option<Vec<SourceId>>,
     pub(crate) projection: Option<Vec<ColumnId>>,
     pub(crate) filters: Option<ScanFilters>,
+    pub(crate) stream: Option<StreamConfig>,
     pub(crate) bloom_filters: Option<BloomFilterValues>,    // OR/ANY
     pub(crate) or_clauses_count: usize,
 }
@@ -128,6 +160,7 @@ impl Scan {
         groups: Option<Vec<SourceId>>,
         partitions: Option<HashSet<PartitionId>>,
         ts_range: Option<ScanTsRange>,
+        stream: Option<StreamConfig>,
     ) -> Scan {
         let or_clauses_count = filters
             .as_ref()
@@ -146,9 +179,27 @@ impl Scan {
             groups,
             partitions,
             ts_range,
+            stream,
             or_clauses_count,
             bloom_filters,
         }
+    }
+
+    pub fn set_stream_config(&mut self, stream_config: Option<StreamConfig>) -> Result<()> {
+        // TODO: add validation of the config
+        self.stream = stream_config;
+
+        Ok(())
+    }
+
+    // A helper function for easy preparing streaming scans
+    pub fn set_stream_state(&mut self, stream_state: Option<StreamState>) -> Result<bool> {
+        Ok(if let Some(ref mut stream_config) = self.stream {
+            stream_config.state = stream_state;
+            stream_config.state.is_some()
+        } else {
+            false
+        })
     }
 
     pub(crate) fn count_or_clauses(filters: &ScanFilters) -> usize {
@@ -233,6 +284,7 @@ pub enum ScanFilterOp<T: Display + Debug + Clone + PartialEq + PartialOrd + Hash
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ScanResult {
     pub(crate) data: ScanData,
+    pub(crate) stream_state: Option<StreamState>,
 }
 
 impl ScanResult {
@@ -244,6 +296,14 @@ impl ScanResult {
     /// operation on that set, which leaves other elements unchanged when combined with them."
     pub(crate) fn merge_identity() -> ScanResult {
         Default::default()
+    }
+
+    /// Return this `ScanResult` as a completed stream, i.e. with any streaming data stripped down
+    pub fn into_completed_stream(self) -> ScanResult {
+        ScanResult {
+            data: self.data,
+            stream_state: None,
+        }
     }
 
     /// Merge two `ScanResult`s
@@ -272,7 +332,17 @@ impl ScanResult {
         // add columns that are in other but not in self
         self.data.extend(other.data.drain());
 
-        Ok(())
+        match (self.stream_state, other.stream_state) {
+            (None, Some(_)) => Ok(self.stream_state = other.stream_state),
+            (Some(_), None) => Ok(()),
+            (Some(_), Some(_)) => {
+                // TODO: this is bad, need to rethink how to approach this
+                error!("Streaming multiple partition groups, which is currently not supported!");
+
+                Err(err_msg("streaming multiple partition groups is currently not supported"))
+            }
+            (None, None) => Ok(()),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -349,12 +419,35 @@ impl ScanResult {
             })
     }
 
+    pub fn stream_state_data(&self) -> Option<StreamState> {
+        self.stream_state
     }
 }
 
 impl From<ScanData> for ScanResult {
     fn from(data: ScanData) -> ScanResult {
-        ScanResult { data }
+        ScanResult {
+            data,
+            stream_state: None,
+        }
+    }
+}
+
+impl From<(ScanData, StreamState)> for ScanResult {
+    fn from(source: (ScanData, StreamState)) -> ScanResult {
+        ScanResult {
+            data: source.0,
+            stream_state: Some(source.1),
+        }
+    }
+}
+
+impl From<(ScanResult, StreamState)> for ScanResult {
+    fn from(source: (ScanResult, StreamState)) -> ScanResult {
+        ScanResult {
+            data: source.0.data,
+            stream_state: Some(source.1),
+        }
     }
 }
 
