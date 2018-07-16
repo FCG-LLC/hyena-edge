@@ -141,6 +141,7 @@ fn filter_dense_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -170,6 +171,7 @@ fn filter_materialize_dense_bench(c: &mut Criterion) {
                 Some(filters)
             },
             Some(vec![DENSE1_COLUMN, DENSE2_COLUMN]),
+            None,
             None,
             None,
             None,
@@ -205,6 +207,7 @@ fn filter_sparse_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -234,6 +237,7 @@ fn filter_materialize_sparse_bench(c: &mut Criterion) {
                 Some(filters)
             },
             Some(vec![SPARSE1_COLUMN, SPARSE2_COLUMN]),
+            None,
             None,
             None,
             None,

@@ -139,6 +139,7 @@ fn it_scans_with_dense_filter() {
             None,
             None,
             None,
+            None,
         );
 
         let result = cat.scan(&scan)?;
@@ -187,6 +188,7 @@ fn it_scans_with_sparse_filter() {
                 Some(filters)
             },
             Some(vec![0, 3, 5]),
+            None,
             None,
             None,
             None,

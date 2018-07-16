@@ -124,6 +124,7 @@ fn filter_string_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -151,6 +152,7 @@ fn filter_materialize_string_bench(c: &mut Criterion) {
 
                 Some(filters)
             },
+            None,
             None,
             None,
             None,

@@ -155,6 +155,7 @@ mod full {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -221,6 +222,7 @@ mod full {
 
                 let scan = Scan::new(
                     Some(filters),
+                    None,
                     None,
                     None,
                     None,
@@ -333,6 +335,7 @@ mod full {
                 None,
                 Some(parts),
                 None,
+                None,
             );
 
             let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -393,6 +396,7 @@ mod full {
                     None,
                     None,
                     ts_range,
+                    None,
                 );
 
                 let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1316,6 +1320,7 @@ mod minimal {
             None,
             None,
             None,
+            None,
         );
 
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1337,6 +1342,7 @@ mod minimal {
             Some(hashmap! {
                 1 => vec![vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]]
             }),
+            None,
             None,
             None,
             None,
@@ -1366,6 +1372,7 @@ mod minimal {
             None,
             None,
             None,
+            None,
         );
 
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1386,6 +1393,7 @@ mod minimal {
         });
 
         let scan = Scan::new(
+            None,
             None,
             None,
             None,
@@ -1417,6 +1425,7 @@ mod minimal {
                     ]
                 ]
             }),
+            None,
             None,
             None,
             None,
@@ -1463,6 +1472,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1488,6 +1498,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::LtEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1520,6 +1531,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1544,6 +1556,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::GtEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1576,6 +1589,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1601,6 +1615,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::NotEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1638,6 +1653,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1662,6 +1678,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::StartsWith("s".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1694,6 +1711,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1718,6 +1736,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::Contains("se".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1753,6 +1772,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1782,6 +1802,7 @@ mod minimal {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::Matches(
                         Regex::new("(❤{3,}|⌚❤[^❤])").unwrap()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1951,6 +1972,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1987,6 +2009,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2017,6 +2040,7 @@ mod minimal {
                     1 => vec![vec![ScanFilter::U32(ScanFilterOp::Gt(4))]],
                     4 => vec![vec![ScanFilter::U16(ScanFilterOp::Lt(15))]],
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -2082,6 +2106,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2115,6 +2140,7 @@ mod minimal {
                 }),
                 None,
                 Some(vec![1, 7]),
+                None,
                 None,
                 None,
             );
@@ -2151,6 +2177,7 @@ mod minimal {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2177,6 +2204,7 @@ mod minimal {
                         0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                     }),
                     Some(vec![2, 4]),
+                    None,
                     None,
                     None,
                     None,
@@ -2210,6 +2238,7 @@ mod minimal {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2240,6 +2269,7 @@ mod benches {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 b.iter(|| catalog.scan(&scan).with_context(|_| "scan failed").unwrap());
@@ -2257,6 +2287,7 @@ mod benches {
                     Some(hashmap! {
                         $idx => vec![vec![ScanFilterOp::Lt($value).into()]]
                     }),
+                    None,
                     None,
                     None,
                     None,
