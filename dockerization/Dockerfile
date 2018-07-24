@@ -1,4 +1,4 @@
-FROM portus.cs.int:5000/prod/cs-base
+FROM docker-registry.cs.int/prod/cs-base
 ENV DEBIAN_FRONTEND=noninteractive
 
 ARG destEnv="sandbox"
