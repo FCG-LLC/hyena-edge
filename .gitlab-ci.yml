@@ -1,4 +1,4 @@
-image: "portus.cs.int:5000/gitlab/rust"
+image: "docker-registry.cs.int/gitlab/rust"
 
 variables:
   RUST_COMPILER: "stable"
@@ -214,7 +214,7 @@ docker:master-portus:
   - master
   script:
   - >
-    sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
+    sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" docker-registry.cs.int
   - |
     DEB_PACKAGES=$(ls build/*.deb)
 
@@ -234,7 +234,7 @@ docker:master-portus:
             --build-arg ciJobId="${CI_JOB_ID}" \
             --no-cache \
             -t ${LOCAL_DOCKER_IMAGE} .
-        sudo docker tag ${LOCAL_DOCKER_IMAGE} portus.cs.int:5000/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
+        sudo docker tag ${LOCAL_DOCKER_IMAGE} docker-registry.cs.int/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
     done
 
 publish:master-portus:
@@ -256,9 +256,9 @@ publish:master-portus:
     - master
     script:
     - >
-      sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" portus.cs.int:5000
+      sudo docker login -u "$PORTUS_USERNAME" -p "$PORTUS_PASSWORD" docker-registry.cs.int
     - >
-      sudo docker push portus.cs.int:5000/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
+      sudo docker push docker-registry.cs.int/${DEST_ENV}/${PORTUS_DOCKER_IMAGE}
 
 test:clippy:
   stage: test
@@ -293,7 +293,7 @@ test:protocol:
   tags:
   - docker
   script:
-  - sudo docker run --rm --env HYENA_COMMIT="$CI_COMMIT_SHA" --env HYENA_PRIVATE_KEY="$HYENA_PROTOTEST_PRIVATE_KEY" portus.cs.int:5000/dev/hyena-proto-test
+  - sudo docker run --rm --env HYENA_COMMIT="$CI_COMMIT_SHA" --env HYENA_PRIVATE_KEY="$HYENA_PROTOTEST_PRIVATE_KEY" docker-registry.cs.int/dev/hyena-proto-test
 
 #bench:criterion:
     #stage: bench
