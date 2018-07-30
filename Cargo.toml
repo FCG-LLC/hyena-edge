@@ -19,6 +19,7 @@ tokio-core = "0.1.12"
 bytes = "0.4.6"
 bincode = "0.9.2"
 nanomsg-multi-server = { git = "ssh://git@gitlab.cs.int/rust/nanomsg-multi.git" }
+hyena-benchmark = { path = "hyena-benchmark" }
 
 [dependencies.hyena-engine]
 optional = false
