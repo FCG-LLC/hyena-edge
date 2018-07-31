@@ -145,7 +145,7 @@ impl ScanComparison {
             ScanComparison::StartsWith => Ok(HScanFilterOp::StartsWith(val)),
             ScanComparison::EndsWith => Ok(HScanFilterOp::EndsWith(val)),
             ScanComparison::Contains => Ok(HScanFilterOp::Contains(val)),
-            ScanComparison::Matches => Ok(HScanFilterOp::Matches(Regex::new(&val).unwrap())),
+            ScanComparison::Matches => Ok(HScanFilterOp::Matches(Regex::new(&val)?)),
             _ => Err(Error::InvalidScanRequest("Numeric operator for string data".into())),
         }
     }
