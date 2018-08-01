@@ -28,6 +28,9 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists \
 	&& rm /tmp/*.deb
 
+COPY files/version.sh /version.sh
+RUN ln -s /version.sh /usr/bin/version
+
 USER hyena
 
 CMD /usr/bin/hyena
