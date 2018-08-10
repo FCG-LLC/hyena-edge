@@ -155,6 +155,7 @@ mod full {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -221,6 +222,7 @@ mod full {
 
                 let scan = Scan::new(
                     Some(filters),
+                    None,
                     None,
                     None,
                     None,
@@ -333,6 +335,7 @@ mod full {
                 None,
                 Some(parts),
                 None,
+                None,
             );
 
             let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -393,6 +396,7 @@ mod full {
                     None,
                     None,
                     ts_range,
+                    None,
                 );
 
                 let result = cat.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -437,6 +441,194 @@ mod full {
                 let end = Timestamp::from(70_u64);
                 ts_range_test_impl(Some(ScanTsRange::Bounded { start, end }), None, Some(100));
             }
+        }
+    }
+
+    mod streaming {
+        use super::*;
+        use block::BlockType;
+        use self::BlockStorage::Memmap;
+        use ty::fragment::Fragment;
+        use scanner::{ScanResult, ScanFilter, StreamConfig};
+        use hyena_test::tempfile::ThingWithTempDir;
+
+
+        fn prepare_stream_data<'cat>(record_count: usize, partition_count: usize)
+        -> Result<ThingWithTempDir<'cat, Catalog<'cat>>>
+        {
+            let now = 1;
+
+            let mut v = vec![Timestamp::from(0); record_count];
+            seqfill!(Timestamp, &mut v[..], now);
+
+            let td = append_test_impl!(
+                [1],
+                hashmap! {
+                    0 => Column::new(Memmap(BlockType::U64Dense), "ts"),
+                    1 => Column::new(Memmap(BlockType::U32Dense), "source_id"),
+                    2 => Column::new(Memmap(BlockType::U8Dense), "cycle"),
+                },
+                now,
+                [
+                    v.into(),
+                    hashmap! {
+                        2 => Fragment::from([1_u8, 2, 3, 4]
+                                .into_iter()
+                                .cloned()
+                                .cycle()
+                                .take(record_count)
+                                .collect::<Vec<_>>())
+                    }
+                ]
+            );
+
+            let cat = Catalog::with_data(&td).with_context(|_| "unable to open catalog")?;
+
+            let pids = cat.groups
+                .iter()
+                .flat_map(|(_, pg)| {
+                    let parts = acquire!(read pg.mutable_partitions);
+                    parts
+                        .iter()
+                        // is_empty filtering is required because there's an empty
+                        // prtition created for each new partition group
+                        .map(|p| p.get_id())
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(pids.len(), partition_count);
+
+            Ok(ThingWithTempDir::new(cat, td))
+        }
+
+        fn fetch_whole_stream<F>
+        (
+            cat: &Catalog,
+            scan: Scan,
+            f: F,
+        )
+        -> Result<ScanResult>
+        where
+            F: FnMut(&ScanResult) -> bool
+        {
+
+            let mut state = None;
+            let mut accumulated_result = <ScanResult as Default>::default();
+            let base_scan = scan;
+            let mut f = f;
+
+            while {
+                let scan = {
+                    let mut scan = base_scan.clone();
+                    scan.set_stream_config({
+                        let mut config = base_scan.stream.clone();
+                        if let Some(ref mut config) = config {
+                            config.state = state;
+                        };
+
+                        config
+                    })?;
+
+                    scan
+                };
+
+                let stream_result = cat.scan(&scan).with_context(|_| "scan failed")?;
+
+                if !(f)(&stream_result) {
+                    bail!("streaming scan aborted");
+                }
+
+                let result_state = stream_result.stream_state;
+
+                accumulated_result
+                    .merge(stream_result.into_completed_stream())
+                    .with_context(|_| "stream partial result merging failed")?;
+
+                if result_state.is_some() {
+                    // there are still some data to fetch
+                    state = result_state;
+                    true
+                } else {
+                    // No more results
+                    false
+                }
+            } {};
+
+            Ok(accumulated_result)
+        }
+
+        #[test]
+        fn complete() {
+            const PARTITION_COUNT: usize = 4;
+            const RECORD_COUNT: usize = MAX_RECORDS * PARTITION_COUNT - 1;
+            const EXPECTED_CHUNKS: usize = PARTITION_COUNT / 4 * PARTITION_COUNT;
+
+            let cat = prepare_stream_data(RECORD_COUNT, PARTITION_COUNT)
+                .with_context(|_| "stream data preparation failed")
+                .unwrap();
+
+            let scan = Scan::new(
+                Some(hashmap! {
+                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
+                }),
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+
+            let expected_result = cat.scan(&scan).with_context(|_| "full scan failed").unwrap();
+
+            let mut chunks = 0;
+
+            let accumulated_result = fetch_whole_stream(&cat, Scan::new(
+                Some(hashmap! {
+                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
+                }),
+                None,
+                None,
+                None,
+                None,
+                Some(StreamConfig {
+                    row_limit: MAX_RECORDS / PARTITION_COUNT - 500,
+                    threshold: 1000,
+                    state: None,
+                }),
+            ), |_| {chunks += 1; true}).with_context(|_| "fetch stream failed").unwrap();
+
+            assert_eq!(EXPECTED_CHUNKS, chunks);
+            assert_eq!(expected_result, accumulated_result);
+        }
+
+        #[test]
+        #[should_panic(expected = "row_limit/threshold values too low for the data set")]
+        fn too_small_threshold() {
+            // this tests expected failure in case the threshold is too low
+            // to allow returning anything for the stream chunk
+            const PARTITION_COUNT: usize = 4;
+            const RECORD_COUNT: usize = MAX_RECORDS * PARTITION_COUNT - 1;
+
+            let cat = prepare_stream_data(RECORD_COUNT, PARTITION_COUNT)
+                .with_context(|_| "stream data preparation failed")
+                .unwrap();
+
+            fetch_whole_stream(&cat, Scan::new(
+                Some(hashmap! {
+                    2 => vec![vec![ScanFilter::U8(ScanFilterOp::Eq(4))]],
+                }),
+                None,
+                None,
+                None,
+                None,
+                Some(StreamConfig {
+                    row_limit: 100,
+                    threshold: 1000,
+                    state: None,
+                }),
+            ), |_| true).unwrap();
         }
     }
 
@@ -1316,6 +1508,7 @@ mod minimal {
             None,
             None,
             None,
+            None,
         );
 
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1337,6 +1530,7 @@ mod minimal {
             Some(hashmap! {
                 1 => vec![vec![ScanFilter::U8(ScanFilterOp::GtEq(4))]]
             }),
+            None,
             None,
             None,
             None,
@@ -1366,6 +1560,7 @@ mod minimal {
             None,
             None,
             None,
+            None,
         );
 
         let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1386,6 +1581,7 @@ mod minimal {
         });
 
         let scan = Scan::new(
+            None,
             None,
             None,
             None,
@@ -1417,6 +1613,7 @@ mod minimal {
                     ]
                 ]
             }),
+            None,
             None,
             None,
             None,
@@ -1463,6 +1660,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1488,6 +1686,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::LtEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1520,6 +1719,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1544,6 +1744,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::GtEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1576,6 +1777,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1601,6 +1803,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::NotEq("ipsum".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1638,6 +1841,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1662,6 +1866,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::StartsWith("s".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1694,6 +1899,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1718,6 +1924,7 @@ mod minimal {
                 Some(hashmap! {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::Contains("se".to_owned()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1753,6 +1960,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1782,6 +1990,7 @@ mod minimal {
                     1 => vec![vec![ScanFilter::String(ScanFilterOp::Matches(
                         Regex::new("(❤{3,}|⌚❤[^❤])").unwrap()))]]
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -1951,6 +2160,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -1987,6 +2197,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2017,6 +2228,7 @@ mod minimal {
                     1 => vec![vec![ScanFilter::U32(ScanFilterOp::Gt(4))]],
                     4 => vec![vec![ScanFilter::U16(ScanFilterOp::Lt(15))]],
                 }),
+                None,
                 None,
                 None,
                 None,
@@ -2082,6 +2294,7 @@ mod minimal {
                 None,
                 None,
                 None,
+                None,
             );
 
             let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2115,6 +2328,7 @@ mod minimal {
                 }),
                 None,
                 Some(vec![1, 7]),
+                None,
                 None,
                 None,
             );
@@ -2151,6 +2365,7 @@ mod minimal {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2177,6 +2392,7 @@ mod minimal {
                         0 => vec![vec![ScanFilter::U64(ScanFilterOp::Lt(4))]]
                     }),
                     Some(vec![2, 4]),
+                    None,
                     None,
                     None,
                     None,
@@ -2210,6 +2426,7 @@ mod minimal {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 let result = catalog.scan(&scan).with_context(|_| "scan failed").unwrap();
@@ -2240,6 +2457,7 @@ mod benches {
                     None,
                     None,
                     None,
+                    None,
                 );
 
                 b.iter(|| catalog.scan(&scan).with_context(|_| "scan failed").unwrap());
@@ -2257,6 +2475,7 @@ mod benches {
                     Some(hashmap! {
                         $idx => vec![vec![ScanFilterOp::Lt($value).into()]]
                     }),
+                    None,
                     None,
                     None,
                     None,

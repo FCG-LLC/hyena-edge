@@ -203,6 +203,7 @@ fn it_scans() {
             None,
             None,
             None,
+            None,
         );
 
         let result = cat.scan(&scan).with_context(|_| "scan failed")?;

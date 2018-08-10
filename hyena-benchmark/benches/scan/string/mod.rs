@@ -1,6 +1,6 @@
 use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, Timestamp,
-                   TimestampFragment, Regex};
+                   TimestampFragment, Regex, StreamConfig};
 
 use std::iter::repeat;
 use hyena_common::collections::HashMap;
@@ -124,6 +124,7 @@ fn filter_string_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -155,6 +156,7 @@ fn filter_materialize_string_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -163,9 +165,49 @@ fn filter_materialize_string_bench(c: &mut Criterion) {
     }, &[10_000, 100_000, 500_000, 1_000_000]);
 }
 
+fn filter_materialize_stream_string_bench(c: &mut Criterion) {
+    const STREAM_ROW_LIMIT: usize = 131072;
+    const STREAM_THRESHOLD: usize = 1_000;
+
+    c.bench_function_over_inputs("streaming filter and materialize string(185)", |b, &&size| {
+        let (_now, _dir, cat) = prepare_data(size).unwrap();
+
+        let scan = Scan::new(
+            {
+                let mut filters = HashMap::new();
+
+                filters.insert(
+                    4,
+                    vec![
+                        vec![ScanFilter::String(ScanFilterOp::Matches(
+                                Regex::new("201188").unwrap())),
+                        ]
+                    ],
+                );
+
+                Some(filters)
+            },
+            None,
+            None,
+            None,
+            None,
+            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+        );
+
+        b.iter(move || {
+            let mut scan = scan.clone();
+
+            while {
+                let result = cat.scan(&scan).unwrap();
+                scan.set_stream_state(result.stream_state_data()).unwrap()
+            } {};
+        })
+    }, &[10_000, 100_000, 500_000, 1_000_000]);
+}
 
 criterion_group!(
     benches,
     filter_string_bench,
     filter_materialize_string_bench,
+    filter_materialize_stream_string_bench,
 );

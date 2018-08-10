@@ -1,5 +1,5 @@
 use error::*;
-use ty::{BlockStorage, ColumnIndexStorageMap};
+use ty::{BlockStorage, ColumnIndexStorageMap, ColumnId};
 use block::BlockType;
 use storage::manager::PartitionGroupManager;
 use hyena_common::collections::HashMap;
@@ -139,12 +139,25 @@ impl<'cat> Catalog<'cat> {
         } else {
             all_groups.as_ref().unwrap()
         }
-        .par_iter()
-        .filter_map(|pgid| self.groups.get(pgid))
-        .map(|pg| pg.scan(&scan))
-        // todo: this would potentially be better with some short-circuiting combinator instead
-        // need to bench with collect_into()
-        .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
+        .chunks(2)
+        .map(|group| {
+            group
+                .par_iter()
+                .filter_map(|pgid| self.groups.get(pgid))
+                .map(|pg| pg.scan(&self, &scan))
+                // todo: this would potentially be better with some short-circuiting combinator
+                // instead
+                // need to bench with collect_into()
+                .reduce(|| Ok(ScanResult::merge_identity()), |a, b| {
+                    let mut a = a?;
+                    let b = b?;
+
+                    a.merge(b)?;
+
+                    Ok(a)
+                })
+        })
+        .fold(Ok(ScanResult::merge_identity()), |a, b| {
             let mut a = a?;
             let b = b?;
 
@@ -237,10 +250,12 @@ impl<'cat> Catalog<'cat> {
     }
 
     /// Calculate an empty partition's capacity for given column set
-    pub(super) fn space_for_blocks(&self, indices: &[usize]) -> usize {
+    pub(super) fn space_for_blocks<'iter>(&self, indices: impl Iterator<Item = &'iter ColumnId>)
+    -> usize
+    {
         use params::BLOCK_SIZE;
 
-        indices.iter()
+        indices
             .filter_map(|col_id| {
                 if let Some(column) = self.colmap.get(col_id) {
                     Some(BLOCK_SIZE / column.size_of())

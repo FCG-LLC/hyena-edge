@@ -1,6 +1,6 @@
 use hyena_engine::{Append, BlockData, BlockStorage, BlockType, Catalog, Column,
                    Fragment, Result, Scan, ScanFilter, ScanFilterOp, SparseIndex, Timestamp,
-                   TimestampFragment};
+                   TimestampFragment, StreamConfig};
 
 use std::iter::repeat;
 use hyena_common::collections::HashMap;
@@ -141,6 +141,7 @@ fn filter_dense_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
@@ -173,10 +174,52 @@ fn filter_materialize_dense_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
             cat.scan(&scan).unwrap();
+        })
+    }, &[10_000, 100_000, 500_000, 1_000_000]);
+}
+
+fn filter_materialize_stream_dense_bench(c: &mut Criterion) {
+    const STREAM_ROW_LIMIT: usize = 131072;
+    const STREAM_THRESHOLD: usize = 1_000;
+
+    c.bench_function_over_inputs("streaming filter and materialize numeric dense", |b, &&size| {
+        let (_now, _dir, cat) = prepare_data(size).unwrap();
+
+        let scan = Scan::new(
+            {
+                let mut filters = HashMap::new();
+
+                filters.insert(
+                    2,
+                    vec![
+                        vec![
+                            ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
+                            ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
+                        ]
+                    ],
+                );
+
+                Some(filters)
+            },
+            Some(vec![2, 3]),
+            None,
+            None,
+            None,
+            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+        );
+
+        b.iter(move || {
+            let mut scan = scan.clone();
+
+            while {
+                let result = cat.scan(&scan).unwrap();
+                scan.set_stream_state(result.stream_state_data()).unwrap()
+            } {};
         })
     }, &[10_000, 100_000, 500_000, 1_000_000]);
 }
@@ -202,6 +245,7 @@ fn filter_sparse_bench(c: &mut Criterion) {
                 Some(filters)
             },
             Some(vec![]),
+            None,
             None,
             None,
             None,
@@ -237,10 +281,52 @@ fn filter_materialize_sparse_bench(c: &mut Criterion) {
             None,
             None,
             None,
+            None,
         );
 
         b.iter(move || {
             cat.scan(&scan).unwrap();
+        })
+    }, &[10_000, 100_000, 500_000, 1_000_000]);
+}
+
+fn filter_materialize_stream_sparse_bench(c: &mut Criterion) {
+    const STREAM_ROW_LIMIT: usize = 131072;
+    const STREAM_THRESHOLD: usize = 1_000;
+
+    c.bench_function_over_inputs("streaming filter and materialize numeric sparse", |b, &&size| {
+        let (_now, _dir, cat) = prepare_data(size).unwrap();
+
+        let scan = Scan::new(
+            {
+                let mut filters = HashMap::new();
+
+                filters.insert(
+                    4,
+                    vec![
+                        vec![
+                            ScanFilter::U64(ScanFilterOp::Gt(size as u64 / 6)),
+                            ScanFilter::U64(ScanFilterOp::LtEq(size as u64 / 6 * 4)),
+                        ]
+                    ],
+                );
+
+                Some(filters)
+            },
+            Some(vec![4, 5]),
+            None,
+            None,
+            None,
+            Some(StreamConfig::new(STREAM_ROW_LIMIT, STREAM_THRESHOLD, None)),
+        );
+
+        b.iter(move || {
+            let mut scan = scan.clone();
+
+            while {
+                let result = cat.scan(&scan).unwrap();
+                scan.set_stream_state(result.stream_state_data()).unwrap()
+            } {};
         })
     }, &[10_000, 100_000, 500_000, 1_000_000]);
 }
@@ -250,5 +336,7 @@ criterion_group!(
     filter_dense_bench,
     filter_sparse_bench,
     filter_materialize_dense_bench,
-    filter_materialize_sparse_bench
+    filter_materialize_sparse_bench,
+    filter_materialize_stream_dense_bench,
+    filter_materialize_stream_sparse_bench,
 );

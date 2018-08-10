@@ -18,6 +18,7 @@ extern crate uuid;
 
 pub(crate) mod error;
 pub mod collections;
+pub mod iter;
 pub mod lock;
 pub mod libc;
 pub mod map_type;

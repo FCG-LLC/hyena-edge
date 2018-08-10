@@ -6,7 +6,7 @@ pub use tempdir::TempDir as TempDir;
 #[cfg(feature = "persistent_test_data")]
 pub use self::persistent_tempdir::TempDir as TempDir;
 
-pub use self::tempdir_tools::TempDirExt;
+pub use self::tempdir_tools::{TempDirExt, ThingWithTempDir};
 pub use self::persistent_tempdir::TempDir as PersistentTempDir;
 pub use tempdir::TempDir as VolatileTempDir;
 
@@ -16,6 +16,9 @@ pub(crate) mod tempdir_tools {
     use std::path::{Path, PathBuf};
     use std::fs::File;
     use std::io::Read;
+    use std::marker::PhantomData;
+    use std::fmt::Debug;
+    use std::ops::{Deref, DerefMut};
     use tempdir;
 
     pub trait TempDirExt: AsRef<Path> {
@@ -57,6 +60,75 @@ pub(crate) mod tempdir_tools {
     }
 
     impl TempDirExt for tempdir::TempDir {}
+
+    /// Helper struct for easy binding things that use tempdir and rely on its lifetime
+    /// while not encapsulating TempDir directly (e.g. `hyena_engine::Catalog`)
+    #[derive(Debug)]
+    pub struct ThingWithTempDir<'td, T, TD=super::TempDir>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        thing: T,
+        _tempdir: TD,
+        _marker: PhantomData<&'td T>,
+    }
+
+    impl<'td, T, TD> ThingWithTempDir<'td, T, TD>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        pub fn new(thing: T, tempdir: TD) -> ThingWithTempDir<'td, T, TD> {
+            ThingWithTempDir {
+                thing,
+                _tempdir: tempdir,
+                _marker: PhantomData,
+            }
+        }
+    }
+
+    impl<'td, T, TD> AsRef<T> for ThingWithTempDir<'td, T, TD>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        fn as_ref(&self) -> &T {
+            &self.thing
+        }
+    }
+
+    impl<'td, T, TD> AsMut<T> for ThingWithTempDir<'td, T, TD>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        fn as_mut(&mut self) -> &mut T {
+            &mut self.thing
+        }
+    }
+
+    impl<'td, T, TD> Deref for ThingWithTempDir<'td, T, TD>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        type Target = T;
+
+        fn deref(&self) -> &T {
+            self.as_ref()
+        }
+    }
+
+    impl<'td, T, TD> DerefMut for ThingWithTempDir<'td, T, TD>
+    where
+        T: Debug + 'td,
+        TD: TempDirExt + 'td,
+    {
+        fn deref_mut(&mut self) -> &mut T {
+            self.as_mut()
+        }
+    }
 }
 
 pub(crate) mod persistent_tempdir {

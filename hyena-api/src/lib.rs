@@ -22,7 +22,7 @@ use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,
 ScanTsRange, BlockStorage, ColumnId, TimestampFragment, Fragment, Regex,
 ScanFilterOp as HScanFilterOp, ScanFilter as HScanFilter, SourceId, ColumnIndexType,
-ColumnIndexStorage};
+ColumnIndexStorage, StreamConfig, StreamState};
 
 use hyena_common::ty::{Uuid, Timestamp};
 
@@ -83,7 +83,8 @@ impl DataTriple {
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ScanResultMessage {
-    data: Vec<DataTriple>
+    data: Vec<DataTriple>,
+    stream_state: Option<StreamState>,
 }
 
 impl ScanResultMessage {
@@ -98,11 +99,15 @@ impl ScanResultMessage {
     pub fn append(&mut self, data: &mut Vec<DataTriple>) {
         self.data.append(data);
     }
+
+    pub fn set_stream_state(&mut self, stream_state: Option<StreamState>) {
+        self.stream_state = stream_state;
+    }
 }
 
-impl From<Vec<DataTriple>> for ScanResultMessage {
-    fn from(data: Vec<DataTriple>) -> ScanResultMessage {
-        ScanResultMessage { data }
+impl From<(Vec<DataTriple>, Option<StreamState>)> for ScanResultMessage {
+    fn from(data: (Vec<DataTriple>, Option<StreamState>)) -> ScanResultMessage {
+        ScanResultMessage { data: data.0, stream_state: data.1 }
     }
 }
 
@@ -199,6 +204,7 @@ pub struct ScanRequest {
     pub projection: Vec<ColumnId>,
     // OR(AND(ScanFilter), AND(ScanFilter))
     pub filters: Vec<Vec<ScanFilter>>,
+    pub stream: Option<StreamConfig>,
 }
 
 fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
@@ -248,7 +254,8 @@ fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
                  Some(scan_request.projection),
                  None,
                  partitions,
-                 Some(scan_range)))
+                 Some(scan_range),
+                 scan_request.stream))
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -530,6 +537,8 @@ impl Reply {
 
         let cm: &ColumnMap = catalog.as_ref();
 
+        let stream_data = result.stream_state_data();
+
         let srm = result
             .into_iter()
             .map(|(column, fragment)| {
@@ -551,7 +560,7 @@ impl Reply {
                                        // has been filtered out in previous line
             .collect::<Vec<DataTriple>>();
 
-        Reply::Scan(Ok(ScanResultMessage::from(srm)))
+        Reply::Scan(Ok(ScanResultMessage::from((srm, stream_data))))
     }
 
     fn get_catalog(catalog: &Catalog) -> Reply {
@@ -1130,6 +1139,7 @@ mod tests {
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::I8(10),
                                   }]],
+                    stream: None,
                 };
 
                 let reply = Reply::scan(request, &cat);
@@ -1155,6 +1165,7 @@ mod tests {
                                       op: op,
                                       typed_val: FilterVal::String("hello".into()),
                                   }]],
+                    stream: None,
                 };
 
                 let reply = Reply::scan(request, &cat);
@@ -1189,6 +1200,7 @@ mod tests {
                                       op: op,
                                       typed_val: FilterVal::I8(10),
                                   }]],
+                    stream: None,
                 };
 
                 let reply = Reply::scan(request, &cat);
@@ -1224,6 +1236,7 @@ mod tests {
                                       op: ScanComparison::Gt,
                                       typed_val: FilterVal::String("hello".into()),
                                   }]],
+                    stream: None,
                 };
 
                 let reply = Reply::scan(request, &cat);
@@ -1246,6 +1259,7 @@ mod tests {
                         partition_ids: Default::default(),
                         projection: vec![1, 2, 3],
                         filters,
+                        stream: None,
                     }).unwrap()
                 }
 
@@ -1259,7 +1273,8 @@ mod tests {
                         Some(ScanTsRange::Bounded{
                             start: Timestamp::from(1),
                             end: Timestamp::from(10),
-                        })
+                        }),
+                        None,
                     );
 
                     assert_eq!(expected, result);
@@ -1539,6 +1554,7 @@ mod tests {
                                       op: ScanComparison::Eq,
                                       typed_val: FilterVal::U32(10),
                                   }]],
+                    stream: None,
                 };
 
                 let _reply = Reply::scan(request, &cat);
