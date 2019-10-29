@@ -39,7 +39,6 @@ pub trait Realloc: Sized {
     /// Realloc (grow/shrink) the storage
     fn realloc(self, size: usize) -> Result<Self>;
 
-    #[inline]
     fn realloc_size(&self) -> usize;
 
     /// Realloc to ensure that `size` will fit

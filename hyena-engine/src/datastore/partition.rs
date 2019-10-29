@@ -367,14 +367,10 @@ impl<'part> Partition<'part> {
                 || vec![None; or_clauses_count],
                 |a, b| {
                     a.into_iter().zip(b.into_iter())
-                        .map(|(a, b)| {
-                            if a.is_none() {
-                                b
-                            } else if b.is_none() {
-                                a
-                            } else {
-                                Some(a.unwrap().intersection(&b.unwrap()).cloned().collect())
-                            }
+                        .map(|(a, b)| match (a, b) {
+                            (None, b) => b,
+                            (a, None) => a,
+                            (Some(a), Some(b)) => Some(a.intersection(&b).cloned().collect()),
                         })
                         .collect()
                 },
@@ -627,7 +623,7 @@ impl<'part> Partition<'part> {
         let cmin = ts_min.map(Timestamp::from).unwrap_or(self.ts_min);
         let cmax = ts_max.map(Timestamp::from).unwrap_or(self.ts_max);
 
-        if !(cmin <= cmax) {
+        if cmin > cmax {
             bail!("ts_min ({:?}) should be <= ts_max ({:?})", cmin, cmax)
         } else {
             self.ts_min = cmin;

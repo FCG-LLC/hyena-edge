@@ -18,6 +18,7 @@ pub(crate) struct SparseIter<'data, D: 'data, I: Iterator<Item = SparseIndex>> {
     index: Peekable<Enumerate<I>>,
 }
 
+#[allow(clippy::option_option)]
 pub(crate) trait SparseIterator {
     type Item;
 
@@ -36,23 +37,28 @@ impl<'data, D: 'data, I: Iterator<Item = SparseIndex>> SparseIterator for Sparse
     type Item = (&'data D, SparseIndex);
 
     fn next_to(&mut self, index: SparseIndex) -> Option<Option<Self::Item>> {
+        use std::cmp::Ordering;
+
         loop {
             if let Some(&(_, idx)) = self.index.peek() {
-                if idx < index {
-                    // try further
-                    self.index.next();
-                }
-                else if idx == index {
-                    // hit
-                    let (row, idx) = self.index.next().unwrap();
+                match idx.cmp(&index) {
+                    Ordering::Less => {
+                        // try further
+                        self.index.next();
+                    }
+                    Ordering::Equal => {
+                        // hit
+                        let (row, idx) = self.index.next().unwrap();
 
-                    break Some(Some((
-                        self.data_by_row(row),
-                        idx
-                    )));
-                } else {
-                    // too far, stop
-                    break Some(None);
+                        break Some(Some((
+                            self.data_by_row(row),
+                            idx
+                        )));
+                    }
+                    Ordering::Greater => {
+                        // too far, stop
+                        break Some(None);
+                    }
                 }
             } else {
                 break None;

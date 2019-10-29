@@ -1,3 +1,5 @@
+#![allow(clippy::needless_doctest_main)]
+
 //! # Scan API
 //!
 //! This module contains tools for preparing scan requests.
@@ -287,6 +289,7 @@ pub struct ScanResult {
     pub(crate) stream_state: Option<StreamState>,
 }
 
+#[allow(clippy::len_without_is_empty)]
 impl ScanResult {
 
     /// Return merge identity for `ScanResult`
@@ -333,7 +336,10 @@ impl ScanResult {
         self.data.extend(other.data.drain());
 
         match (self.stream_state, other.stream_state) {
-            (None, Some(_)) => Ok(self.stream_state = other.stream_state),
+            (None, Some(_)) => {
+                self.stream_state = other.stream_state;
+                Ok(())
+            }
             (Some(_), None) => Ok(()),
             (Some(_), Some(_)) => {
                 // TODO: this is bad, need to rethink how to approach this
@@ -363,7 +369,7 @@ impl ScanResult {
                         .map_or(hashset! { 0 },
                             |col| col.iter().map(|(idx, _)| idx).collect::<HashSet<_>>())
                 })
-                .reduce(|| HashSet::new(), |a, b| a.union(&b).into_iter().cloned().collect())
+                .reduce(HashSet::new, |a, b| a.union(&b).cloned().collect())
                 .len())
         })
         .unwrap_or_default()
@@ -452,7 +458,6 @@ impl From<(ScanResult, StreamState)> for ScanResult {
 }
 
 pub trait ScanFilterApply<T> {
-    #[inline]
     fn apply(&self, tested: &T) -> bool;
 }
 

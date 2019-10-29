@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 
-static PORT_NUMBER_ERROR_STRING: &'static str = "Port number must be between 1 and 65535";
+static PORT_NUMBER_ERROR_STRING: &str = "Port number must be between 1 and 65535";
 
 fn validate_port(port_string: String) -> Result<(), String> {
     match port_string.parse::<u16>() {
@@ -9,7 +9,7 @@ fn validate_port(port_string: String) -> Result<(), String> {
         } else {
             Ok(())
         },
-        Err(_) => return Err(PORT_NUMBER_ERROR_STRING.into())
+        Err(_) => Err(PORT_NUMBER_ERROR_STRING.into())
     }
 }
 

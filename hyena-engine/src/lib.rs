@@ -1,3 +1,7 @@
+#![allow(clippy::cognitive_complexity)]
+#![allow(clippy::transmute_ptr_to_ptr)]
+#![allow(clippy::trivially_copy_pass_by_ref)]
+
 #![cfg_attr(feature = "nightly", feature(test))]
 
 #[cfg(all(feature = "nightly", test))]

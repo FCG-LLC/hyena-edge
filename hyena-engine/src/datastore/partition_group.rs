@@ -313,12 +313,10 @@ impl<'pg> PartitionGroup<'pg> {
                             );
 
                             // as we did split, ts_0 cannot be empty
-                            ts_idx.push(
-                                *(&ts_0[..]
-                                    .first()
-                                    .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
-                                    .unwrap()),
-                            );
+                            ts_idx.push(ts_0[..]
+                                .first()
+                                .ok_or_else(|| err_msg("ts_0 was empty, this shouldn't happen"))
+                                .unwrap());
 
                             frag_0.insert(0, FragmentRef::from(&ts_0[..]));
                             fragments.push(frag_0);
@@ -336,7 +334,7 @@ impl<'pg> PartitionGroup<'pg> {
             // push the remainder, if any
 
             if !ts_1.is_empty() {
-                ts_idx.push(*(&ts_1[..].first().unwrap()));
+                ts_idx.push(ts_1[..].first().unwrap());
                 frag_1.insert(0, FragmentRef::from(&ts_1[..]));
                 fragments.push(frag_1);
             }
@@ -434,16 +432,14 @@ scan.stream {
                         })
                         .reduce(
                             || None,
-                            |a, b| if a.is_none() {
-                                b
-                            } else if b.is_none() {
-                                a
-                            } else {
-                                let mut a = a.unwrap();
-                                let b = b.unwrap();
-                                a.merge(b).unwrap();
-                                Some(a)
-                            },
+                            |a, b| match (a, b) {
+                                (None, b) => b,
+                                (a, None) => a,
+                                (Some(mut a), Some(b)) => {
+                                    a.merge(b).unwrap();
+                                    Some(a)
+                                }
+                            }
                         )
                 })
                 .threshold_take_while(|result| match (result, max_rows) {
@@ -478,18 +474,16 @@ scan.stream {
                 .inspect(|_| skip += 1)
                 .fold(
                     None,
-                    |a, b| if a.is_none() {
-                        b
-                    } else if b.is_none() {
-                        a
-                    } else {
-                        let mut a = a.unwrap();
-                        let b = b.unwrap();
-                        a.merge(b).unwrap();
-                        Some(a)
-                    },
+                    |a, b| match (a, b) {
+                        (None, b) => b,
+                        (a, None) => a,
+                        (Some(mut a), Some(b)) => {
+                            a.merge(b).unwrap();
+                            Some(a)
+                        }
+                    }
                 )
-                .unwrap_or_else(|| Default::default());
+                .unwrap_or_default();
 
             match
             (
@@ -576,6 +570,7 @@ scan.stream {
             .collect()
     }
 
+    #[allow(clippy::unnecessary_mut_passed)]
     fn serialize<P: AsRef<Path>>(pg: &PartitionGroup<'pg>, meta: P) -> Result<()> {
         let meta = meta.as_ref();
 

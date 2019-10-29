@@ -72,12 +72,8 @@ pub struct DataTriple {
 }
 
 impl DataTriple {
-    pub fn new(id: ColumnId, block_type: BlockType, data: Option<Fragment>) -> Self {
-        DataTriple {
-            column_id: id,
-            column_type: block_type,
-            data: data
-        }
+    pub fn new(column_id: ColumnId, column_type: BlockType, data: Option<Fragment>) -> Self {
+        DataTriple { column_id, column_type, data }
     }
 }
 
@@ -216,7 +212,7 @@ fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
 
     let partitions =
         if !scan_request.partition_ids.is_empty() {
-            Some(scan_request.partition_ids.into_iter().map(|v| v.into()).collect())
+            Some(scan_request.partition_ids.into_iter().collect())
         } else { None };
 
     let filters = if scan_request.filters.is_empty() {
@@ -238,7 +234,7 @@ fn from_sr(scan_request: ScanRequest) -> Result<Scan, Error> {
              .iter().cloned()
              .fold(hyena_engine::ScanFilters::new(), |mut map, (and_group, column_id, op)| {
                  {
-                     let or_vec = map.entry(column_id).or_insert_with(|| Vec::new());
+                     let or_vec = map.entry(column_id).or_insert_with(Vec::new);
 
                      or_vec.resize(and_group + 1, Vec::new());
 
@@ -352,11 +348,7 @@ pub struct ReplyColumn {
 
 impl ReplyColumn {
     pub fn new(typ: BlockType, id: ColumnId, name: String) -> Self {
-        ReplyColumn {
-            typ: typ,
-            id: id,
-            name: name,
-        }
+        ReplyColumn { typ, id, name }
     }
 }
 
@@ -485,9 +477,9 @@ impl Reply {
             // Block for a mutable borrow
             let groups_ensured = catalog.add_partition_group(source)
                 .with_context(|_| format!("Could not create group for source {}", source));
-            if groups_ensured.is_err() {
-                return Reply::Insert(Err(Error::CatalogError(groups_ensured.unwrap_err()
-                    .to_string())));
+
+            if let Err(err) = groups_ensured {
+                return Reply::Insert(Err(Error::CatalogError(err.to_string())));
             }
         }
 
@@ -508,8 +500,9 @@ impl Reply {
             Ok(inserted) => {
                 let flushed = catalog.flush()
                     .with_context(|_| "Cannot flush catalog after inserting");
-                if flushed.is_err() {
-                    Reply::Insert(Err(Error::CatalogError(flushed.unwrap_err().to_string())))
+
+                if let Err(err) = flushed {
+                    Reply::Insert(Err(Error::CatalogError(err.to_string())))
                 } else {
                     Reply::Insert(Ok(inserted))
                 }
@@ -601,7 +594,7 @@ impl Reply {
 //             .collect();
 //         partitions.extend(mutable);
         let response = RefreshCatalogResponse {
-            columns: columns,
+            columns,
 //             available_partitions: partitions,
             available_partitions: Default::default(),
         };
@@ -653,6 +646,7 @@ pub fn run_request(req: Request, catalog: &mut Catalog) -> Reply {
     }
 }
 
+#[allow(clippy::redundant_field_names)]
 #[cfg(test)]
 mod tests {
     pub use super::*;

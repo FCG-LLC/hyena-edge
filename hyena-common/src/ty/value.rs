@@ -34,7 +34,7 @@ macro_rules! value_impl {
     };
 }
 
-#[cfg_attr(rustfmt, rustfmt_skip)]
+#[rustfmt::skip]
 value_impl!(U8, u8,
             U16, u16,
             U32, u32,

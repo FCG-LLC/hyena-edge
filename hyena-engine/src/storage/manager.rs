@@ -40,7 +40,7 @@ impl PartitionGroupManager {
         let root = ensure_dir(data_root)
             .with_context(|_| "Failed to manage partition group root directory")?;
 
-        let mut partition_group_root = root.to_path_buf();
+        let mut partition_group_root = root;
 
         partition_group_root.push(source_id.to_string());
 
@@ -76,7 +76,7 @@ impl PartitionManager {
 
         let ts: DateTime<Utc> = ts.into().into();
 
-        let mut partition_root = root.to_path_buf();
+        let mut partition_root = root;
 
         let day = ts.day();
 

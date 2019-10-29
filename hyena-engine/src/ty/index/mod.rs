@@ -105,7 +105,7 @@ impl<'idx> ColumnIndex<'idx> {
     }
 
     #[inline]
-    pub(crate) fn iter<'v>(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
+    pub(crate) fn iter(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
         column_index_map_expr!(*self, idx, { idx.iter() })
     }
 

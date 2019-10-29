@@ -71,7 +71,7 @@ where
         {
             let dest = &mut self.pool.as_mut()[pool_head..];
             let dest = &mut dest[..slen];
-            &mut dest[..].copy_from_slice(&sbytes[..]);
+            dest[..].copy_from_slice(&sbytes[..]);
 
             self.storage.as_mut()[slice_head] = RelativeSlice::new(pool_head, slen);
             self.head += 1;

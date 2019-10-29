@@ -1,3 +1,5 @@
+#![allow(clippy::implicit_hasher)]
+
 use std::collections::HashMap as StdHashMap;
 use std::iter::FromIterator;
 use std::hash::Hash;

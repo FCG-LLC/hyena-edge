@@ -26,11 +26,9 @@ pub fn ensure_file<P: AsRef<Path>>(
     if !exists {
         file.set_len(create_size as u64)?;
         #[cfg(feature = "hole_punching")] punch_hole(&file, create_size)?;
-    } else {
-        if let Some(size) = existing_size {
-            // todo: punch hole after enlarging the file
-            file.set_len(size as u64)?;
-        }
+    } else if let Some(size) = existing_size {
+        // todo: punch hole after enlarging the file
+        file.set_len(size as u64)?;
     }
 
     Ok(file)
@@ -58,5 +56,5 @@ pub fn ensure_dir<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let path = path.canonicalize()
         .with_context(|_| "Unable to acquire canonical path")?;
 
-    Ok(path.to_path_buf())
+    Ok(path)
 }

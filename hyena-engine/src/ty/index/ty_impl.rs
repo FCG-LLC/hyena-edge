@@ -27,7 +27,7 @@ macro_rules! column_index_impl {
             }
 
             #[inline]
-            pub(crate) fn iter<'v>(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
+            pub(crate) fn iter(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
                 use self::ColumnIndex::*;
 
                 column_index_map_expr!(*self, idx, {

@@ -305,7 +305,8 @@ impl Fragment {
         )
     }
 
-    pub fn iter<'frag>(&'frag self) -> FragmentIter<'frag> {
+    #[allow(clippy::clone_on_copy)]
+    pub fn iter(&self) -> FragmentIter<'_> {
         use self::Fragment::*;
 
         frag_apply!(*self, blk, idx, {
@@ -315,7 +316,7 @@ impl Fragment {
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
+                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
             ), PhantomData)
         })
     }
@@ -404,6 +405,7 @@ impl<'fragref> FragmentRef<'fragref> {
         frag_apply!(*self, blk, _idx, { blk.is_empty() }, { blk.is_empty() })
     }
 
+    #[allow(clippy::clone_on_copy)]
     pub fn iter(&self) -> FragmentIter<'fragref> {
         use self::FragmentRef::*;
 
@@ -414,7 +416,7 @@ impl<'fragref> FragmentRef<'fragref> {
         }, {
             FragmentIter(Box::new(idx.iter()
                 .zip(*blk)
-                .map(|(idx, v)| (*idx as usize, Value::from(v.clone())))
+                .map(|(idx, v)| (*idx as usize, Value::from(*v)))
             ), PhantomData)
         })
     }

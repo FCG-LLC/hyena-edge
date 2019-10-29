@@ -129,8 +129,6 @@ pub fn run(matches: clap::ArgMatches) {
     };
 
     {
-        let cat_writer = cat_writer.clone();
-
         handle.clone().spawn(sessions.for_each(move |session| {
             let connid = session.connid;
 

@@ -1,3 +1,5 @@
+#![allow(clippy::implicit_hasher)]
+
 use hyena_common::ty::Value;
 use ty::{ColumnId, fragment::{Fragment, FragmentIter, FragmentRef}};
 use scanner::ScanResult;

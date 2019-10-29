@@ -19,10 +19,8 @@ pub use self::index::ColumnIndexType;
 // This will probably get merged into BlockData
 
 pub trait BufferHead {
-    #[inline]
     fn head(&self) -> usize;
 
-    #[inline]
     fn mut_head(&mut self) -> &mut usize;
 
     #[inline]
@@ -232,11 +230,11 @@ pub enum BlockType {
 
 impl BlockType {
     #[inline]
-    pub fn size_of(&self) -> usize {
+    pub fn size_of(self) -> usize {
         use std::mem::size_of;
         use self::BlockType::*;
 
-        match *self {
+        match self {
             I8Dense | U8Dense | I8Sparse | U8Sparse => size_of::<u8>(),
             I16Dense | U16Dense | I16Sparse | U16Sparse => size_of::<u16>(),
             I32Dense | U32Dense | I32Sparse | U32Sparse => size_of::<u32>(),
@@ -247,10 +245,10 @@ impl BlockType {
     }
 
     #[inline]
-    pub fn is_sparse(&self) -> bool {
+    pub fn is_sparse(self) -> bool {
         use self::BlockType::*;
 
-        match *self {
+        match self {
             I8Dense | U8Dense |
             I16Dense | U16Dense |
             I32Dense | U32Dense |
@@ -268,10 +266,10 @@ impl BlockType {
     }
 
     #[inline]
-    pub fn is_pooled(&self) -> bool {
+    pub fn is_pooled(self) -> bool {
         use self::BlockType::*;
 
-        match *self {
+        match self {
             I8Dense | U8Dense |
             I16Dense | U16Dense |
             I32Dense | U32Dense |

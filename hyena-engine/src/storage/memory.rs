@@ -127,10 +127,6 @@ impl PartialEq<Page> for Page {
     fn eq(&self, other: &Page) -> bool {
         self.0[..] == other.0[..]
     }
-    #[inline]
-    fn ne(&self, other: &Page) -> bool {
-        self.0[..] != other.0[..]
-    }
 }
 
 pub type PagedMemoryStorage = MemoryStorage<Page>;

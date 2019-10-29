@@ -178,7 +178,7 @@ impl Mul<Timestamp> for Timestamp {
 }
 
 impl Timestamp {
-    pub fn as_micros(&self) -> u64 {
+    pub fn as_micros(self) -> u64 {
         self.0
     }
 }

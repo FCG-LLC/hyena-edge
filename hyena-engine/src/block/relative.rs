@@ -16,8 +16,8 @@ impl RelativeSlice {
         // size where an offset is a concern. For instance, Vec and Box ensure they never allocate
         // more than isize::MAX bytes, so vec.as_ptr().offset(vec.len() as isize) is always safe.
 
-        debug_assert!(base as isize <= ::std::isize::MAX);
-        debug_assert!(length as isize <= ::std::isize::MAX);
+        debug_assert!(base <= ::std::isize::MAX as usize);
+        debug_assert!(length <= ::std::isize::MAX as usize);
 
         RelativeSlice { base, length }
     }
