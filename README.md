@@ -5,7 +5,7 @@ Hyena
 
 ## Introduction
 
-Hyena aims to be a fast storage engine for timestamp-based data.
+Hyena aims to be a fast time-series storage engine for mostly immutable data.
 It supports parallel scans and appends execution with limited mutation support for log data source.
 
 ## Command line options
@@ -308,3 +308,12 @@ compression=lzo
 ## Useful links
 
 - [Side effects when increasing vm.max_map_count](https://www.suse.com/support/kb/doc/?id=7000830)
+
+## Authors and contributors
+
+- Przemek Maciołek  - https://github.com/pmaciolek/ (concept and original implementation)
+- Jacek / Forger - https://github.com/forgerpl 
+- Kuba Wieczorek - https://github.com/jakubadamw
+- Damian / IC3Q - https://github.com/IC3Q
+
+
