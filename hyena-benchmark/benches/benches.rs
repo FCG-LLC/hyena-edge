@@ -1,8 +1,5 @@
 #[macro_use]
 extern crate criterion;
-extern crate failure;
-extern crate hyena_engine;
-extern crate hyena_test;
 #[macro_use]
 extern crate hyena_common;
 

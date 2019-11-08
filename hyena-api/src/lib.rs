@@ -1,16 +1,11 @@
-extern crate bincode;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate hyena_common;
 #[cfg(test)]
 #[macro_use]
 extern crate hyena_test;
-extern crate hyena_engine;
-extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate failure;
-extern crate extprim;
 #[macro_use]
 extern crate log;
 

@@ -1,19 +1,6 @@
 #[macro_use] extern crate clap;
 #[macro_use] extern crate log;
 
-extern crate bytes;
-extern crate colored_logger;
-extern crate dotenv;
-extern crate flexi_logger;
-extern crate futures;
-extern crate nanomsg;
-extern crate nanomsg_tokio;
-extern crate tokio_core;
-extern crate hyena_engine;
-extern crate hyena_api;
-extern crate bincode;
-extern crate nanomsg_multi_server;
-
 use dotenv::dotenv;
 use std::env::{var_os, set_var};
 

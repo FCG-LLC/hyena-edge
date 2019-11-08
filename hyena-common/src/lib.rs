@@ -2,19 +2,8 @@
 #[cfg(all(feature = "nightly", test))]
 extern crate test;
 
-extern crate bincode;
-extern crate chrono;
-extern crate extprim;
-extern crate failure;
-extern crate fxhash;
-extern crate num;
-extern crate rand;
-extern crate serde;
-extern crate rayon;
-extern crate regex;
 #[macro_use]
 extern crate serde_derive;
-extern crate uuid;
 
 pub(crate) mod error;
 pub mod collections;

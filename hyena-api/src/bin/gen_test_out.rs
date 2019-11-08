@@ -3,13 +3,6 @@
 ///
 /// More info at https://github.com/FCG-LLC/hyena-proto-test#hyena-generator.
 ///
-extern crate bincode;
-extern crate clap;
-extern crate hyena_api;
-extern crate hyena_engine;
-extern crate rand;
-extern crate uuid;
-extern crate nanomsg_multi_server;
 
 use bincode::{serialize, Infinite};
 use clap::{App, Arg, ArgMatches};

@@ -11,19 +11,14 @@ extern crate test;
 extern crate log;
 #[macro_use]
 extern crate cfg_if;
-extern crate rayon;
-extern crate chrono;
 #[cfg(feature = "mmap")]
 extern crate memmap;
 #[cfg(feature = "hole_punching")]
 extern crate libc;
-extern crate uuid;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde;
 #[macro_use]
 extern crate hyena_common;
-extern crate hyena_bloom_filter;
 
 #[cfg(test)]
 #[macro_use]
@@ -39,9 +34,6 @@ extern crate rand;
 #[cfg(test)]
 #[macro_use]
 extern crate static_assertions;
-extern crate extprim;
-
-extern crate strum;
 #[macro_use]
 extern crate strum_macros;
 

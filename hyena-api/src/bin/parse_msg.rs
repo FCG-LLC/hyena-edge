@@ -3,11 +3,6 @@
 ///
 /// More info at https://github.com/FCG-LLC/hyena-proto-test#hyena-verifier.
 
-extern crate clap;
-extern crate hyena_api;
-extern crate regex;
-extern crate nanomsg_multi_server;
-
 use clap::{App, Arg};
 use hyena_api::Request;
 use nanomsg_multi_server::proto::{deserialize, PeerRequest};
