@@ -1,6 +1,6 @@
 use super::*;
-use ty::fragment::Fragment;
-use block::ColumnIndexType;
+use crate::ty::fragment::Fragment;
+use crate::block::ColumnIndexType;
 
 pub(crate) const DEFAULT_PARTITION_GROUPS: [SourceId; 3] = [1, 5, 7];
 
@@ -20,7 +20,7 @@ macro_rules! append_test_impl {
     (init $partition_groups: expr, $columns: expr, $ts_min: expr) => {
         append_test_impl!(init $partition_groups,
             $columns,
-            ::ty::ColumnIndexStorageMap::default(),
+            crate::ty::ColumnIndexStorageMap::default(),
             $ts_min)
     };
 
@@ -98,7 +98,7 @@ macro_rules! append_test_impl {
             $source_id: expr
             $(,)*
         ]),+ $(,)*) => {{
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now, $([
             $ts,
@@ -115,7 +115,7 @@ macro_rules! append_test_impl {
             $source_id: expr
             $(,)*
         ]),+ $(,)*) => {{
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $([
             $ts,
@@ -134,7 +134,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {
 
-        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(),
+        append_test_impl!($partition_groups, $schema, crate::ty::ColumnIndexStorageMap::default(),
         $now,
         $([
             $ts,
@@ -191,7 +191,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {{
 
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $now, $expected_partitions, $([
             $ts,
@@ -215,7 +215,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {{
 
-        use datastore::tests::append::DEFAULT_PARTITION_GROUPS;
+        use crate::datastore::tests::append::DEFAULT_PARTITION_GROUPS;
 
         append_test_impl!(DEFAULT_PARTITION_GROUPS, $schema, $indexes, $now,
             $expected_partitions, $([
@@ -238,7 +238,7 @@ macro_rules! append_test_impl {
             $(,)*
         ]),+ $(,)*) => {
 
-        append_test_impl!($partition_groups, $schema, ::ty::ColumnIndexStorageMap::default(), $now,
+        append_test_impl!($partition_groups, $schema, crate::ty::ColumnIndexStorageMap::default(), $now,
             $expected_partitions, $([
             $ts,
             $ts_count,
@@ -261,11 +261,11 @@ macro_rules! append_test_impl {
         ]),+ $(,)*) => {{
 
         #[allow(unused)]
-        use block::BlockType as BlockTy;
-        use ty::block::BlockId;
+        use crate::block::BlockType as BlockTy;
+        use crate::ty::block::BlockId;
         use hyena_test::tempfile::TempDirExt;
-        use params::PARTITION_METADATA;
-        use ty::fragment::Fragment::*;
+        use crate::params::PARTITION_METADATA;
+        use crate::ty::fragment::Fragment::*;
         use std::mem::transmute;
         use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator,
             ParallelIterator};
@@ -383,7 +383,7 @@ macro_rules! append_test_impl {
 
             // assert column index blocks
             indexes.par_iter().for_each(|(id, ty)| {
-                use ty::ColumnIndexStorage::Memmap;
+                use crate::ty::ColumnIndexStorage::Memmap;
 
                 if block_data.contains_key(&id) {
                     match ty {
@@ -416,7 +416,7 @@ macro_rules! append_test_impl {
                         let col = columns.get(&id).unwrap();
 
                         if (*col).is_pooled() {
-                            use block::RelativeSlice;
+                            use crate::block::RelativeSlice;
 
                             let expected_data = if let Fragment::StringDense(ref sblk) = *frag {
                                 // assert data slice
@@ -782,8 +782,8 @@ mod benches {
 #[should_panic(expected = "Provided Append contains no data")]
 fn empty() {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
-    use block::BlockType as BlockTy;
+    use crate::ty::block::BlockStorage::Memmap;
+    use crate::block::BlockType as BlockTy;
 
     let now = <Timestamp as Default>::default();
 
@@ -807,7 +807,7 @@ fn empty() {
 
 mod dense {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     #[test]
     fn ts_only() {
@@ -1321,7 +1321,7 @@ mod dense {
 
     #[test]
     fn u32_10k_columns() {
-        use block::BlockType as BlockTy;
+        use crate::block::BlockType as BlockTy;
 
         let now = <Timestamp as Default>::default();
 
@@ -1369,7 +1369,7 @@ mod dense {
         use super::*;
 
         fn test_impl(partitions: usize, even: bool) {
-            use block::BlockType;
+            use crate::block::BlockType;
 
             let now = 1;
 
@@ -1436,7 +1436,7 @@ mod dense {
 
 mod sparse {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     #[test]
     fn current_only() {
@@ -1702,7 +1702,7 @@ mod sparse {
 
 mod string {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
 
     mod dense {
@@ -1710,7 +1710,7 @@ mod string {
 
         mod indexed {
             use super::*;
-            use ty::ColumnIndexStorage::Memmap as MemmapIndex;
+            use crate::ty::ColumnIndexStorage::Memmap as MemmapIndex;
 
             #[test]
             fn current_only() {
@@ -1876,7 +1876,7 @@ mod string {
 
 mod layout {
     use super::*;
-    use ty::block::BlockStorage::Memmap;
+    use crate::ty::block::BlockStorage::Memmap;
 
     // first empty, non-full write (single partition output)
     // 100 = [100]

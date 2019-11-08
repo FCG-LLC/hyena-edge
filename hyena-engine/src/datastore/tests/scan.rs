@@ -1,5 +1,5 @@
 use super::*;
-use scanner::ScanFilterOp;
+use crate::scanner::ScanFilterOp;
 
 /// The tests that use full blocks and generated data
 ///
@@ -15,9 +15,9 @@ mod full {
         };
 
         (init count $count: expr) => {{
-            use block::BlockType;
-            use ty::block::BlockStorage::Memmap;
-            use ty::fragment::Fragment;
+            use crate::block::BlockType;
+            use crate::ty::block::BlockStorage::Memmap;
+            use crate::ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
 
@@ -61,9 +61,9 @@ mod full {
         };
 
         (init sparse count $count: expr, $sparse_ratio: expr) => {{
-            use block::BlockType;
-            use ty::block::BlockStorage::Memmap;
-            use ty::fragment::Fragment;
+            use crate::block::BlockType;
+            use crate::ty::block::BlockStorage::Memmap;
+            use crate::ty::fragment::Fragment;
 
             let now = <Timestamp as Default>::default();
 
@@ -136,8 +136,8 @@ mod full {
             $(
             #[test]
             fn $name() {
-                use ty::fragment::Fragment;
-                use scanner::ScanResult;
+                use crate::ty::fragment::Fragment;
+                use crate::scanner::ScanResult;
 
                 let (_td, catalog, now) = scan_test_impl!(init count $count);
 
@@ -204,8 +204,8 @@ mod full {
             $(
             #[test]
             fn $name() {
-                use ty::fragment::Fragment;
-                use scanner::ScanResult;
+                use crate::ty::fragment::Fragment;
+                use crate::scanner::ScanResult;
 
                 let (_td, catalog, now) =
                     scan_test_impl!(init sparse count $count, $sparse_ratio);
@@ -268,10 +268,10 @@ mod full {
 
     mod pruning {
         use super::*;
-        use block::BlockType;
+        use crate::block::BlockType;
         use self::BlockStorage::Memmap;
-        use ty::fragment::Fragment;
-        use scanner::{ScanResult, ScanFilter};
+        use crate::ty::fragment::Fragment;
+        use crate::scanner::{ScanResult, ScanFilter};
 
 
         #[test]
@@ -345,7 +345,7 @@ mod full {
 
         mod ts_range {
             use super::*;
-            use scanner::ScanTsRange;
+            use crate::scanner::ScanTsRange;
 
             fn ts_range_test_impl(
                 ts_range: Option<ScanTsRange>,
@@ -446,10 +446,10 @@ mod full {
 
     mod streaming {
         use super::*;
-        use block::BlockType;
+        use crate::block::BlockType;
         use self::BlockStorage::Memmap;
-        use ty::fragment::Fragment;
-        use scanner::{ScanResult, ScanFilter, StreamConfig};
+        use crate::ty::fragment::Fragment;
+        use crate::scanner::{ScanResult, ScanFilter, StreamConfig};
         use hyena_test::tempfile::ThingWithTempDir;
 
 
@@ -801,8 +801,8 @@ mod full {
 /// The 'light' suite
 mod minimal {
     use super::*;
-    use ty::fragment::Fragment;
-    use scanner::ScanFilter;
+    use crate::ty::fragment::Fragment;
+    use crate::scanner::ScanFilter;
     use self::BlockStorage::Memmap;
 
     /// Helper for 'minimal' scan tests
@@ -1026,8 +1026,8 @@ mod minimal {
                 ]
             ),* $(,)* ]
         ) => {{
-            use block::BlockType;
-            use ty::ColumnIndexStorageMap;
+            use crate::block::BlockType;
+            use crate::ty::ColumnIndexStorageMap;
 
 
             let now = $ts;
@@ -1055,7 +1055,7 @@ mod minimal {
 
             let indexes = ColumnIndexStorageMap::from(hashmap! {
                 $(
-                    $column_idx => ::ty::ColumnIndexStorage::Memmap($column_idx_ty),
+                    $column_idx => crate::ty::ColumnIndexStorage::Memmap($column_idx_ty),
                 )*
             });
 
@@ -1439,7 +1439,7 @@ mod minimal {
         };
 
         (string indexed) => {{
-            use block::ColumnIndexType::Bloom;
+            use crate::block::ColumnIndexType::Bloom;
 
             scan_minimal_init!(string 1 => Bloom)
         }};
@@ -1484,7 +1484,7 @@ mod minimal {
         };
 
         (string utf8 indexed) => {{
-            use block::ColumnIndexType::Bloom;
+            use crate::block::ColumnIndexType::Bloom;
 
             scan_minimal_init!(string utf8 1 => Bloom)
         }};

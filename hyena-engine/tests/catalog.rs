@@ -14,7 +14,7 @@ use hyena_common::collections::{HashMap, HashSet};
 #[macro_use]
 mod common;
 
-use common::{catalog_dir, get_columns, wrap_result};
+use crate::common::{catalog_dir, get_columns, wrap_result};
 
 #[test]
 fn it_creates_catalog() {

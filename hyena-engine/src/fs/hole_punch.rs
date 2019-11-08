@@ -1,4 +1,4 @@
-use error::*;
+use crate::error::*;
 
 use libc::{fallocate, FALLOC_FL_KEEP_SIZE, FALLOC_FL_PUNCH_HOLE};
 use std::os::unix::io::AsRawFd;

@@ -19,7 +19,7 @@ pub(crate) mod tempdir_tools {
     use std::marker::PhantomData;
     use std::fmt::Debug;
     use std::ops::{Deref, DerefMut};
-    use tempdir;
+    use crate::tempdir;
 
     pub trait TempDirExt: AsRef<Path> {
         fn exists<P: AsRef<Path>>(&self, path: P) -> bool {
@@ -132,7 +132,7 @@ pub(crate) mod tempdir_tools {
 }
 
 pub(crate) mod persistent_tempdir {
-    use tempdir;
+    use crate::tempdir;
     use std::io::Result;
     use std::path::Path;
     use std::mem::{forget, replace};

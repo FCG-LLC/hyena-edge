@@ -1,11 +1,11 @@
-use block::index::{BloomIndexBlock, ColumnIndexType, ScanIndex};
-use error::*;
+use crate::block::index::{BloomIndexBlock, ColumnIndexType, ScanIndex};
+use crate::error::*;
 use hyena_bloom_filter::BloomValue;
 use hyena_common::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::{Deref, DerefMut};
 use std::sync::RwLock;
-use ty::block::BlockId;
+use crate::ty::block::BlockId;
 
 #[macro_use]
 mod ty_impl;
@@ -66,7 +66,7 @@ impl<'idx, 'a> From<&'a RwLock<ColumnIndex<'idx>>> for ColumnIndexStorage {
 
 macro_rules! column_index_map_expr {
     (mut $self:expr, $idxref:ident, $body:block) => {{
-        use ty::index::ColumnIndex::*;
+        use crate::ty::index::ColumnIndex::*;
 
         match $self {
             Memory(ref mut $idxref) => $body,
@@ -76,7 +76,7 @@ macro_rules! column_index_map_expr {
     }};
 
     ($self:expr, $idxref:ident, $body:block) => {{
-        use ty::index::ColumnIndex::*;
+        use crate::ty::index::ColumnIndex::*;
 
         match $self {
             Memory(ref $idxref) => $body,
@@ -105,7 +105,7 @@ impl<'idx> ColumnIndex<'idx> {
     }
 
     #[inline]
-    pub(crate) fn iter<'v>(&'idx self) -> Box<Iterator<Item = &'idx BloomValue> + 'idx> {
+    pub(crate) fn iter<'v>(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
         column_index_map_expr!(*self, idx, { idx.iter() })
     }
 

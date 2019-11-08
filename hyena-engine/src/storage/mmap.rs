@@ -1,6 +1,6 @@
-use error::*;
+use crate::error::*;
 
-use fs::ensure_file;
+use crate::fs::ensure_file;
 use memmap::{MmapMut, MmapOptions};
 
 use std::path::{Path, PathBuf};

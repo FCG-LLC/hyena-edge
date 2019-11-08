@@ -1,12 +1,12 @@
-use block::index::BloomIndexBlock;
+use crate::block::index::BloomIndexBlock;
 
 macro_rules! column_index_impl {
     ($ST:ty) => {
-        use block::BlockData;
+        use crate::block::BlockData;
         use serde::{Serialize, Serializer};
         use std::result::Result as StdResult;
         use std::sync::RwLock;
-        use ty::index::ty_impl::*;
+        use crate::ty::index::ty_impl::*;
 
         #[derive(Debug)]
         pub enum ColumnIndex<'idx> {
@@ -27,7 +27,7 @@ macro_rules! column_index_impl {
             }
 
             #[inline]
-            pub(crate) fn iter<'v>(&'idx self) -> Box<Iterator<Item = &'idx BloomValue> + 'idx> {
+            pub(crate) fn iter<'v>(&'idx self) -> Box<dyn Iterator<Item = &'idx BloomValue> + 'idx> {
                 use self::ColumnIndex::*;
 
                 column_index_map_expr!(*self, idx, {
@@ -40,7 +40,7 @@ macro_rules! column_index_impl {
                 use self::ColumnIndex::*;
 
                 column_index_map_expr!(mut *self, idx, {
-                                    use block::BufferHead;
+                                    use crate::block::BufferHead;
 
                                     if head > idx.size() {
                                         bail!("bad head pointer for column index block");

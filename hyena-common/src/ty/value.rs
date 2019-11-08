@@ -1,5 +1,5 @@
 use std::fmt;
-use ty::timestamp::Timestamp;
+use crate::ty::timestamp::Timestamp;
 use extprim::u128::u128;
 use extprim::i128::i128;
 

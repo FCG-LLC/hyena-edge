@@ -1,8 +1,8 @@
 use super::*;
-use storage::memory::PagedMemoryStorage;
-use params::BLOCK_SIZE;
+use crate::storage::memory::PagedMemoryStorage;
+use crate::params::BLOCK_SIZE;
 use std::mem::size_of;
-use block;
+use crate::block;
 
 
 column_index_impl!(PagedMemoryStorage);

@@ -3,7 +3,8 @@ name = "hyena-benchmark"
 version = "0.1.0"
 authors = ["Jacek Całusiński <forger@forger.pl>"]
 autobenches = false
- 
+edition = "2018"
+
 [[bench]]
 name = "benches"
 harness = false

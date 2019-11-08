@@ -1,12 +1,12 @@
-use error::*;
+use crate::error::*;
 use super::BlockId;
-use storage::mmap::MemmapStorage;
-use block::SparseIndex;
+use crate::storage::mmap::MemmapStorage;
+use crate::block::SparseIndex;
 use std::path::Path;
 //use fs::ensure_file;
 use std::mem::size_of;
 //use std::fs::remove_file;
-use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -83,7 +83,7 @@ impl<'block> Block<'block> {
         block_type: BlockType,
         block_id: BlockId,
     ) -> Result<Block<'block>> {
-        use ty::block::ty_impl::*;
+        use crate::ty::block::ty_impl::*;
 
         macro_rules! prepare_mmap_dense {
             ($block: ty) => {{
@@ -165,7 +165,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+    use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
 
     #[test]

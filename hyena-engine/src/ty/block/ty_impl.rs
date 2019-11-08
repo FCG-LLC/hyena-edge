@@ -1,12 +1,12 @@
-use block::{DenseNumericBlock, SparseIndexedNumericBlock, DenseStringBlock};
+use crate::block::{DenseNumericBlock, SparseIndexedNumericBlock, DenseStringBlock};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
 macro_rules! block_impl {
     ($ST: ty, $SI: ty, $SP: ty) => {
-        use ty::block::ty_impl::*;
+        use crate::ty::block::ty_impl::*;
         use std::sync::RwLock;
-        use block::BlockData;
+        use crate::block::BlockData;
         use serde::{Serialize, Serializer};
         use std::result::Result as StdResult;
 
@@ -228,7 +228,7 @@ macro_rules! block_impl {
             }
         }
 
-        use block::BlockType;
+        use crate::block::BlockType;
 
         impl<'block, 'a> From<&'a Block<'block>> for BlockType {
             fn from(block: &Block) -> BlockType {

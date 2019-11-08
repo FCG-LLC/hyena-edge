@@ -1,11 +1,11 @@
 use super::ScanIndex;
-use block::{BlockData, BufferHead, IndexMut, IndexRef};
-use error::*;
+use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
+use crate::error::*;
 use hyena_bloom_filter::{BloomValue, DefaultBloomFilter};
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use storage::Storage;
-use ty::RowId;
+use crate::storage::Storage;
+use crate::ty::RowId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EmptyIndex;
@@ -90,7 +90,7 @@ where
 }
 
 pub(crate) struct BloomLookupIter<'si> {
-    it: Box<Iterator<Item = bool> + 'si>,
+    it: Box<dyn Iterator<Item = bool> + 'si>,
 }
 
 impl<'si> BloomLookupIter<'si> {
@@ -110,7 +110,7 @@ impl<'si> Iterator for BloomLookupIter<'si> {
 }
 
 pub(crate) struct BloomIter<'si> {
-    it: Box<Iterator<Item = &'si BloomValue> + 'si>,
+    it: Box<dyn Iterator<Item = &'si BloomValue> + 'si>,
 }
 
 impl<'si> BloomIter<'si> {

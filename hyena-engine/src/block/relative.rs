@@ -1,6 +1,6 @@
 use std::slice::from_raw_parts;
 use std::str::from_utf8_unchecked;
-use block::SliceOffset;
+use crate::block::SliceOffset;
 
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RelativeSlice {

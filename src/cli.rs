@@ -98,7 +98,7 @@ pub fn app() -> App<'static, 'static> {
 mod tests {
 
     mod validate_port {
-        use cli::validate_port;
+        use crate::cli::validate_port;
 
         #[test]
         fn rejects_empty_string() {

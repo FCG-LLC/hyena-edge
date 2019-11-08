@@ -1,4 +1,4 @@
-use error::*;
+use crate::error::*;
 use super::{Storage, Realloc, ByteStorage};
 use hyena_common::map_type::{map_type, map_type_mut};
 use std::mem::{size_of, uninitialized, zeroed};

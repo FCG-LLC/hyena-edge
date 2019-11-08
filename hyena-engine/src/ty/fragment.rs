@@ -1,7 +1,7 @@
-use error::*;
-use block::SparseIndex;
+use crate::error::*;
+use crate::block::SparseIndex;
 use hyena_common::ty::Timestamp;
-use ty::RowId;
+use crate::ty::RowId;
 use std::mem::transmute;
 use extprim::i128::i128;
 use extprim::u128::u128;
@@ -321,7 +321,7 @@ impl Fragment {
     }
 }
 
-pub struct FragmentIter<'frag>(Box<Iterator<Item = (usize, Value)> + 'frag>,
+pub struct FragmentIter<'frag>(Box<dyn Iterator<Item = (usize, Value)> + 'frag>,
 PhantomData<&'frag Value>);
 
 impl<'frag> Iterator for FragmentIter<'frag> {

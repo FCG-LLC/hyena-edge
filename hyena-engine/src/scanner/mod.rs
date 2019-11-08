@@ -85,15 +85,15 @@
 //! +---------------+-----------+-------------+
 //! ```
 
-use error::*;
-use ty::ColumnId;
+use crate::error::*;
+use crate::ty::ColumnId;
 use hyena_common::collections::{HashMap, HashSet};
 use std::fmt::{Display, Debug};
 use std::hash::Hash;
 use std::ops::Deref;
-use datastore::PartitionId;
-use params::SourceId;
-use ty::fragment::Fragment;
+use crate::datastore::PartitionId;
+use crate::params::SourceId;
+use crate::ty::fragment::Fragment;
 use hyena_common::ty::Timestamp;
 use extprim::i128::i128;
 use extprim::u128::u128;

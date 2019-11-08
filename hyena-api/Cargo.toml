@@ -5,6 +5,7 @@ authors = [
     "Tomasz Barański <tomasz.baranski@collective-sense.com>",
     "Jacek Całusiński <forger@forger.pl>"
 ]
+edition = "2018"
 
 [dependencies]
 clap = {version = "2.29.4", optional = true}

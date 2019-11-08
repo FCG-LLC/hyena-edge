@@ -1,8 +1,8 @@
-use block::{BlockData, BufferHead, IndexMut, IndexRef, RelativeSlice};
-use error::*;
+use crate::block::{BlockData, BufferHead, IndexMut, IndexRef, RelativeSlice};
+use crate::error::*;
 use std::marker::PhantomData;
-use storage::{Realloc, Storage};
-use ty::RowId;
+use crate::storage::{Realloc, Storage};
+use crate::ty::RowId;
 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -182,12 +182,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use crate::params::BLOCK_SIZE;
 
     mod generic {
         use super::*;
         use std::mem::size_of;
-        use storage::ByteStorage;
+        use crate::storage::ByteStorage;
 
         pub(super) fn string_data_gen(payload_len: usize) -> Vec<u8> {
             [b'X', b'x', b'Y']
@@ -322,7 +322,7 @@ mod tests {
 
     mod memory {
         use super::*;
-        use storage::memory::PagedMemoryStorage;
+        use crate::storage::memory::PagedMemoryStorage;
 
         fn make_storage(size: usize) -> PagedMemoryStorage {
             PagedMemoryStorage::new(size)
@@ -366,7 +366,7 @@ mod tests {
     mod mmap {
         use super::*;
         use std::path::Path;
-        use storage::mmap::MemmapStorage;
+        use crate::storage::mmap::MemmapStorage;
 
         fn make_storage(dir: impl AsRef<Path>, name: &str, size: usize) -> MemmapStorage {
             let mut file = dir.as_ref().to_path_buf();

@@ -1,8 +1,8 @@
-use error::*;
-use storage::memory::PagedMemoryStorage;
-use block::SparseIndex;
+use crate::error::*;
+use crate::storage::memory::PagedMemoryStorage;
+use crate::block::SparseIndex;
 use std::mem::size_of;
-use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 use extprim::i128::i128;
 use extprim::u128::u128;
 
@@ -48,7 +48,7 @@ impl<'block> Block<'block> {
 
     #[inline]
     pub(crate) fn create(block_type: BlockType) -> Result<Block<'block>> {
-        use ty::block::ty_impl::*;
+        use crate::ty::block::ty_impl::*;
 
         macro_rules! prepare_mem_dense {
             ($block: ty) => {{
@@ -123,7 +123,7 @@ impl<'block> From<Block<'block>> for super::Block<'block> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE, STRING_POOL_SIZE};
+    use crate::params::{BLOCK_SIZE, STRING_POOL_SIZE};
 
 
     #[test]

@@ -1,8 +1,8 @@
 use std::hash::{Hash, Hasher, BuildHasher};
 use std::fmt::{Display, Formatter, self};
 use std::marker::PhantomData;
-use bloom_value::{BloomValue, BIT_LENGTH};
-use ngram::{Ngram, Trigram};
+use crate::bloom_value::{BloomValue, BIT_LENGTH};
+use crate::ngram::{Ngram, Trigram};
 use std::iter::once;
 
 #[derive(Debug, Copy, Clone, PartialEq, Default)]

@@ -107,7 +107,7 @@ pub mod timestamp {
     pub struct RandomTimestampGen;
 
     impl RandomTimestampGen {
-        pub fn iter<T>() -> Box<Iterator<Item = T>>
+        pub fn iter<T>() -> Box<dyn Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T>,
@@ -115,7 +115,7 @@ pub mod timestamp {
             Box::new(repeat(RandomTimestampGen).map(|_| Self::random()))
         }
 
-        pub fn iter_range<T, TS>(from: TS, to: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range<T, TS>(from: TS, to: TS) -> Box<dyn Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,
@@ -127,7 +127,7 @@ pub mod timestamp {
             )
         }
 
-        pub fn iter_range_from<T, TS>(from: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range_from<T, TS>(from: TS) -> Box<dyn Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,
@@ -138,7 +138,7 @@ pub mod timestamp {
             }))
         }
 
-        pub fn iter_rng<T, R>(rng: R) -> Box<Iterator<Item = T>>
+        pub fn iter_rng<T, R>(rng: R) -> Box<dyn Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T>,
@@ -147,7 +147,7 @@ pub mod timestamp {
             Box::new(repeat(RandomTimestampGen).map(move |_| Self::random_rng(&mut rng.clone())))
         }
 
-        pub fn iter_range_rng<T, TS, R>(rng: R, from: TS, to: TS) -> Box<Iterator<Item = T>>
+        pub fn iter_range_rng<T, TS, R>(rng: R, from: TS, to: TS) -> Box<dyn Iterator<Item = T>>
         where
             T: From<Timestamp>,
             Timestamp: From<T> + From<TS>,

@@ -1,5 +1,5 @@
 use std::iter::{Peekable, Enumerate};
-use block::SparseIndex;
+use crate::block::SparseIndex;
 
 /// Iterator for sparse blocks / sparse fragments
 ///

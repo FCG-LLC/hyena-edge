@@ -1,4 +1,4 @@
-use ty::{SourceId, TimestampFragment};
+use crate::ty::{SourceId, TimestampFragment};
 use super::BlockData;
 
 
@@ -37,12 +37,12 @@ impl Append {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use error::*;
+    use crate::error::*;
     use hyena_test::random::timestamp::RandomTimestampGen;
     use rand::{thread_rng, Rng};
-    use block::SparseIndex;
+    use crate::block::SparseIndex;
     use std::iter::repeat;
-    use ty::Fragment;
+    use crate::ty::Fragment;
     use hyena_common::ty::Timestamp;
 
     #[test]

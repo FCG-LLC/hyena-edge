@@ -1,10 +1,10 @@
 use super::*;
-use params::BLOCK_SIZE;
+use crate::params::BLOCK_SIZE;
 use std::mem::size_of;
 use std::path::Path;
-use storage::mmap::MemmapStorage;
-use ty::block::BlockId;
-use block;
+use crate::storage::mmap::MemmapStorage;
+use crate::ty::block::BlockId;
+use crate::block;
 
 
 column_index_impl!(MemmapStorage);
@@ -71,7 +71,7 @@ impl<'idx> From<ColumnIndex<'idx>> for super::ColumnIndex<'idx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::{BLOCK_SIZE};
+    use crate::params::{BLOCK_SIZE};
 
     #[test]
     fn prepare() {

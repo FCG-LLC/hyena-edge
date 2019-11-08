@@ -1,5 +1,5 @@
 use bincode;
-use error::*;
+use crate::error::*;
 
 pub use self::ser::{serialize, serialize_into};
 pub use self::de::{deserialize, deserialize_from};

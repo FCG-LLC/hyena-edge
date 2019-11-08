@@ -222,8 +222,8 @@ pub fn run(matches: clap::ArgMatches) {
 mod tests {
 
     mod get_address {
-        use nanoserver::get_address;
-        use cli::app;
+        use crate::nanoserver::get_address;
+        use crate::cli::app;
 
         #[test]
         fn get_tcp_address() {

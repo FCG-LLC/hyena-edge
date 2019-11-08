@@ -1,4 +1,4 @@
-use error::*;
+use crate::error::*;
 use regex::{Regex as RegexImpl, escape};
 use std::str::FromStr;
 use std::ops::Deref;

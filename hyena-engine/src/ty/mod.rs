@@ -15,4 +15,4 @@ pub(crate) use self::index::ColumnIndexMap;
 
 pub type ColumnId = usize;
 pub type RowId = usize;
-pub use params::SourceId;
+pub use crate::params::SourceId;

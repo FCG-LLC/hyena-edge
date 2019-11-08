@@ -1,8 +1,8 @@
-use error::*;
+use crate::error::*;
 use std::marker::PhantomData;
 use std::fmt::Debug;
-use storage::Storage;
-use block::{BlockData, BufferHead, IndexMut, IndexRef};
+use crate::storage::Storage;
+use crate::block::{BlockData, BufferHead, IndexMut, IndexRef};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct DenseIndex;
@@ -79,7 +79,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use params::BLOCK_SIZE;
+    use crate::params::BLOCK_SIZE;
     use extprim::i128::i128;
     use extprim::u128::u128;
 
@@ -221,7 +221,7 @@ mod tests {
 
     mod memory {
         use super::*;
-        use storage::memory::PagedMemoryStorage;
+        use crate::storage::memory::PagedMemoryStorage;
 
         fn make_storage() -> PagedMemoryStorage {
             PagedMemoryStorage::new(BLOCK_SIZE)
@@ -298,7 +298,7 @@ mod tests {
     #[cfg(feature = "mmap")]
     mod mmap {
         use super::*;
-        use storage::mmap::MemmapStorage;
+        use crate::storage::mmap::MemmapStorage;
 
         fn make_storage(name: &str) -> MemmapStorage {
             let (_dir, file) = tempfile!(name);

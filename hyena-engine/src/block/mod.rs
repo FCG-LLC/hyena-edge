@@ -1,4 +1,4 @@
-use error::*;
+use crate::error::*;
 use std::fmt::Debug;
 use extprim::u128::u128;
 

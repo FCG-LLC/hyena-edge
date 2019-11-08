@@ -2,6 +2,7 @@
 name = "hyena-bloom-filter"
 version = "0.1.0"
 authors = ["Jacek Całusiński <forger@forger.pl>"]
+edition = "2018"
 
 [dependencies]
 fnv = "1.0.6"

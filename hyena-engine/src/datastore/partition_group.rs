@@ -1,7 +1,7 @@
-use error::*;
+use crate::error::*;
 use hyena_common::ty::Timestamp;
-use block::SparseIndex;
-use storage::manager::PartitionManager;
+use crate::block::SparseIndex;
+use crate::storage::manager::PartitionManager;
 use hyena_common::collections::HashMap;
 use hyena_common::iter::IteratorExt;
 use std::collections::vec_deque::VecDeque;
@@ -9,15 +9,15 @@ use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
 use std::sync::RwLock;
-use params::{SourceId, PARTITION_GROUP_METADATA};
-use mutator::append::Append;
-use scanner::{Scan, ScanResult, StreamState};
-use ty::block::{BlockStorageMap, BlockStorageMapType};
-use ty::ColumnId;
+use crate::params::{SourceId, PARTITION_GROUP_METADATA};
+use crate::mutator::append::Append;
+use crate::scanner::{Scan, ScanResult, StreamState};
+use crate::ty::block::{BlockStorageMap, BlockStorageMapType};
+use crate::ty::ColumnId;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use rayon::prelude::*;
 use std::iter::{once, repeat};
-use ty::fragment::FragmentRef;
+use crate::ty::fragment::FragmentRef;
 
 use super::partition::Partition;
 use super::partition_meta::PartitionMeta;
@@ -633,7 +633,7 @@ impl<'pg> Drop for PartitionGroup<'pg> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datastore::tests::create_random_partitions;
+    use crate::datastore::tests::create_random_partitions;
 
     #[test]
     fn new() {
@@ -677,7 +677,7 @@ mod tests {
 
     mod split {
         use super::*;
-        use ty::fragment::{Fragment, TimestampFragment};
+        use crate::ty::fragment::{Fragment, TimestampFragment};
 
         mod sparse {
             use super::*;

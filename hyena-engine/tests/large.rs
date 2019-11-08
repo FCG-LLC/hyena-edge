@@ -7,7 +7,7 @@ use std::iter::{once, repeat};
 #[macro_use]
 mod common;
 
-use common::{catalog_dir, get_columns, wrap_result};
+use crate::common::{catalog_dir, get_columns, wrap_result};
 
 // create 100 dense columns
 // and 1k sparse columns of type U64

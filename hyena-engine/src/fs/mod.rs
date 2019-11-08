@@ -1,4 +1,4 @@
-use error::*;
+use crate::error::*;
 use std::fs::{create_dir_all, File, OpenOptions};
 use std::path::{Path, PathBuf};
 

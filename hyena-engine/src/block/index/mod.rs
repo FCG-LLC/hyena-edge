@@ -1,6 +1,6 @@
-use block::BlockData;
+use crate::block::BlockData;
 use std::fmt::Debug;
-use ty::RowId;
+use crate::ty::RowId;
 
 mod bloom;
 
@@ -54,7 +54,7 @@ pub enum ColumnIndexType {
 impl ColumnIndexType {
     #[inline]
     pub fn size_of(&self) -> usize {
-        use storage::memory::MemoryStorage;
+        use crate::storage::memory::MemoryStorage;
 
         // this is a bit of a hack
         // we have to provide a concrete type for the S generic param in BloomIndexBlock

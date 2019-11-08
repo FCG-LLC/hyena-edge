@@ -1,8 +1,8 @@
-use error::*;
+use crate::error::*;
 use hyena_common::collections::HashMap;
 use std::ops::Deref;
 use std::sync::RwLock;
-use block;
+use crate::block;
 
 #[macro_use]
 pub(crate) mod ty_impl;

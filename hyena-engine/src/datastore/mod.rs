@@ -1,6 +1,6 @@
-use ty::ColumnId;
+use crate::ty::ColumnId;
 use hyena_common::collections::HashMap;
-use params::SourceId;
+use crate::params::SourceId;
 
 mod catalog;
 mod column;

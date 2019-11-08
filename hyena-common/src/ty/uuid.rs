@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn serialize() {
-        use serde_utils::serialize;
+        use crate::serde_utils::serialize;
 
         let uuid = Uuid::from(&TEST_BYTES);
 
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn deserialize() {
-        use serde_utils::deserialize;
+        use crate::serde_utils::deserialize;
 
         let uuid = Uuid::from(&TEST_BYTES);
 

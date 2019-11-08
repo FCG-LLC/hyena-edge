@@ -1,14 +1,14 @@
-use error::*;
-use ty::{BlockStorage, ColumnIndexStorageMap, ColumnId};
-use block::BlockType;
-use storage::manager::PartitionGroupManager;
+use crate::error::*;
+use crate::ty::{BlockStorage, ColumnIndexStorageMap, ColumnId};
+use crate::block::BlockType;
+use crate::storage::manager::PartitionGroupManager;
 use hyena_common::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::iter::FromIterator;
 use std::default::Default;
-use params::{SourceId, CATALOG_METADATA, TIMESTAMP_COLUMN};
-use mutator::append::Append;
-use scanner::{Scan, ScanResult};
+use crate::params::{SourceId, CATALOG_METADATA, TIMESTAMP_COLUMN};
+use crate::mutator::append::Append;
+use crate::scanner::{Scan, ScanResult};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{PartitionGroupMap, ColumnMap};
@@ -253,7 +253,7 @@ impl<'cat> Catalog<'cat> {
     pub(super) fn space_for_blocks<'iter>(&self, indices: impl Iterator<Item = &'iter ColumnId>)
     -> usize
     {
-        use params::BLOCK_SIZE;
+        use crate::params::BLOCK_SIZE;
 
         indices
             .filter_map(|col_id| {
@@ -373,7 +373,7 @@ impl<'cat> AsRef<ColumnMap> for Catalog<'cat> {
 mod tests {
     use super::*;
 
-    use datastore::tests::create_random_partitions;
+    use crate::datastore::tests::create_random_partitions;
 
     #[test]
     fn new() {

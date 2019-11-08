@@ -16,7 +16,7 @@ extern crate log;
 
 mod error;
 
-use error::*;
+use crate::error::*;
 
 use bincode::{Error as BinError, deserialize};
 use hyena_engine::{BlockType, Catalog, Column, ColumnMap, BlockData, Append, Scan,

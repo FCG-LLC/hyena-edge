@@ -2,14 +2,14 @@
 macro_rules! block_apply {
     (mut expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) =>
     {{
-        use ty::block::Block;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::error::*;
 
         let mut lock = acquire!(raw write $self);
 
         match *lock {
             Block::Memory(ref mut $block) => {
-                use ty::block::memory;
+                use crate::ty::block::memory;
 
                 if let memory::Block::$ty(ref mut $physblock) = *$block {
                     $what
@@ -19,7 +19,7 @@ macro_rules! block_apply {
             }
             #[cfg(feature = "mmap")]
             Block::Memmap(ref mut $block) => {
-                use ty::block::mmap;
+                use crate::ty::block::mmap;
 
                 if let mmap::Block::$ty(ref mut $physblock) = *$block {
                     $what
@@ -31,14 +31,14 @@ macro_rules! block_apply {
     }};
 
     (expect physical $ty: ident, $self: expr, $block: ident, $physblock:ident, $what: block) => {{
-        use ty::block::Block;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::error::*;
 
         let lock = acquire!(raw read $self);
 
         match *lock {
             Block::Memory(ref $block) => {
-                use ty::block::memory;
+                use crate::ty::block::memory;
 
                 if let memory::Block::$ty(ref $physblock) = *$block {
                     $what
@@ -48,7 +48,7 @@ macro_rules! block_apply {
             }
             #[cfg(feature = "mmap")]
             Block::Memmap(ref $block) => {
-                use ty::block::mmap;
+                use crate::ty::block::mmap;
 
                 if let mmap::Block::$ty(ref $physblock) = *$block {
                     $what
@@ -60,14 +60,14 @@ macro_rules! block_apply {
     }};
 
     (mut map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
-        use ty::block::Block;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::error::*;
 
         let mut lock = acquire!(raw write $self);
 
         match *lock {
             Block::Memory(ref mut $block) => {
-                use ty::block::memory::Block::*;
+                use crate::ty::block::memory::Block::*;
 
                 match *$block {
                     I8Dense(ref mut $physblock) => $what,
@@ -103,7 +103,7 @@ macro_rules! block_apply {
             }
             #[cfg(feature = "mmap")]
             Block::Memmap(ref mut $block) => {
-                use ty::block::mmap::Block::*;
+                use crate::ty::block::mmap::Block::*;
 
                 match *$block {
                     I8Dense(ref mut $physblock) => $what,
@@ -141,14 +141,14 @@ macro_rules! block_apply {
     }};
 
     (map physical $self: expr, $block: ident, $physblock:ident, $what: block) => {{
-        use ty::block::Block;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::error::*;
 
         let lock = acquire!(raw read $self);
 
         match *lock {
             Block::Memory(ref $block) => {
-                use ty::block::memory::Block::*;
+                use crate::ty::block::memory::Block::*;
 
                 match *$block {
                     I8Dense(ref $physblock) => $what,
@@ -184,7 +184,7 @@ macro_rules! block_apply {
             }
             #[cfg(feature = "mmap")]
             Block::Memmap(ref $block) => {
-                use ty::block::mmap::Block::*;
+                use crate::ty::block::mmap::Block::*;
 
                 match *$block {
                     I8Dense(ref $physblock) => $what,
@@ -306,8 +306,8 @@ macro_rules! map_block {
                     () => {{
                         map_block!(@cfg map $block, $bid, $dense, $sparse, $pooled_dense,
                         [
-                            [ Block::Memory, use ty::block::memory::Block::*; ],
-                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                            [ Block::Memory, use crate::ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use crate::ty::block::mmap::Block::*; ]
                         ],
                         map)
                     }};
@@ -456,7 +456,7 @@ macro_rules! map_block {
         )*
     )
         => {{
-        use ty::block::Block;
+        use crate::ty::block::Block;
 
         match *$block {
             $(
@@ -584,8 +584,8 @@ macro_rules! map_fragment {
                         map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
                         $dense, $sparse, $pooled_dense, $ty,
                         [
-                            [ Block::Memory, use ty::block::memory::Block::*; ],
-                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                            [ Block::Memory, use crate::ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use crate::ty::block::mmap::Block::*; ]
                         ],
                         mut)
                     }};
@@ -626,8 +626,8 @@ macro_rules! map_fragment {
                         map_fragment!(@cfg map $block, $frag, $bid, $fid, $fidx,
                         $dense, $sparse, $pooled_dense, $ty,
                         [
-                            [ Block::Memory, use ty::block::memory::Block::*; ],
-                            [ Block::Memmap, use ty::block::mmap::Block::*; ]
+                            [ Block::Memory, use crate::ty::block::memory::Block::*; ],
+                            [ Block::Memmap, use crate::ty::block::mmap::Block::*; ]
                         ],
                         map)
                     }};
@@ -735,9 +735,9 @@ macro_rules! map_fragment {
 
         ) => {{
 
-        use ty::block::Block;
-        use ty::fragment::$ty;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::ty::fragment::$ty;
+        use crate::error::*;
 
 
         match *$block {
@@ -808,9 +808,9 @@ macro_rules! map_fragment {
         )*
     )
         => {{
-        use ty::block::Block;
-        use ty::fragment::$ty;
-        use error::*;
+        use crate::ty::block::Block;
+        use crate::ty::fragment::$ty;
+        use crate::error::*;
 
 
         match *$block {

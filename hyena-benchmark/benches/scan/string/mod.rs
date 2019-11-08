@@ -7,7 +7,7 @@ use hyena_common::collections::HashMap;
 
 use criterion::Criterion;
 
-use config::{catalog_dir, TempDir};
+use crate::config::{catalog_dir, TempDir};
 
 mod data;
 
