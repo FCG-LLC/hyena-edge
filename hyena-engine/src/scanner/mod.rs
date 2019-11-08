@@ -541,24 +541,16 @@ macro_rules! scan_filter_impl {
                     | Eq(_)
                     | GtEq(_)
                     | Gt(_)
-                    | NotEq(_) => None,
-                    In(_) => None,
-                    StartsWith(ref v) => {
-                        let v = v.to_string();
+                    | NotEq(_)
+                    | In(_)
+                    | Matches(_) => None,
 
+                    StartsWith(ref v)
+                    | EndsWith(ref v)
+                    | Contains(ref v) => {
+                        let v = v.to_string();
                         Some(DefaultBloomFilter::encode(&v))
                     }
-                    EndsWith(ref v) => {
-                        let v = v.to_string();
-
-                        Some(DefaultBloomFilter::encode(&v))
-                    }
-                    Contains(ref v) => {
-                        let v = v.to_string();
-
-                        Some(DefaultBloomFilter::encode(&v))
-                    }
-                    Matches(_) => None,
                 }
             }
 
