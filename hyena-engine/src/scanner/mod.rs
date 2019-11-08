@@ -748,6 +748,7 @@ mod tests {
             assert!(op.apply(&10_u8));
         }
 
+        #[cfg(debug_assertions)]
         #[test]
         #[should_panic(
             expected = "Wrong scan filter variant for the column, expected \"U8\" and got \"U16\"")]
