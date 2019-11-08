@@ -977,9 +977,6 @@ mod tests {
     }
 
     fn block_write_test_impl(short_map: &BlockStorageMap, long_map: &BlockStorageMap) {
-        use rayon::iter::IntoParallelRefMutIterator;
-        use crate::block::BlockData;
-
         let count = 100;
 
         let root = tempdir!();

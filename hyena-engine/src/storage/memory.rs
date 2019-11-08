@@ -1,7 +1,7 @@
 use crate::error::*;
 use super::{Storage, Realloc, ByteStorage};
 use hyena_common::map_type::{map_type, map_type_mut};
-use std::mem::{size_of, uninitialized, zeroed};
+use std::mem::{size_of, zeroed};
 use std::intrinsics::copy_nonoverlapping;
 use std::marker::PhantomData;
 use std::fmt;
@@ -106,10 +106,10 @@ impl fmt::Debug for Page {
 
 impl Clone for Page {
     fn clone(&self) -> Page {
+        let mut dst = std::mem::MaybeUninit::<Page>::uninit();
         unsafe {
-            let mut dst = uninitialized::<Page>();
-            copy_nonoverlapping(self, &mut dst, 1);
-            dst
+            copy_nonoverlapping(self, dst.as_mut_ptr(), 1);
+            dst.assume_init()
         }
     }
 }
